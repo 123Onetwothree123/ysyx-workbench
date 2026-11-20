@@ -7,7 +7,8 @@ import _root_.ysyx_26030103.exu.ysyx_26030103_CSR
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-/** CSR 功能审计：用户计数器别名、RV64 sstatus 视图、ecall/中断 mtval。
+/** CSR 功能/退休审计：计数器别名、RV64 sstatus 视图、ecall/中断 mtval、
+  * minstret 退休计数、M 级中断全局使能与 PMP 配置位。
   *
   * 这些用例是按 RISC-V 规范写的“期望行为”测试；如果当前 RTL 的实现与
   * 规范不一致，测试会失败，从而把差异定位到一个具体 CSR/字段。
@@ -98,6 +99,9 @@ class ysyx_26030103_CSRFunctionalAuditTest
   private val INSTRET = 0xc02
   private val MCYCLE = 0xb00
   private val MINSTRET = 0xb02
+  private val MIE = 0x304
+  private val PMPCFG0 = 0x3a0
+  private val PMPADDR0 = 0x3b0
 
   private def profile: ysyx_26030103_MMUProfile =
     ysyx_26030103_MMUProfile(
@@ -296,6 +300,56 @@ class ysyx_26030103_CSRFunctionalAuditTest
       // 中断没有 tval，mtval 必须为 0；mepc 仍记录被打断的 PC。
       peekCSR(dut, MTVAL) should be(BigInt(0))
       peekCSR(dut, MEPC) should be(PC)
+    }
+  }
+
+  "minstret" should "只跟随退休事件，而不是 EXU Enable" in {
+    simulate(new ysyx_26030103_CSRAuditHarness(profile)) { dut =>
+      setup(dut)
+      peekCSR(dut, MINSTRET) should be(BigInt(0))
+
+      // EXU 提交拍（enable）没有指令退休时不得计数。
+      dut.io.enable.poke(true.B)
+      dut.io.retireCommit.poke(false.B)
+      for (_ <- 0 until 4) { dut.clock.step() }
+      dut.io.enable.poke(false.B)
+      peekCSR(dut, MINSTRET) should be(BigInt(0))
+
+      // 只有 WBU 退休事件才计数。
+      dut.io.retireCommit.poke(true.B)
+      for (_ <- 0 until 3) { dut.clock.step() }
+      dut.io.retireCommit.poke(false.B)
+      peekCSR(dut, MINSTRET) should be(BigInt(3))
+    }
+  }
+
+  "PMP config" should "保留 L 和 A[1] 位并清除保留位" in {
+    val PMPProfile = profile.copy(PMPEnabled = true)
+    simulate(new ysyx_26030103_CSRAuditHarness(PMPProfile)) { dut =>
+      setup(dut)
+      writeCSR(dut, PMPCFG0, BigInt(0x1f))
+      peekCSR(dut, PMPCFG0) should be(BigInt(0x1f))
+
+      // bit[6:5] 是保留位，必须写 0；L/A[1:0]/X/W/R 保留。
+      writeCSR(dut, PMPCFG0, BigInt(0x7f))
+      peekCSR(dut, PMPCFG0) should be(BigInt(0x1f))
+    }
+  }
+
+  it should "锁定表项忽略后续 cfg/addr 写入" in {
+    val PMPProfile = profile.copy(PMPEnabled = true)
+    simulate(new ysyx_26030103_CSRAuditHarness(PMPProfile)) { dut =>
+      setup(dut)
+      // 先写入 pmpaddr0，再锁定 entry0（L=1, A=NAPOT, RWX）。
+      writeCSR(dut, PMPADDR0, BigInt("200001ff", 16))
+      peekCSR(dut, PMPADDR0) should be(BigInt("200001ff", 16))
+      writeCSR(dut, PMPCFG0, BigInt(0x9f))
+      peekCSR(dut, PMPCFG0) should be(BigInt(0x9f))
+      writeCSR(dut, PMPCFG0, BigInt(0x0f))
+      peekCSR(dut, PMPCFG0) should be(BigInt(0x9f))
+
+      writeCSR(dut, PMPADDR0, BigInt("300001ff", 16))
+      peekCSR(dut, PMPADDR0) should be(BigInt("200001ff", 16))
     }
   }
 }

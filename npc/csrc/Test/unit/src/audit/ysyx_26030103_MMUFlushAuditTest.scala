@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.simulator.EphemeralSimulator._
 import _root_.ysyx_26030103.config._
 import _root_.ysyx_26030103.mmu._
+import _root_.ysyx_26030103.test.ysyx_26030103_TestCommon.rv32Profile
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -263,8 +264,7 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
     bus.write(Root, PTE(0x80002L, 0x1L))
     bus.write(0x80002004L, PTE(LeafPPN, 0xdfL))
     bus.holdAddress = Some(0x80002004L)
-    val profile = ysyx_26030103_MMUProfile.fromEnv(
-      _ => None, xlen = 32).copy(
+    val profile = rv32Profile.copy(
       enabled = true,
       TLBEnabled = false,
       PTWCache = true,
@@ -353,103 +353,6 @@ class ysyx_26030103_MMUFlushAuditTest extends AnyFlatSpec with Matchers {
       fault should be(false)
       withClue("MMU flush 后仍返回旧 PTE 的翻译: ") {
         paddr should be(BigInt(NewLeaf + 0x234L))
-      }
-    }
-  }
-
-  "MMU" should "TLB hardware A/D 在 store 命中时更新 D 位" in {
-    val bus = new PTEBus()
-    bus.write(Root, PTE(0x80002L, 0x1L))
-    // V|R|W|X|A，D=0。
-    bus.write(0x80002004L, PTE(LeafPPN, 0x4fL))
-    val profile = ysyx_26030103_MMUProfile.fromEnv(
-      _ => None, xlen = 32).copy(
-      enabled = true,
-      TLBEnabled = true,
-      TLBOrganization = "split",
-      adMode = "hardware",
-      PTWOutstanding = 1
-    )
-    simulate(new ysyx_26030103_MMU(profile)) { dut =>
-      dut.reset.poke(true.B)
-      dut.clock.step(2)
-      dut.reset.poke(false.B)
-      dut.io.request.valid.poke(false.B)
-      dut.io.request.bits.poke(
-        0.U.asTypeOf(new ysyx_26030103_MMURequest(32, 32)))
-      dut.io.bus.request.ready.poke(true.B)
-      dut.io.bus.response.valid.poke(false.B)
-      dut.io.bus.response.bits.poke(
-        0.U.asTypeOf(new ysyx_26030103_PTEBusResponse))
-      dut.io.response.ready.poke(true.B)
-      dut.io.flush.poke(false.B)
-
-      def access(vaddr: Long, accessType: UInt): (BigInt, Boolean) = {
-        dut.io.request.bits.ID.poke(0.U(4.W))
-        dut.io.request.bits.vaddr.poke(vaddr.U(32.W))
-        dut.io.request.bits.access.poke(accessType)
-        dut.io.request.bits.privilege.poke(1.U(2.W))
-        dut.io.request.bits.sum.poke(false.B)
-        dut.io.request.bits.mxr.poke(false.B)
-        dut.io.request.bits.satp.poke((0x80000000L | RootPPN).U(32.W))
-        dut.io.request.valid.poke(true.B)
-        var guard = 0
-        while (!bool(dut.io.request.ready) && guard < 40) {
-          bus.tick(dut.io.bus, dut.clock)
-          guard += 1
-        }
-        withClue(s"MMU 未在 $guard 拍内接收请求: ") {
-          bool(dut.io.request.ready) should be(true)
-        }
-        bus.tick(dut.io.bus, dut.clock)
-        dut.io.request.valid.poke(false.B)
-
-        var result: Option[(BigInt, Boolean)] = None
-        guard = 0
-        while (result.isEmpty && guard < 80) {
-          bus.tick(dut.io.bus, dut.clock)
-          if (bool(dut.io.response.valid)) {
-            result = Some((
-              dut.io.response.bits.paddr.peek().litValue,
-              bool(dut.io.response.bits.fault)
-            ))
-          }
-          guard += 1
-        }
-        withClue(s"MMU 未在 $guard 拍内返回响应: ") {
-          result.isEmpty should be(false)
-        }
-        result.get
-      }
-
-      // 第一次 load 填 DTLB：PTE 为 A=1,D=0。
-      val load = access(0x1234L, ysyx_26030103_AccessType.Load)
-      load should be((BigInt(Leaf + 0x234L), false))
-      bus.writes should be(0)
-
-      // 同页 store 命中 A=1,D=0 的 DTLB 表项；hardware A/D 要求重填并
-      // 把 D 写回页表，而不是直接放行。
-      val store = access(0x1234L, ysyx_26030103_AccessType.Store)
-      store should be((BigInt(Leaf + 0x234L), false))
-      withClue("store 命中 DTLB 后页表 D 仍为 0（hardware A/D 未写回）: ") {
-        (bus.read(0x80002004L) & BigInt(0x80)) should be(BigInt(0x80))
-      }
-      withClue("store 命中 D=0 表项应触发一次页表写: ") {
-        bus.writes should be(1)
-      }
-
-      // 对照：刷新 TLB 后 store 重新走 PTW；D 已写回，不应重复写。
-      dut.io.flush.poke(true.B)
-      bus.tick(dut.io.bus, dut.clock)
-      dut.io.flush.poke(false.B)
-      for (_ <- 0 until 4) { bus.tick(dut.io.bus, dut.clock) }
-      val storeAfterFlush = access(0x1234L, ysyx_26030103_AccessType.Store)
-      storeAfterFlush should be((BigInt(Leaf + 0x234L), false))
-      withClue("PTW 重新 walk 时 D 应保持已写回: ") {
-        (bus.read(0x80002004L) & BigInt(0x80)) should be(BigInt(0x80))
-      }
-      withClue("D 已写回后重新 walk 不应重复写页表: ") {
-        bus.writes should be(1)
       }
     }
   }

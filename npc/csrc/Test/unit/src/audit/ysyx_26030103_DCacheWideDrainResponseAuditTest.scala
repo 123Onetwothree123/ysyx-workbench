@@ -229,7 +229,36 @@ class ysyx_26030103_DCacheWideDrainResponseAuditTest
     bool(io.response.valid) should be(false)
   }
 
-  "DCache" should "在非缓存 8 字节读第二拍缺少 RLAST 时返回唯一 fault" in {
+  private def runCacheableMissingLastRecovers32(): Unit = {
+    // 32 位数据宽度下整行 4 拍回填缺 RLAST：SDrain 超时后必须恢复受理。
+    simulate(new ysyx_26030103_DCacheReg(
+      Enable = true,
+      BlockSizeLog2 = 4,
+      IndexBits = 4,
+      AddressWidth = AddressW,
+      DataWidth = 32,
+      BusDataWidth = 32,
+      PMARegions = Seq(Region)
+    )) { dut =>
+      val io = dut.io
+      val clock = dut.clock
+      resetDut(io, clock, dut.reset)
+      io.response.ready.poke(true.B)
+      issueLoad(io, clock, 0x80000000L, width = 2)
+      acceptAr(io, clock, address = 0x80000000L, length = 3L)
+      for (beat <- 0 until 4) {
+        sendBeat(io, clock, 0x1000 + beat, last = false)
+      }
+      waitUntil(clock, bool(io.request.ready),
+        "32 位行回填缺 RLAST 后 SDrain 未恢复", limit = 1000)
+    }
+  }
+
+  "DCache" should "在 32 位行回填缺少 RLAST 时最终恢复受理" in {
+    runCacheableMissingLastRecovers32()
+  }
+
+  it should "在非缓存 8 字节读第二拍缺少 RLAST 时返回唯一 fault" in {
     for (kind <- Seq("Reg", "SRAM")) {
       withClue(s"$kind: ") {
         simulate(newDut(kind)) { dut =>

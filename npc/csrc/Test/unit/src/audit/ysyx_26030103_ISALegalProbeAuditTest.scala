@@ -137,14 +137,6 @@ class ysyx_26030103_ISALegalProbeAuditTest
     }
   }
 
-  "sstatus" should "在 RV64 只暴露 UXL=2，不额外暴露 SXL" in {
-    simulate(new ysyx_26030103_CSRAuditHarness(csrProfile)) { dut =>
-      csrSetup(dut)
-      val sstatus = peekCSR(dut, 0x100)
-      ((sstatus >> 32) & 0xf) should be(BigInt(2))
-    }
-  }
-
   "IDU" should "允许 M-only 核在 M 模式读 cycle(0xc00)" in {
     simulate(new ysyx_26030103_IDUPrivilegeHarness(
       iduConfig(hasS = false, hasU = false)

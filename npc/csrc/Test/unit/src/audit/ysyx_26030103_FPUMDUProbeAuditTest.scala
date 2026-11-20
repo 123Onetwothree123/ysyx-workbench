@@ -9,11 +9,12 @@ import _root_.ysyx_26030103.common.ysyx_26030103_MDUOp
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-/** 两个疑似功能 bug 的最小探针。
+/** FPU/MDU 最小探针。
   *
-  * 1) Fudian 后端在 RV64 下把 FCVT.WU 的 32 位无符号结果零扩展，而
+  * 1) HardFloat FPU 在 FDIV 发射同拍 flush 时不得启动迭代器而卡死。
+  * 2) Fudian 后端在 RV64 下把 FCVT.WU 的 32 位无符号结果零扩展，而
   *    RISC-V 要求 W/WU 结果符号扩展到 XLEN。
-  * 2) NutShell Divider 的 out.valid 只在 s_finish 保持一拍；下游
+  * 3) NutShell Divider 的 out.valid 只在 s_finish 保持一拍；下游
   *    ready 为低时结果被丢弃。
   */
 class ysyx_26030103_FPUMDUProbeAuditTest extends AnyFlatSpec with Matchers {
@@ -42,6 +43,19 @@ class ysyx_26030103_FPUMDUProbeAuditTest extends AnyFlatSpec with Matchers {
       UseM = true,
       MDUImpl = ysyx_26030103_MDUImpl.NutShell
     )
+
+  private def hardfloatConfig64: ysyx_26030103_NPCConfig =
+    ysyx_26030103_NPCConfig(
+      XLEN = 64,
+      AddressWidth = 64,
+      UseF = true,
+      UseD = true,
+      FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
+      FPULen = 64
+    )
+
+  private def f64(value: BigInt): BigInt =
+    value & ((BigInt(1) << 64) - 1)
 
   "FudianFPU" should "sign-extend RV64 FCVT.WU.S result to XLEN" in {
     simulate(new ysyx_26030103_FudianFPU(fudianConfig64)) { dut =>
@@ -168,4 +182,59 @@ class ysyx_26030103_FPUMDUProbeAuditTest extends AnyFlatSpec with Matchers {
       dut.io.Response.ready.poke(false.B)
     }
   }
+
+  "HardFloatFPU flush" should
+    "在 flush 同拍不启动 FDIV，并在撤销 flush 后恢复 request.ready" in {
+      simulate(new ysyx_26030103_HardFloatFPU(hardfloatConfig64)) { dut =>
+        dut.reset.poke(true.B)
+        dut.clock.step(2)
+        dut.reset.poke(false.B)
+        dut.io.flush.poke(false.B)
+        dut.io.response.ready.poke(true.B)
+        dut.io.request.valid.poke(false.B)
+        dut.io.request.bits.op.poke(ysyx_26030103_FPUOp.FDiv)
+        dut.io.request.bits.fmt.poke(ysyx_26030103_FPUFmt.D)
+        dut.io.request.bits.SourceFmt.poke(ysyx_26030103_FPUFmt.D)
+        dut.io.request.bits.rm.poke(ysyx_26030103_FPURm.RNE)
+        dut.io.request.bits.intWord.poke(false.B)
+        dut.io.request.bits.rs1.poke(
+          f64(BigInt("3ff0000000000000", 16)).U(64.W)) // 1.0
+        dut.io.request.bits.rs2.poke(
+          f64(BigInt("4008000000000000", 16)).U(64.W)) // 3.0
+        dut.io.request.bits.rs3.poke(0.U(64.W))
+
+        var wait = 0
+        while (!bool(dut.io.request.ready) && wait < 8) {
+          dut.clock.step()
+          wait += 1
+        }
+        withClue("FPU did not become ready for the initial FDIV: ") {
+          bool(dut.io.request.ready) should be(true)
+        }
+
+        // 关键拍：FDIV 请求与 flush 同拍。FPU 可以握手（ready 只反映
+        // 内部空闲），但不得启动迭代器，否则 divActive 会卡死。
+        dut.io.request.valid.poke(true.B)
+        dut.io.flush.poke(true.B)
+        withClue("FPU ready should not combinationally depend on flush: ") {
+          bool(dut.io.request.ready) should be(true)
+        }
+        dut.clock.step()
+
+        // 撤销请求和 flush，FPU 必须回到可接受新请求的状态。
+        dut.io.request.valid.poke(false.B)
+        dut.io.flush.poke(false.B)
+
+        var cycles = 0
+        while (!bool(dut.io.request.ready) && cycles < 64) {
+          dut.clock.step()
+          cycles += 1
+        }
+        withClue(
+          s"FPU request.ready stayed low for $cycles cycles after a same-cycle " +
+            "FDIV/flush; divActive is likely stuck: ") {
+          bool(dut.io.request.ready) should be(true)
+        }
+      }
+    }
 }

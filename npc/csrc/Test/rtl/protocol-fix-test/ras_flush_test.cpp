@@ -1,14 +1,17 @@
 #include "Vysyx_26030103_RAS.h"
+#include "ports_ras.hpp"
 #include "test_common.hpp"
 #include <verilated.h>
+
+using namespace ports::RAS;
 
 using DUT = Vysyx_26030103_RAS;
 
 static void defaults(DUT &dut) {
-  dut.io_PushValid = 0;
-  dut.io_PushAddress = 0;
-  dut.io_PopValid = 0;
-  dut.io_flush = 0;
+  io_PushValid(dut) = 0;
+  io_PushAddress(dut) = 0;
+  io_PopValid(dut) = 0;
+  io_flush(dut) = 0;
 }
 
 int main(int argc, char **argv) {
@@ -16,30 +19,31 @@ int main(int argc, char **argv) {
   return run_test("RAS fence.i invalidation", [] {
     DUT dut;
     defaults(dut);
-    reset(dut);
+    TestDriver<DUT> drv(dut);
+    drv.Reset();
 
-    dut.io_PushValid = 1;
-    dut.io_PushAddress = 0x80000120U;
-    tick(dut);
-    dut.io_PushValid = 0;
+    io_PushValid(dut) = 1;
+    io_PushAddress(dut) = 0x80000120U;
+    drv.Tick();
+    io_PushValid(dut) = 0;
     dut.eval();
-    check(dut.io_nonempty && dut.io_top == 0x80000120U,
-          "RAS push was not visible");
+    drv.Expect(io_nonempty(dut) && io_top(dut) == 0x80000120U,
+               "RAS push was not visible");
 
-    dut.io_flush = 1;
-    tick(dut);
-    dut.io_flush = 0;
+    io_flush(dut) = 1;
+    drv.Tick();
+    io_flush(dut) = 0;
     dut.eval();
-    check(!dut.io_nonempty, "fence.i flush left stale RAS state");
+    drv.Expect(!io_nonempty(dut), "fence.i flush left stale RAS state");
 
-    dut.io_PushValid = 1;
-    dut.io_PushAddress = 0x80000220U;
-    dut.io_flush = 1;
-    tick(dut);
-    dut.io_PushValid = 0;
-    dut.io_flush = 0;
+    io_PushValid(dut) = 1;
+    io_PushAddress(dut) = 0x80000220U;
+    io_flush(dut) = 1;
+    drv.Tick();
+    io_PushValid(dut) = 0;
+    io_flush(dut) = 0;
     dut.eval();
-    check(!dut.io_nonempty, "same-cycle push escaped RAS flush priority");
+    drv.Expect(!io_nonempty(dut), "same-cycle push escaped RAS flush priority");
     dut.final();
   });
 }

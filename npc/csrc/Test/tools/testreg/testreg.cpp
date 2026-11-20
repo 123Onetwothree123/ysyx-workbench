@@ -127,6 +127,7 @@ struct TestCase {
     std::vector<std::string> archs;
     std::vector<std::string> tags;
     int timeout{300};
+    int retry{0};
     bool enabled{true};
 };
 
@@ -170,6 +171,10 @@ std::optional<TestCase> MakeTest(const Json &j, const fs::path &base) {
     it = o.find("timeout");
     if (it != o.end() && std::holds_alternative<double>(it->second.v)) {
         t.timeout = static_cast<int>(std::get<double>(it->second.v));
+    }
+    it = o.find("retry");
+    if (it != o.end() && std::holds_alternative<double>(it->second.v)) {
+        t.retry = std::max(0, static_cast<int>(std::get<double>(it->second.v)));
     }
     it = o.find("enabled");
     if (it != o.end() && std::holds_alternative<bool>(it->second.v)) t.enabled = std::get<bool>(it->second.v);
@@ -225,9 +230,9 @@ std::vector<TestCase> Scan(const fs::path &root) {
 }
 
 bool Match(const TestCase &t, const std::string &tier, const std::string &tag,
-           const std::string &nameFilter, const std::string &arch) {
+           const std::string &nameFilter, const std::string &arch, bool allTiers = false) {
     if (!t.enabled) return false;
-    if (!tier.empty() && t.tier != tier) return false;
+    if (!allTiers && !tier.empty() && t.tier != tier) return false;
     if (!tag.empty() && std::find(t.tags.begin(), t.tags.end(), tag) == t.tags.end()) return false;
     if (!nameFilter.empty() && t.name.find(nameFilter) == std::string::npos) return false;
     if (!arch.empty() && !t.archs.empty() &&
@@ -242,7 +247,21 @@ std::string Sanitize(std::string s) {
 
 enum class Result { Pass, Fail, Hang, Skip };
 
+Result RunOnce(const TestCase &t, const std::string &arch, const fs::path &logDir);
+
 Result Run(const TestCase &t, const std::string &arch, const fs::path &logDir) {
+    Result last = Result::Fail;
+    for (int attempt = 0; attempt <= t.retry; ++attempt) {
+        last = RunOnce(t, arch, logDir);
+        if (last == Result::Pass || last == Result::Skip) return last;
+        if (attempt < t.retry) {
+            std::println(std::cerr, "重试 {}/{}: {}", attempt + 1, t.retry, t.name);
+        }
+    }
+    return last;
+}
+
+Result RunOnce(const TestCase &t, const std::string &arch, const fs::path &logDir) {
     if (!arch.empty() && !t.archs.empty() &&
         std::find(t.archs.begin(), t.archs.end(), arch) == t.archs.end()) {
         return Result::Skip;
@@ -289,7 +308,8 @@ Result Run(const TestCase &t, const std::string &arch, const fs::path &logDir) {
 std::string Usage() {
     return "用法:\n"
            "  testreg list [--tier functional|performance] [--tag T] [--name S] [--json]\n"
-           "  testreg run  [--tier ...] [--tag T] [--name S] [--arch A] [--jobs 1]\n"
+           "  testreg run  [--tier functional|performance|all] [--tag T] [--name S] [--arch A] [--retry N]\n"
+           "  testreg clean\n"
            "环境变量 ARCH 可作为 --arch 的默认值。\n";
 }
 
@@ -301,18 +321,22 @@ int main(int argc, char **argv) {
         return 2;
     }
     const std::string cmd = argv[1];
-    std::string tier, tag, nameFilter, arch = std::getenv("ARCH") ? std::getenv("ARCH") : "";
+    std::string tier{"functional"}, tag, nameFilter, arch = std::getenv("ARCH") ? std::getenv("ARCH") : "";
+    bool allTiers = false;
     bool jsonOut = false;
     int jobs = 1;
+    int retryOverride = -1;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : ""; };
-        if (a == "--tier") tier = next();
+        if (a == "--tier") { tier = next(); allTiers = (tier == "all"); }
+        else if (a == "--all-tiers") allTiers = true;
         else if (a == "--tag") tag = next();
         else if (a == "--name") nameFilter = next();
         else if (a == "--arch") arch = next();
         else if (a == "--jobs") jobs = std::max(1, std::atoi(next().c_str()));
         else if (a == "--json") jsonOut = true;
+        else if (a == "--retry") retryOverride = std::max(0, std::atoi(next().c_str()));
         else if (a == "-h" || a == "--help") { std::print("{}", Usage()); return 0; }
         else { std::println(std::cerr, "未知参数: {}", a); return 2; }
     }
@@ -328,7 +352,7 @@ int main(int argc, char **argv) {
             std::println("[");
             bool first = true;
             for (const auto &t : tests) {
-                if (!Match(t, tier, tag, nameFilter, arch)) continue;
+                if (!Match(t, tier, tag, nameFilter, arch, allTiers)) continue;
                 if (!first) std::println(",");
                 first = false;
                 std::print("  {{\"name\":\"{}\",\"tier\":\"{}\"}}", t.name, t.tier);
@@ -337,11 +361,18 @@ int main(int argc, char **argv) {
             return 0;
         }
         for (const auto &t : tests) {
-            if (!Match(t, tier, tag, nameFilter, arch)) continue;
+            if (!Match(t, tier, tag, nameFilter, arch, allTiers)) continue;
             std::print("{:<48} {:<12}", t.name, t.tier);
             for (const auto &x : t.tags) std::print(" {}", x);
             std::println("");
         }
+        return 0;
+    }
+    if (cmd == "clean") {
+        const fs::path logDir = testDir / "build" / "test-logs";
+        std::error_code ec;
+        fs::remove_all(logDir, ec);
+        std::println("已清理 {}", logDir.string());
         return 0;
     }
     if (cmd != "run") {
@@ -351,7 +382,7 @@ int main(int argc, char **argv) {
 
     if (arch.empty()) {
         for (const auto &t : tests) {
-            if (!Match(t, tier, tag, nameFilter, arch)) continue;
+            if (!Match(t, tier, tag, nameFilter, arch, allTiers)) continue;
             for (const auto &a : t.command) {
                 if (a.find("${ARCH}") != std::string::npos) {
                     std::println(std::cerr, "测试 {} 需要 --arch 或 ARCH 环境变量", t.name);
@@ -363,14 +394,16 @@ int main(int argc, char **argv) {
     const fs::path logDir = testDir / "build" / "test-logs";
     int pass = 0, fail = 0, hang = 0, skip = 0;
     for (const auto &t : tests) {
-        if (!Match(t, tier, tag, nameFilter, arch)) continue;
+        if (!Match(t, tier, tag, nameFilter, arch, allTiers)) continue;
         if (!arch.empty() && !t.archs.empty() &&
             std::find(t.archs.begin(), t.archs.end(), arch) == t.archs.end()) {
             std::println("SKIP {} (ARCH={} 不支持)", t.name, arch);
             ++skip;
             continue;
         }
-        auto r = Run(t, arch, logDir);
+        TestCase tc = t;
+        if (retryOverride >= 0) tc.retry = retryOverride;
+        auto r = Run(tc, arch, logDir);
         switch (r) {
             case Result::Pass: std::println("PASS {}", t.name); ++pass; break;
             case Result::Fail: std::println("FAIL {}", t.name); ++fail; break;

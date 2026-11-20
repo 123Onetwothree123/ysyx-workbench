@@ -305,7 +305,7 @@ $(PREDICTOR_BIN): predictor_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv predictor_test.cpp
 
-$(BTB_BIN): btb_flush_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
+$(BTB_BIN): btb_flush_test.cpp $(TEST_DIR)/ports_btb.hpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(BTB_TOP) \
@@ -314,7 +314,7 @@ $(BTB_BIN): btb_flush_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	  -o $(abspath $@) \
 	  $(RTL_DIR)/ysyx_26030103.sv btb_flush_test.cpp
 
-$(RAS_BIN): ras_flush_test.cpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
+$(RAS_BIN): ras_flush_test.cpp $(TEST_DIR)/ports_ras.hpp $(COMMON_DIR)/test_common.hpp $(GEN_STAMP)
 	@mkdir -p $(BIN_DIR)
 	$(VERILATOR) $(VERILATOR_FLAGS) \
 	  --top-module $(RAS_TOP) \

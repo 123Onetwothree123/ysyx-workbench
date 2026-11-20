@@ -1,15 +1,18 @@
 #include "Vysyx_26030103_BTB.h"
+#include "ports_btb.hpp"
 #include "test_common.hpp"
 #include <verilated.h>
+
+using namespace ports::BTB;
 
 using DUT = Vysyx_26030103_BTB;
 
 static void defaults(DUT &dut) {
-  dut.io_LookupPC = 0;
-  dut.io_UpdateValid = 0;
-  dut.io_UpdatePC = 0;
-  dut.io_UpdateTarget = 0;
-  dut.io_flush = 0;
+  io_LookupPC(dut) = 0;
+  io_UpdateValid(dut) = 0;
+  io_UpdatePC(dut) = 0;
+  io_UpdateTarget(dut) = 0;
+  io_flush(dut) = 0;
 }
 
 int main(int argc, char **argv) {
@@ -20,30 +23,30 @@ int main(int argc, char **argv) {
     reset(dut);
 
     constexpr uint32_t pc_shifted = 0x80000100U >> 2;
-    dut.io_UpdateValid = 1;
-    dut.io_UpdatePC = pc_shifted;
-    dut.io_UpdateTarget = 0x80000080U;
+    io_UpdateValid(dut) = 1;
+    io_UpdatePC(dut) = pc_shifted;
+    io_UpdateTarget(dut) = 0x80000080U;
     tick(dut);
-    dut.io_UpdateValid = 0;
-    dut.io_LookupPC = pc_shifted;
+    io_UpdateValid(dut) = 0;
+    io_LookupPC(dut) = pc_shifted;
     dut.eval();
-    check(dut.io_hit && dut.io_target == 0x80000080U,
+    check(io_hit(dut) && io_target(dut) == 0x80000080U,
           "BTB update was not visible");
 
-    dut.io_flush = 1;
+    io_flush(dut) = 1;
     tick(dut);
-    dut.io_flush = 0;
+    io_flush(dut) = 0;
     dut.eval();
-    check(!dut.io_hit, "fence.i flush left a stale BTB entry valid");
+    check(!io_hit(dut), "fence.i flush left a stale BTB entry valid");
 
     // Flush has priority over a same-cycle training event.
-    dut.io_UpdateValid = 1;
-    dut.io_flush = 1;
+    io_UpdateValid(dut) = 1;
+    io_flush(dut) = 1;
     tick(dut);
-    dut.io_UpdateValid = 0;
-    dut.io_flush = 0;
+    io_UpdateValid(dut) = 0;
+    io_flush(dut) = 0;
     dut.eval();
-    check(!dut.io_hit, "same-cycle update escaped BTB flush priority");
+    check(!io_hit(dut), "same-cycle update escaped BTB flush priority");
     dut.final();
   });
 }

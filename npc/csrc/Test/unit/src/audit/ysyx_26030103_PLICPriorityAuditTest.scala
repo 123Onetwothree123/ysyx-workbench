@@ -129,6 +129,22 @@ class ysyx_26030103_PLICPriorityAuditTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  "PLIC threshold" should
+    "只屏蔽 ExternalIRQ，不屏蔽低于 threshold 的 pending source claim" in {
+      simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
+        setup(dut)
+        write(dut, 0x0c000004L, 3) // source 1 priority=3
+        write(dut, 0x0c002000L, 2) // enable source 1
+        write(dut, 0x0c200000L, 5) // threshold=5 > priority 3
+        dut.sources.poke(2.U)
+        dut.clock.step(2)
+
+        bool(dut.ExternalIRQ) should be(false)
+        // 规范：threshold 只影响通知，claim 仍返回已 enable 的 pending source。
+        read(dut, 0x0c200004L) should be(BigInt(1))
+      }
+    }
+
   "PLIC WSTRB" should "按字节合并 enable/priority/threshold 部分写" in {
     simulate(new ysyx_26030103_PLIC(DataWidth = 32)) { dut =>
       setup(dut)

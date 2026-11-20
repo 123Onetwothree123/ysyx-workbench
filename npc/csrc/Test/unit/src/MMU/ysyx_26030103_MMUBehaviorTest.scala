@@ -2,8 +2,8 @@ package ysyx_26030103.mmu
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
-import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 import _root_.ysyx_26030103.config.ysyx_26030103_PTEConfig
+import _root_.ysyx_26030103.test.ysyx_26030103_TestCommon.rv32Profile
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -13,10 +13,7 @@ import org.scalatest.matchers.should.Matchers
   * 这些测试不依赖 SoC，便于单独定位 MMU 的握手、权限和页错误问题。
   */
 class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
-  // 本套件按 Sv32（2 级、4B PTE、32 位 VA/PA）编写。64 位 Kconfig 默认下
-  // 必须显式构造 RV32 profile/PTE，否则默认 Sv39 会让 satp 与页表布局错位。
-  private def rv32Profile: ysyx_26030103_MMUProfile =
-    ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
+  // 本套件按 Sv32（2 级、4B PTE、32 位 VA/PA）编写，使用公共 RV32 profile。
   private val Rv32PTE: ysyx_26030103_PTEConfig =
     ysyx_26030103_PTEConfig(PTEBits = 32, PPNHigh = 31)
 

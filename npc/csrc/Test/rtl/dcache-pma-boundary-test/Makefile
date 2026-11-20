@@ -38,7 +38,7 @@ $(STAMP): $(SCALA_SOURCES) Makefile \
 		$(RTL_DIR)/
 	touch $(STAMP)
 
-$(BIN): main.cpp $(COMMON_DIR)/test_common.hpp $(STAMP)
+$(BIN): main.cpp $(COMMON_DIR)/test_common.hpp $(TEST_DIR)/ports.hpp $(STAMP)
 	$(VERILATOR) --cc --exe --build -j 0 -Wall -Wno-fatal -DSYNTHESIS \
 		-I$(RTL_DIR) \
 		--top-module DCachePmaLineBoundaryHarness \

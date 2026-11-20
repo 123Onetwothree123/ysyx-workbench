@@ -321,26 +321,9 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
   }
 
   // ------------------------------------------------------------------
-  // TEST 2：flush 丢弃在途 DIV 的架构正确性
+  // TEST 2：flush 丢弃在途 DIV 的架构正确性已由 FPUFeatureTest 的
+  // "FPU flush" 覆盖（Fudian/HardFloat 两后端），此处只保留性能契约。
   // ------------------------------------------------------------------
-
-  "Fudian flush 在途 FDIV.D" should
-    "不泄漏陈旧结果并能恢复计算（架构正确性）" in {
-      simulate(new ysyx_26030103_FudianFPU(fudian64)) { dut =>
-        initDut(dut)
-        flushInFlightDivAndMeasure(dut, "Fudian")
-        expectPostFlushDiv(dut, "Fudian")
-      }
-    }
-
-  "HardFloat flush 在途 FDIV.D" should
-    "不泄漏陈旧结果并能恢复计算（架构正确性）" in {
-      simulate(new ysyx_26030103_HardFloatFPU(hardfloat64)) { dut =>
-        initDut(dut)
-        flushInFlightDivAndMeasure(dut, "HardFloat")
-        expectPostFlushDiv(dut, "HardFloat")
-      }
-    }
 
   // ------------------------------------------------------------------
   // TEST 3：flush 是否立即释放 DIV 单元（性能/实现契约）
@@ -352,6 +335,7 @@ class ysyx_26030103_FPUDivFlushAuditTest extends AnyFlatSpec with Matchers {
         initDut(dut)
         val recoveryCycles = flushInFlightDivAndMeasure(dut, "Fudian")
         info(s"Fudian flush -> request.ready recoveryCycles=$recoveryCycles")
+        expectPostFlushDiv(dut, "Fudian")
         withClue(
           s"Fudian: flush 后恢复拍数=$recoveryCycles，" +
             "期望 <= 40。flush 应立即释放 DIV 单元" +

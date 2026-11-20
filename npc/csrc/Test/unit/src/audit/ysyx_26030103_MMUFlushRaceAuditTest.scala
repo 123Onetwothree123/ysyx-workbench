@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.simulator.EphemeralSimulator._
 import _root_.ysyx_26030103.config._
 import _root_.ysyx_26030103.mmu._
+import _root_.ysyx_26030103.test.ysyx_26030103_TestCommon.rv32Profile
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -584,7 +585,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
       PTWArch: String = "independent",
       TLBEnabled: Boolean = false
   ): ysyx_26030103_MMUProfile =
-    ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32).copy(
+    rv32Profile.copy(
       enabled = true,
       TLBEnabled = TLBEnabled,
       PTWArch = PTWArch,
@@ -844,8 +845,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     val bus = new PTEBus(latency = 1)
     // 根 PTE + 叶子 PTE：V|R|W|X|U|A，D=0。
     seedTwoLevel(bus, PTE(LeafPPN, 0x5fL))
-    val profile = ysyx_26030103_MMUProfile.fromEnv(
-      _ => None, xlen = 32).copy(
+    val profile = rv32Profile.copy(
       enabled = true,
       TLBEnabled = true,
       TLBOrganization = "split",
@@ -898,6 +898,24 @@ class ysyx_26030103_MMUFlushRaceAuditTest
         bus.reads should be(readsAfterWrite)
         bus.writes should be(writesAfterWrite)
       }
+
+      // flush 后重新 walk 仍看到 D=1，且不得重复写回。
+      dut.io.flush.poke(true.B)
+      bus.tick(dut.io.bus, dut.clock)
+      dut.io.flush.poke(false.B)
+      for (_ <- 0 until 4) { bus.tick(dut.io.bus, dut.clock) }
+      val writesAfterFlush = bus.writes
+      issueMMU(dut, bus, 0x1234L, access = ysyx_26030103_AccessType.Store)
+      val (afterFlushPhysicalAddress, afterFlushFault) =
+        waitMMUResponse(dut, bus)
+      afterFlushFault should be(false)
+      afterFlushPhysicalAddress should be(BigInt(Leaf + 0x234L))
+      withClue("flush 后 D 已写回，重新 walk 不应重复写页表: ") {
+        bus.writes should be(writesAfterFlush)
+      }
+      withClue("flush 后页表 D 应保持已写回: ") {
+        (bus.read(0x80002004L) & BigInt(0x80)) should be(BigInt(0x80))
+      }
     }
   }
 
@@ -907,8 +925,7 @@ class ysyx_26030103_MMUFlushRaceAuditTest
     val leafAddress = 0x80002004L
     seedTwoLevel(bus, PTE(LeafPPN, 0xdfL))
     bus.holdOnceAddress = Some(leafAddress)
-    val profile = ysyx_26030103_MMUProfile.fromEnv(
-      _ => None, xlen = 32).copy(
+    val profile = rv32Profile.copy(
       enabled = true,
       TLBEnabled = false,
       PTWArch = "pipelined",

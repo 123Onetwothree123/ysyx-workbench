@@ -1,8 +1,7 @@
 package ysyx_26030103.mmu
 
 import _root_.circt.stage.ChiselStage
-import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
-import _root_.ysyx_26030103.config.ysyx_26030103_NPCConfig
+import _root_.ysyx_26030103.test.ysyx_26030103_TestCommon.{npc32, rv32Profile}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -15,11 +14,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   private def emit(module: => chisel3.Module): String =
     ChiselStage.emitSystemVerilog(module)
 
-  // 本套件的历史语义是 RV32（Sv32：2 级、4B PTE、32 位 VA）。
-  // 64 位 Kconfig 默认下必须显式构造等价的 RV32 profile，而不是依赖默认值。
-  private def rv32Profile: ysyx_26030103_MMUProfile =
-    ysyx_26030103_MMUProfile.fromEnv(_ => None, xlen = 32)
-
+  // 本套件按 Sv32 语义编写，使用公共 RV32 profile/npc32。
   "TLB" should "支持 1 项 1 路" in {
     emit(new ysyx_26030103_TLB(entries = 1, ways = 1, ASIDBits = 0, globalEnable = false))
   }
@@ -102,10 +97,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   }
 
   it should "HAS_U=n 且 MMU 打开时顶层可 elaboration" in {
-    emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-
+    emit(new _root_.ysyx_26030103.ysyx_26030103(npc32(
       MMU = rv32Profile.copy(
         enabled = true,
         TLBEnabled = true,
@@ -118,10 +110,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     // 数据侧并行 VIPT 需要 DCache 打开；store 也会先以 VA 进入 LSU 写
     // 缓冲，等带 VA 标签的 PA 到达后才提交。这里保证该配置的顶层接线
     // 与所有端口都能完整 elaboration。
-    emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-
+    emit(new _root_.ysyx_26030103.ysyx_26030103(npc32(
       DCacheEnable = true,
       MMU = rv32Profile.copy(
         enabled = true,
@@ -132,10 +121,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   }
 
   it should "HAS_PMP=y 且 HAS_MMU=n 时顶层可 elaboration" in {
-    emit(new _root_.ysyx_26030103.ysyx_26030103(ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-
+    emit(new _root_.ysyx_26030103.ysyx_26030103(npc32(
       MMU = rv32Profile.copy(
         enabled = false,
         PMPEnabled = true,
@@ -145,10 +131,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   }
 
   it should "HAS_S=n 的 M-only 顶层可 elaboration 且不生成 MMU/TLB/PTW" in {
-    def config = ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-
+    def config = npc32(
       MMU = rv32Profile.copy(
         enabled = false,
         TLBEnabled = false,
@@ -170,10 +153,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
   }
 
   it should "HAS_S=n/HAS_U=y 的 M+U 顶层可 elaboration 且不生成 MMU/TLB/PTW" in {
-    def config = ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-
+    def config = npc32(
       MMU = rv32Profile.copy(
         enabled = false,
         TLBEnabled = false,
@@ -213,10 +193,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     )
     emit(new ysyx_26030103_MMU(profile))
     emit(new _root_.ysyx_26030103.ysyx_26030103(
-      ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-      MMU = profile)
+      npc32(MMU = profile)
     ))
 
     val fourLevel = rv32Profile.copy(
@@ -291,10 +268,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     )
     emit(new ysyx_26030103_MMU(pipelineProfile))
     emit(new _root_.ysyx_26030103.ysyx_26030103(
-      ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-      MMU = pipelineProfile)
+      npc32(MMU = pipelineProfile)
     ))
 
     val independentProfile = pipelineProfile.copy(
@@ -303,10 +277,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     )
     emit(new ysyx_26030103_MMU(independentProfile))
     emit(new _root_.ysyx_26030103.ysyx_26030103(
-      ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-      MMU = independentProfile)
+      npc32(MMU = independentProfile)
     ))
   }
 
@@ -346,10 +317,7 @@ class ysyx_26030103_MMUTest extends AnyFlatSpec with Matchers {
     emit(new ysyx_26030103_MMU(eightByteProfile))
     // 顶层同样要验证 8B PTE + PTW cache 的完整接线。
     emit(new _root_.ysyx_26030103.ysyx_26030103(
-      ysyx_26030103_NPCConfig(
-      XLEN = 32,
-      AddressWidth = 32,
-      MMU = eightByteProfile)
+      npc32(MMU = eightByteProfile)
     ))
   }
 }

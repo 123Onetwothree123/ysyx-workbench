@@ -3,6 +3,8 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
 import _root_.circt.stage.ChiselStage
+import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+import _root_.ysyx_26030103.test.ysyx_26030103_TestCommon.rv32Profile
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -10,9 +12,7 @@ import org.scalatest.matchers.should.Matchers
 class ysyx_26030103_CSRHarness(
     // 本 harness 的 PC/satp/rdata 都是 32 位 RV32 接口；默认必须用 RV32
     // profile，否则 64 位默认会让 misa/satp 语义与断言语义错位。
-    profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile.fromEnv(
-        _ => None, xlen = 32),
+    profile: ysyx_26030103_MMUProfile = rv32Profile,
     useA: Boolean = false,
     useC: Boolean = false,
     useF: Boolean = false,
@@ -97,10 +97,7 @@ class ysyx_26030103_CSRHarness(
 }
 
 class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
-  // 本套件按 RV32 语义编写（misa.MXL=1、32 位 CSR 接口）。
-  private def rv32Profile: _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile =
-    _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile.fromEnv(
-      _ => None, xlen = 32)
+  // 本套件按 RV32 语义编写（misa.MXL=1、32 位 CSR 接口），使用公共 profile。
   private val MSTATUS = 0x300
   private val MIE = 0x304
   private val MEPC = 0x341

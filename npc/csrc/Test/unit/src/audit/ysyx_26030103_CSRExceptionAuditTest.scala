@@ -7,10 +7,10 @@ import _root_.ysyx_26030103.exu.ysyx_26030103_CSR
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-/** 异常/中断矩阵与 minstret 审计顶层。
+/** 异常/中断矩阵、中断优先级与 minstret 审计顶层。
   *
   * 只例化 CSR 单元，所有 trap 入口都由显式输入驱动；这样可以直接
-  * 检查 mcause/mepc/mtval、委托和 MRET/SRET 的架构语义，不依赖
+  * 检查 mcause/mepc/mtval、委托、MRET/SRET 和中断优先级语义，不依赖
   * MMU/LSU 的时序。
   */
 class ysyx_26030103_CSRExceptionAuditHarness(
@@ -277,6 +277,21 @@ class ysyx_26030103_CSRExceptionAuditTest
     dut.io.isMret.poke(false.B)
     dut.io.enable.poke(false.B)
     big(dut.io.privilege) should be(BigInt(0))
+  }
+
+  private def mretTo(
+      dut: ysyx_26030103_CSRExceptionAuditHarness,
+      expectedTarget: BigInt,
+      expectedPrivilege: BigInt
+  ): Unit = {
+    dut.io.enable.poke(true.B)
+    dut.io.isMret.poke(true.B)
+    bool(dut.io.exceptionTaken) should be(true)
+    big(dut.io.exceptionTarget) should be(expectedTarget)
+    dut.clock.step()
+    dut.io.isMret.poke(false.B)
+    dut.io.enable.poke(false.B)
+    big(dut.io.privilege) should be(expectedPrivilege)
   }
 
   private def ecall(dut: ysyx_26030103_CSRExceptionAuditHarness,
@@ -602,23 +617,104 @@ class ysyx_26030103_CSRExceptionAuditTest
       peek(dut, SEPC) should be(PC)
     }
 
-    // S 模式下未委托的 M timer 必须直接进入 M，且不受 MIE=0 影响。
+  }
+
+  "CSR interrupt priority" should
+    "M 级 MEI 与 MTI 同时 pending 时先报 MEI(cause=11)" in {
+      // mip 的 MSIP/MTIP/MEIP 是只读的，用硬件中断输入注入。
+      // hasSExternalIrq=false 时 io.Interrupt 驱动 MEIP。
+      val p = profile.copy(HasSExternalIRQ = false)
+      simulate(new ysyx_26030103_CSRExceptionAuditHarness(p)) { dut =>
+        setup(dut)
+        val mtvec = BigInt("0000000080002000", 16)
+        write(dut, MTVEC, mtvec)
+        write(dut, MSTATUS, BigInt(0x8)) // mstatus.MIE
+        write(dut, MIE, BigInt(0x880))   // MEIE(11) + MTIE(7)
+        dut.io.interrupt.poke(true.B)
+        dut.io.timerInterrupt.poke(true.B)
+
+        val PC = BigInt("0000000080001000", 16)
+        dut.io.PC.poke(PC.U(64.W))
+        dut.io.enable.poke(true.B)
+
+        // 规范优先级：MEI > MSI > MTI。MEI 必须先于 MTI 上报。
+        withClue("MEI/MTI 同时 pending 时 cause 应为 0x8000000b: ") {
+          bool(dut.io.trapCommit) should be(true)
+          big(dut.io.committedCause) should be(BigInt("8000000b", 16))
+          big(dut.io.exceptionTarget) should be(mtvec)
+        }
+      }
+    }
+
+  it should "S 模式下未委托的 M timer 优先于已委托的 S external" in {
     simulate(new ysyx_26030103_CSRExceptionAuditHarness(profile)) { dut =>
       setup(dut)
-      write(dut, MTVEC, BigInt("0000000080002000", 16))
-      write(dut, MIE, BigInt(0x80))
-      enterS(dut, BigInt("0000000080007300", 16))
-      val PC = BigInt("0000000080007310", 16)
-      dut.io.PC.poke(PC.U)
+      val mtvec = BigInt("0000000080002000", 16)
+      val stvec = BigInt("0000000080003000", 16)
+      val mepc = BigInt("0000000080001000", 16)
+      write(dut, MTVEC, mtvec)
+      write(dut, STVEC, stvec)
+      write(dut, MIDELEG, BigInt(0x200)) // SEIP 委托给 S
+      write(dut, MIE, BigInt(0x280))     // MTIE(7) + SEIE(9)
+
+      // MPP=S、sstatus.SIE=1，但 mstatus.MIE=0。若在 M 模式且 MIE=1
+      // 时让 MTIP 保持 pending，当前实现会在 MRET 当拍先接受中断而
+      // 无法完成返回 S；这里先用 MIE=0 完成 MRET，再检查 S 模式下
+      // M 中断不受 mstatus.MIE 影响（S 模式仍必须响应目标为 M 的
+      // 中断）。这不改变要验证的“M 中断优先于已委托 S 中断”语义。
+      write(dut, MSTATUS, BigInt(0x802))
+      write(dut, MEPC, mepc)
+      // MTIP 由 timerInterrupt 驱动，SEIP 由 interrupt 驱动；mip 只读。
       dut.io.timerInterrupt.poke(true.B)
+      dut.io.interrupt.poke(true.B)
+      mretTo(dut, mepc, BigInt(1))
+
+      ((peek(dut, SSTATUS) >> 1) & 1) should be(BigInt(1))
+
+      val PC = BigInt("0000000080001010", 16)
+      dut.io.PC.poke(PC.U(64.W))
       dut.io.enable.poke(true.B)
-      checkTrap(dut, 0x80000007, PC, 0,
-        BigInt("0000000080002000", 16), "S-mode M timer")
+
+      // M timer 未被委托，且 S 模式必须接受 M 级中断；不能因为
+      // 同时存在已委托的 S external 就改走 stvec。
+      withClue("M timer 与已委托 S external 同时 pending 时应先走 M: ") {
+        bool(dut.io.trapCommit) should be(true)
+        big(dut.io.committedCause) should be(BigInt("80000007", 16))
+        big(dut.io.exceptionTarget) should be(mtvec)
+      }
       dut.clock.step()
-      dut.io.timerInterrupt.poke(false.B)
-      dut.io.enable.poke(false.B)
       peek(dut, MCAUSE) should be(BigInt("8000000000000007", 16))
       peek(dut, MEPC) should be(PC)
+    }
+  }
+
+  it should "U 模式下 sstatus.SIE=0 不能屏蔽 S 级中断" in {
+    simulate(new ysyx_26030103_CSRExceptionAuditHarness(profile)) { dut =>
+      setup(dut)
+      val stvec = BigInt("0000000080003000", 16)
+      val mepc = BigInt("0000000080004000", 16)
+      write(dut, MTVEC, BigInt("0000000080002000", 16))
+      write(dut, STVEC, stvec)
+      write(dut, MIDELEG, BigInt(0x200))
+      write(dut, MIE, BigInt(0x200))
+      dut.io.interrupt.poke(true.B) // SEIP 由硬件输入驱动，mip 只读
+      write(dut, MSTATUS, BigInt(0)) // MPP=U，sstatus.SIE=0
+      write(dut, MEPC, mepc)
+      mretTo(dut, mepc, BigInt(0))
+
+      big(dut.io.privilege) should be(BigInt(0))
+      ((peek(dut, SSTATUS) >> 1) & 1) should be(BigInt(0))
+
+      val PC = BigInt("0000000080004010", 16)
+      dut.io.PC.poke(PC.U(64.W))
+      dut.io.enable.poke(true.B)
+
+      // sstatus.SIE 只限制 S 模式；U 模式下 S 级中断始终使能。
+      withClue("U 模式下 S external 不应被 sstatus.SIE=0 屏蔽: ") {
+        bool(dut.io.trapCommit) should be(true)
+        big(dut.io.committedCause) should be(BigInt("80000009", 16))
+        big(dut.io.exceptionTarget) should be(stvec)
+      }
     }
   }
 

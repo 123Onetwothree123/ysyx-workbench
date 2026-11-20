@@ -1,6 +1,7 @@
 package ysyx_26030103.audit
 
 import _root_.ysyx_26030103.config._
+import _root_.ysyx_26030103.test.ysyx_26030103_TestCommon.{npc32, rv32Profile}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -28,14 +29,12 @@ class ysyx_26030103_MMUVIPTConfigAuditTest
   }
 
   it should "接受有 MMU 的 vipt 配置" in {
-    val mmu = ysyx_26030103_MMUProfile.fromEnv(
-      _ => None, xlen = 32).copy(
+    val mmu = rv32Profile.copy(
       enabled = true,
       cacheMode = "vipt",
       pageSizeBytes = 4096
     )
-    val config = ysyx_26030103_NPCConfig(
-      XLEN = 32, AddressWidth = 32, MMU = mmu)
+    val config = npc32(MMU = mmu)
     config.MMU.cacheMode should be("vipt")
   }
 

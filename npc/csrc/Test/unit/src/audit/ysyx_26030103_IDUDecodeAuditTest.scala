@@ -115,6 +115,7 @@ class ysyx_26030103_IDUDecodeAuditTest
       xlen: Int = 64,
       useA: Boolean = true,
       useF: Boolean = true,
+      useD: Boolean = true,
       MMUEnabled: Boolean = false,
       hasS: Boolean = true,
       hasU: Boolean = true
@@ -126,7 +127,7 @@ class ysyx_26030103_IDUDecodeAuditTest
       UseA = useA,
       UseC = false,
       UseF = useF,
-      UseD = useF,
+      UseD = useD,
       FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
       FPULen = 64,
       MMU = ysyx_26030103_MMUProfile(
@@ -279,6 +280,63 @@ class ysyx_26030103_IDUDecodeAuditTest
         dut.io.instruction.poke(csrrs(1, CSR).U)
         bool(dut.io.exceptionValid) should be(false)
       }
+    }
+  }
+
+  // F/D 译码合法性；原 FPDecodeRegressionTest，同一 IDU 译码场景。
+  private def opFP(
+      funct7: Int,
+      rs2: Int,
+      rs1: Int,
+      funct3: Int,
+      rd: Int
+  ): BigInt =
+    (BigInt(funct7) << 25) | (BigInt(rs2) << 20) |
+      (BigInt(rs1) << 15) | (BigInt(funct3) << 12) |
+      (BigInt(rd) << 7) | 0x53
+
+  private def assertIllegal(
+      dut: ysyx_26030103_IDUDecodeAuditHarness,
+      instruction: BigInt,
+      clue: String
+  ): Unit = {
+    dut.io.instruction.poke(instruction.U)
+    withClue(clue + " exceptionValid: ") {
+      bool(dut.io.exceptionValid) should be(true)
+    }
+    withClue(clue + " exceptionCause: ") {
+      big(dut.io.exceptionCause) should be(BigInt(2))
+    }
+  }
+
+  "IDU F/D decode" should
+    "在 UseD=false 时把 FCVT.S.D 判为非法指令" in {
+      simulate(new ysyx_26030103_IDUDecodeAuditHarness(
+        config(xlen = 64, useF = true, useD = false))) { dut =>
+        setup(dut, mstatus = FsDirty, privilege = 3, frm = 0)
+        // op5=8(FCVT), fmt=S(0), rs2=1(源格式 D), rs1=2, rd=1。
+        val fcvtSD = opFP(funct7 = 0x20, rs2 = 1, rs1 = 2, funct3 = 0, rd = 1)
+        assertIllegal(dut, fcvtSD, "FCVT.S.D without D")
+      }
+    }
+
+  it should "在 RV32D 下把 FMV.X.D 判为非法指令" in {
+    simulate(new ysyx_26030103_IDUDecodeAuditHarness(
+      config(xlen = 32, useF = true, useD = true))) { dut =>
+      setup(dut, mstatus = FsDirty, privilege = 3, frm = 0)
+      // op5=28(FMV.X), fmt=D(1), rs2=0, rs1=2, funct3=0, rd=1。
+      val fmvXd = opFP(funct7 = 0x71, rs2 = 0, rs1 = 2, funct3 = 0, rd = 1)
+      assertIllegal(dut, fmvXd, "FMV.X.D on RV32D")
+    }
+  }
+
+  it should "在 RV32D 下把 FMV.D.X 判为非法指令" in {
+    simulate(new ysyx_26030103_IDUDecodeAuditHarness(
+      config(xlen = 32, useF = true, useD = true))) { dut =>
+      setup(dut, mstatus = FsDirty, privilege = 3, frm = 0)
+      // op5=30(FMV.D.X), fmt=D(1), rs2=0, rs1=2, funct3=0, rd=1。
+      val fmvDx = opFP(funct7 = 0x79, rs2 = 0, rs1 = 2, funct3 = 0, rd = 1)
+      assertIllegal(dut, fmvDx, "FMV.D.X on RV32D")
     }
   }
 }
