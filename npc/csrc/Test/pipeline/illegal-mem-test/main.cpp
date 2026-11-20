@@ -4,8 +4,9 @@
 //   4.   正常load回归
 //   5-6. MEM级访存故障(MemTrap)提交当拍, EXU里被冲刷的年轻指令不得有副作用:
 //        csrrw不得写mtvec, mret不得把异常目标劫持到旧mepc
-//   7-8. 不对齐访存必须报地址非对齐异常(load cause=4/store cause=6), 不得静默完成
-//   9.   对齐访问回归
+//   7.   对齐访问回归
+//
+// 不对齐访存（cause=4/6）由 riscv-arch-test 的 rv64i/Misalign 覆盖，这里不再重复。
 #include <am.h>
 #include <klib.h>
 
@@ -122,37 +123,7 @@ int main() {
   if (!mret_ok) failures++;
   check("memtrap-mret", 5, exp_pc);
 
-  // ---- 7. 不对齐 word load: 应报cause=4, 且不得写rd ----
-  reset_obs();
-  asm volatile(
-    "li t0, 0\n\t"
-    "la t1, 1f\n\t"
-    "sw t1, %0\n\t"
-    "li a5, 0x12345678\n\t"
-    "1: lw a5, 0(%2)\n\t"
-    "sw a5, %1\n\t"
-    "li t0, 1\n\t"
-    : "=m"(exp_pc), "=m"(rd_after)
-    : "r"((uint32_t)(uintptr_t)&probe + 1)
-    : "t0", "t1", "a5", "memory");
-  check("misaligned-load", 4, exp_pc);
-  bool mis_rd_ok = (rd_after == 0x12345678u);
-  printf("[misaligned-load-rd] a5=0x%08x(want 0x12345678) => %s\n",
-         (unsigned)rd_after, mis_rd_ok ? "PASS" : "FAIL");
-  if (!mis_rd_ok) failures++;
-
-  // ---- 8. 不对齐 word store: 应报cause=6 ----
-  reset_obs();
-  asm volatile(
-    "li t0, 0\n\t"
-    "la t1, 1f\n\t"
-    "sw t1, %0\n\t"
-    "1: sw zero, 0(%1)\n\t"
-    "li t0, 1\n\t"
-    : "=m"(exp_pc) : "r"((uint32_t)(uintptr_t)&probe + 1) : "t0", "t1", "memory");
-  check("misaligned-store", 6, exp_pc);
-
-  // ---- 9. 回归: 对齐半字访问仍然正常 ----
+  // ---- 7. 回归: 对齐半字访问仍然正常 ----
   uint32_t hw = 0;
   asm volatile("lh %0, 0(%1)" : "=r"(hw) : "r"((uint32_t)(uintptr_t)&probe) : "memory");
   bool lh_ok = (hw == 0x5678u);
@@ -161,8 +132,8 @@ int main() {
   if (!lh_ok) failures++;
 
   // ---- 汇总 ----
-  printf("trap_count=%u (want 7)\n", (unsigned)trap_count);
-  if (trap_count != 7) failures++;
+  printf("trap_count=%u (want 5)\n", (unsigned)trap_count);
+  if (trap_count != 5) failures++;
   if (failures == 0) {
     printf("ILLEGAL-MEM TEST PASS\n");
     return 0;

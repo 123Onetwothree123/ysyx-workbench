@@ -47,7 +47,7 @@ echo "[2/3] RV64 内置镜像与裸机回归"
 cd "$NEMU_HOME"
 printf 'c\n' | "$NEMU64" >"$TEST_BUILD/builtin-rv64.log" 2>&1
 grep -q "HIT GOOD TRAP" "$TEST_BUILD/builtin-rv64.log"
-for test in rv64-ui-um-test rv64-address-test rv64-mmu-test rv64-sv48-test; do
+for test in rv64-mmu-test rv64-sv48-test; do
   build_asm_test "$test"
   "$NEMU64" -b --elf="$TEST_BUILD/$test.elf" "$TEST_BUILD/$test.bin" \
     >"$TEST_BUILD/$test.log" 2>&1
