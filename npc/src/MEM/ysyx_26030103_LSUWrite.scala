@@ -9,40 +9,67 @@ private[mem] trait LSUWrite {
   def writeBufferBody(): Unit = {
     // Idle 可直接驱动已经寄存的队首，避免“发现非空→切 Issue→下一拍才
     // 拉 VALID”的固定空拍。失败/非对齐/等待 PA 的队首会阻断所有年轻副作用。
-    val wbCanStart = !WBufEmpty && !wbHeadMisaligned && wbHeadReady &&
+    val wbCanStart = !WBufEmpty && wbHeadReady && !wbHeadTrapBlocked &&
       !io.PMPFault && !storeFaultReg && !memFaultReg
     val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
     val wbHeadIsWide = wbHeadWide
-    val wbHeadBusWide = wbHeadIsWide && busWideBit
-    val wbHeadTwoBeat = wbHeadIsWide && !busWideBit
+    // 对齐宽访问仍沿用原有的两拍逻辑；分段访问按配置粒度发请求。
+    val wbHeadBusWide = wbHeadIsWide && busWideBit && !wbHeadMisaligned
+    val wbHeadTwoBeat = wbHeadIsWide && !busWideBit && !wbHeadMisaligned
+    val wbSegWide = wbHeadMisaligned && (ChunkLog2 == 3).B
+    val wbSegBusWide = wbSegWide && busWideBit
+    val wbSegTwoBeat = wbSegWide && !busWideBit
+    val wbHeadTwoBeatAny = wbHeadTwoBeat || wbSegTwoBeat
     val wbBeat = RegInit(0.U(1.W))
+    val wbSegData = wbHeadSegPayload._1
+    val wbSegStrobe = wbHeadSegPayload._2
+    val wbSegHighData =
+      if (ChunkLog2 == 3) wbSegData(63, 32) else 0.U(32.W)
+    val wbSegHighStrobe =
+      (wbSegStrobe >> (ChunkBytes / 2))(ChunkBytes / 2 - 1, 0)
     when(wbDrivingIssue) {
       io.DataBus.AW.AWVALID := !WbAWDone
-      io.DataBus.AW.AWADDR := wbHeadEffectiveAddress
-      io.DataBus.AW.AWLEN := Mux(wbHeadTwoBeat, 1.U, 0.U)
-      io.DataBus.AW.AWSIZE := Mux(wbHeadBusWide, 3.U, wbHeadSize)
+      io.DataBus.AW.AWADDR :=
+        Mux(wbHeadMisaligned, wbHeadSegPaddr, wbHeadEffectiveAddress)
+      io.DataBus.AW.AWLEN :=
+        Mux(wbHeadTwoBeat || wbSegTwoBeat, 1.U, 0.U)
+      io.DataBus.AW.AWSIZE :=
+        Mux(wbHeadMisaligned, Mux(wbSegBusWide, 3.U, 2.U),
+          Mux(wbHeadBusWide, 3.U, wbHeadSize))
       io.DataBus.AW.AWBURST := 1.U
       io.DataBus.W.WVALID := !wbWDone
       io.DataBus.W.WDATA :=
-        Mux(wbHeadBusWide, Cat(wbHeadDataHi, wbHeadData),
-          Mux(wbHeadTwoBeat && wbBeat === 1.U, wbHeadDataHi,
-            busWord(wbHeadData, wbHeadEffectiveAddress)))
+        Mux(wbHeadMisaligned,
+          Mux(wbSegBusWide, wbSegData,
+            Mux(wbSegTwoBeat && wbBeat === 1.U, wbSegHighData,
+              busWord(wbSegData(31, 0), wbHeadSegPaddr))),
+          Mux(wbHeadBusWide, Cat(wbHeadDataHi, wbHeadData),
+            Mux(wbHeadTwoBeat && wbBeat === 1.U, wbHeadDataHi,
+              busWord(wbHeadData, wbHeadEffectiveAddress))))
       io.DataBus.W.WSTRB :=
-        Mux(wbHeadBusWide, "hff".U,
-          Mux(wbHeadTwoBeat && wbBeat === 1.U, "hf".U,
-            busStrobe(wbHeadStrobe, wbHeadEffectiveAddress)))
+        Mux(wbHeadMisaligned,
+          Mux(wbSegBusWide, wbSegStrobe,
+            Mux(wbSegTwoBeat && wbBeat === 1.U, wbSegHighStrobe,
+              busStrobe(wbSegStrobe(3, 0), wbHeadSegPaddr))),
+          Mux(wbHeadBusWide, "hff".U,
+            Mux(wbHeadTwoBeat && wbBeat === 1.U, "hf".U,
+              busStrobe(wbHeadStrobe, wbHeadEffectiveAddress))))
       io.DataBus.W.WLAST :=
-        !wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U
+        Mux(wbHeadMisaligned, !wbSegTwoBeat || wbBeat === 1.U,
+          !wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U)
     }
     // 本拍 W 握手是否完成整笔 store 的全部数据拍。
-    val wbWFinishes =
-      wbWfire && (!wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U)
+    val wbWFinishes = wbWfire && Mux(
+      wbHeadMisaligned,
+      !wbSegTwoBeat || wbBeat === 1.U,
+      !wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U
+    )
     switch(wbState) {
       is(wbIdle) {
         when(wbCanStart) {
           when(wbAWfire) { WbAWDone := true.B }
           when(wbWfire) {
-            when(wbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
+            when(wbHeadTwoBeatAny && wbBeat === 0.U) { wbBeat := 1.U }
               .otherwise { wbWDone := true.B }
           }
           when(wbAWfire && wbWFinishes) {
@@ -59,7 +86,7 @@ private[mem] trait LSUWrite {
       is(wbIssue) {
         when(wbAWfire) { WbAWDone := true.B }
         when(wbWfire) {
-          when(wbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
+          when(wbHeadTwoBeatAny && wbBeat === 0.U) { wbBeat := 1.U }
             .otherwise { wbWDone := true.B }
         }
         when((WbAWDone || wbAWfire) && (wbWDone || wbWFinishes)) {
@@ -79,12 +106,17 @@ private[mem] trait LSUWrite {
             wbState := wbIdle
             WbAWDone := false.B
             wbWDone := false.B
+            when(wbHeadMisaligned && !wbLastSegment) {
+              // 中间段完成：继续同一 store 的下一段。
+              wbSegIndex := wbSegIndex + 1.U
+            }
           }
         }
       }
     }
     when(wbPop) {
       wbBeat := 0.U
+      wbSegIndex := 0.U
       if (WBufDepth == 1) {
         wbHead := 0.U
       } else {
@@ -99,6 +131,7 @@ private[mem] trait LSUWrite {
       WbAWDone := false.B
       wbWDone := false.B
       wbBeat := 0.U
+      wbSegIndex := 0.U
     }.otherwise {
       wbCount := wbCount + wbPush.asUInt - wbPop.asUInt
     }
@@ -140,13 +173,23 @@ private[mem] trait LSUWrite {
           state := stateWriteWaitB
         }
         .otherwise {
-          if (DCacheEnable) {
-            // 精确 store 队列只在全部老 store 已处理后才让 load 成为
-            // StageInput，因此这里不再经过不可达的 LoadWaitBuf 空状态。
-            dataCacheRequestActive := true.B
-            state := stateReadRequest
-          } else { // 关闭数据缓存时保持原来的单拍直读路径
-            state := stateReadRequest
+          // 非对齐或跨页普通 load 走 4B 段循环；其余保持原有时序。
+          when(StageInputNeedsSegments) {
+            MisalignedSegmentIndex := 0.U
+            MisalignedWordRegisters.foreach(_ := 0.U)
+            MisalignedBeat := 0.U
+            MisalignedLowWordRegister := 0.U
+            if (DCacheEnable) { dataCacheRequestActive := true.B }
+            state := stateMisLoadRequest
+          }.otherwise {
+            if (DCacheEnable) {
+              // 精确 store 队列只在全部老 store 已处理后才让 load 成为
+              // StageInput，因此这里不再经过不可达的 LoadWaitBuf 空状态。
+              dataCacheRequestActive := true.B
+              state := stateReadRequest
+            } else { // 关闭数据缓存时保持原来的单拍直读路径
+              state := stateReadRequest
+            }
           }
         }
     }

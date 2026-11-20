@@ -24,7 +24,8 @@ public:
   CoreTestbench() {
     // Program layout:
     //   install mtvec; write a0=7; execute architectural EBREAK;
-    //   run a misaligned load, a DECERR load and a successful load;
+    //   run a cacheable misaligned load (must merge bytes and retire),
+    //   a DECERR load and a successful load;
     //   handler advances mepc after every exception; write a0=8; execute two
     //   taken JALs (the first flushes a wrong-path fetch fault), then take one
     //   real instruction access fault and finally execute custom halt.
@@ -34,7 +35,7 @@ public:
         {kReset + 0x08, 0x30529073U}, // csrw  mtvec,t0
         {kReset + 0x0c, 0x00700513U}, // addi  a0,zero,7
         {kReset + 0x10, 0x00100073U}, // ebreak (must enter mtvec)
-        {kReset + 0x14, 0x0022a383U}, // lw    t2,2(t0), misaligned
+        {kReset + 0x14, 0x0022a383U}, // lw    t2,2(t0), cacheable 非对齐
         {kReset + 0x18, 0x900003b7U}, // lui   t2,0x90000
         {kReset + 0x1c, 0x0003a303U}, // lw    t1,0(t2), bus DECERR
         {kReset + 0x20, 0x0002a303U}, // lw    t1,0(t0), successful
@@ -116,8 +117,8 @@ public:
         if (pc == kReset + 0x6c) {
           const auto next =
               static_cast<std::uint32_t>(dut_.io_debug_NextPC);
-          check(next == kReset + 0x14 || next == kReset + 0x18 ||
-                    next == kReset + 0x20 || next == kReset + 0x44,
+          check(next == kReset + 0x14 || next == kReset + 0x20 ||
+                    next == kReset + 0x44,
                 "MRET retire record used snpc instead of mepc");
           ++mret_count;
         }
@@ -134,8 +135,6 @@ public:
               "architectural PC did not move to mtvec at trap commit");
         if (pc == kReset + 0x10) {
           check(cause == 3, "EBREAK trap carried the wrong cause");
-        } else if (pc == kReset + 0x14) {
-          check(cause == 4, "misaligned load trap carried the wrong cause");
         } else if (pc == kReset + 0x1c) {
           check(cause == 5, "load access fault carried the wrong cause");
         } else if (pc == kReset + 0x40) {
@@ -157,22 +156,33 @@ public:
           ++fetch_access_fault_count;
         } else {
           check(false,
-                "wrong-path, misaligned, or unrelated access fault was reported");
+                "wrong-path or unrelated AXI access fault was reported");
         }
       }
 
       if (dut_.io_debug_MTraceValid) {
         ++mtrace_count;
-        check(dut_.io_debug_MTracePC == kReset + 0x20,
-              "failed or misaligned load generated an mtrace record");
         check(!dut_.io_debug_MTraceWen,
-              "successful load mtrace was marked as a store");
-        check(dut_.io_debug_MTraceAddress == kReset + 0x60,
-              "successful load mtrace carried the wrong address");
-        check(dut_.io_debug_MTraceRdata == 0x34102373U,
-              "successful load mtrace carried stale read data");
-        check(dut_.io_debug_MTraceWidth == 2,
-              "successful word load mtrace carried the wrong width");
+              "load mtrace was marked as a store");
+        const auto pc = static_cast<std::uint32_t>(dut_.io_debug_MTracePC);
+        if (pc == kReset + 0x14) {
+          // cacheable RAM 非对齐 load：正常完成，检查拼接后的数据。
+          check(dut_.io_debug_MTraceAddress == kReset + 0x62,
+                "misaligned cached load mtrace carried the wrong address");
+          check(dut_.io_debug_MTraceRdata == 0x03133410U,
+                "misaligned cached load mtrace carried wrong merged data");
+          check(dut_.io_debug_MTraceWidth == 2,
+                "misaligned cached load mtrace carried the wrong width");
+        } else if (pc == kReset + 0x20) {
+          check(dut_.io_debug_MTraceAddress == kReset + 0x60,
+                "successful load mtrace carried the wrong address");
+          check(dut_.io_debug_MTraceRdata == 0x34102373U,
+                "successful load mtrace carried stale read data");
+          check(dut_.io_debug_MTraceWidth == 2,
+                "successful word load mtrace carried the wrong width");
+        } else {
+          check(false, "unexpected mtrace PC");
+        }
       }
 
       if (dut_.io_trap_valid) {
@@ -195,11 +205,12 @@ public:
           "data DECERR did not produce exactly one debug fault event");
     check(fetch_access_fault_count == 1,
           "precise instruction DECERR event was missing or duplicated");
-    check(mtrace_count == 1,
-          "successful and failed loads produced the wrong mtrace count");
-    check(trap_count == 4,
+    check(mtrace_count == 2,
+          "misaligned cached load and successful load produced the wrong "
+          "mtrace count");
+    check(trap_count == 3,
           "architectural exceptions did not produce one precise event each");
-    check(mret_count == 4,
+    check(mret_count == 3,
           "MRET retirement/next-PC records were missing or duplicated");
     check(saw_halt, "custom halt never produced a simulation halt event");
   }

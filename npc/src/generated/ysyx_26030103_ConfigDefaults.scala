@@ -37,7 +37,7 @@ object ysyx_26030103_KconfigDefaults {
   val NpcXlen: Int = 64
   val NpcFPULen: Int = 64
   val NpcAddressWidth: Int = 64
-  val NpcSocXlen: Int = 32
+  val NpcSocXlen: Int = 64
   val NpcInternalBusWidth: Int = 64
   val NpcBlockSizeLog2: Int = 4
   val NpcIndexBits: Int = 5
@@ -46,6 +46,10 @@ object ysyx_26030103_KconfigDefaults {
   val NpcDCacheBlockSizeLog2: Int = 4
   val NpcDCacheIndexBits: Int = 5
   val NpcWBufDepth: Int = 4
+  val NpcMisalignedSupport: Int = 1
+  val NpcMisalignedGranuleBytes: Int = 8
+  val NpcMisalignedNCSplit: Int = 0
+  val NpcMisalignedMMIOFault: Int = 1
   val NpcBTBBits: Int = 4
   val NpcBTBWays: Int = 1
   val NpcJalBTBBits: Int = 4

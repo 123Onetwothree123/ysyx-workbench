@@ -12,8 +12,9 @@ import _root_.ysyx_26030103.common.ysyx_26030103_EXUMessage
   * 虚拟地址。RISC-V 规定地址非对齐异常的 mtval 是出错的有效地址（VA），
   * 因此 MemTrapTval 必须取 VAddr，不能取 EffectiveALUResult（PA）。
   *
-  * 这里直接例化默认 LSU，用 PA 与 VA 不同的非对齐 load/store 复现：
-  * 当前实现把 MemTrapTval 接到 EffectiveALUResult，会错误地给出物理地址。
+  * 这里用 MisalignedSupport=false 构造 LSU，保持“非对齐必须 trap”的旧语义，
+  * 用来复现 MemTrapTval 取 PA 而不是 VA 的回归。拆分路径的 tval 语义由
+  * ysyx_26030103_LSUMisalignedTest 覆盖。
   */
 class ysyx_26030103_LSUTrapTvalRegressionTest
     extends AnyFlatSpec with Matchers {
@@ -100,7 +101,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
   }
 
   "LSU trap tval" should "非对齐 load 的 MemTrapTval 使用虚拟地址而非物理地址" in {
-    simulate(new ysyx_26030103_LSU()) { dut =>
+    simulate(new ysyx_26030103_LSU(MisalignedSupport = false)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       // 模拟 PIPT DMMU 翻译：0x80000002 -> 0x80001002。
@@ -124,7 +125,7 @@ class ysyx_26030103_LSUTrapTvalRegressionTest
   }
 
   it should "非对齐 store 的 MemTrapTval 使用虚拟地址而非物理地址" in {
-    simulate(new ysyx_26030103_LSU()) { dut =>
+    simulate(new ysyx_26030103_LSU(MisalignedSupport = false)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
       pokeMisalignedMem(

@@ -238,35 +238,38 @@ static void check_write_buffer_depth_and_precision() {
   }
   fault_dut.final();
 
-  // A queued misaligned store is an ordering barrier just like a failing
-  // BRESP.  It must trap when it reaches the head, and the younger aligned
-  // store must never have reached AW/W.
-  DUT misaligned_dut;
-  defaults(misaligned_dut);
-  reset(misaligned_dut);
-  enqueue_store(misaligned_dut, base, 0xc7000000U, pc);
-  enqueue_store(misaligned_dut, base + 6U, 0xc7000001U, pc + 4U);
-  enqueue_store(misaligned_dut, base + 8U, 0xc7000002U, pc + 8U);
+  // cacheable RAM 的非对齐 store 会拆分成多段正常完成；这里改用 UART
+  // MMIO 窗口保持“队首 barrier”语义：MMIO 非对齐 store 不拆、不发 AW/W，
+  // 在到达队首时按 store access fault(cause=7) 精确提交，年轻 store 不得越过。
+  constexpr uint32_t mmio_store_address = 0x10000006U; // UART 窗口，4B 半字偏移
+  DUT mmio_misaligned_dut;
+  defaults(mmio_misaligned_dut);
+  reset(mmio_misaligned_dut);
+  enqueue_store(mmio_misaligned_dut, base, 0xc7000000U, pc);
+  enqueue_store(mmio_misaligned_dut, mmio_store_address, 0xc7000001U, pc + 4U);
+  enqueue_store(mmio_misaligned_dut, base + 8U, 0xc7000002U, pc + 8U);
   random_state = 0x16180339U;
-  complete_buffered_store(misaligned_dut, base, 0xc7000000U, pc, 0,
+  complete_buffered_store(mmio_misaligned_dut, base, 0xc7000000U, pc, 0,
                           random_state);
-  misaligned_dut.eval();
-  check(misaligned_dut.io_out_valid && misaligned_dut.io_MemTrapCommit &&
-            misaligned_dut.io_MemTrapCause == 6 &&
-            misaligned_dut.io_MemTrapPC == pc + 4U,
-        "queued misaligned store did not become the precise queue-head trap");
-  check(!misaligned_dut.io_DataBus_AW_AWVALID &&
-            !misaligned_dut.io_DataBus_W_WVALID,
-        "younger store crossed a queued misaligned-store barrier");
-  tick(misaligned_dut);
+  mmio_misaligned_dut.eval();
+  check(mmio_misaligned_dut.io_out_valid &&
+            mmio_misaligned_dut.io_MemTrapCommit &&
+            mmio_misaligned_dut.io_MemTrapCause == 7 &&
+            mmio_misaligned_dut.io_MemTrapPC == pc + 4U,
+        "queued misaligned MMIO store did not become the precise cause-7 "
+        "queue-head trap");
+  check(!mmio_misaligned_dut.io_DataBus_AW_AWVALID &&
+            !mmio_misaligned_dut.io_DataBus_W_WVALID,
+        "younger store crossed a queued misaligned-MMIO-store barrier");
+  tick(mmio_misaligned_dut);
   for (int cycle = 0; cycle < 8; ++cycle) {
-    misaligned_dut.eval();
-    check(!misaligned_dut.io_DataBus_AW_AWVALID &&
-              !misaligned_dut.io_DataBus_W_WVALID,
-          "younger store escaped after a queued misaligned-store trap");
-    tick(misaligned_dut);
+    mmio_misaligned_dut.eval();
+    check(!mmio_misaligned_dut.io_DataBus_AW_AWVALID &&
+              !mmio_misaligned_dut.io_DataBus_W_WVALID,
+          "younger store escaped after a queued misaligned-MMIO-store trap");
+    tick(mmio_misaligned_dut);
   }
-  misaligned_dut.final();
+  mmio_misaligned_dut.final();
 }
 
 static void begin_memory_op(DUT &dut, uint32_t address, bool write,
@@ -533,30 +536,32 @@ static void store_with_response(DUT &dut, uint32_t address, uint32_t data,
         "store AXI fault event was not a single-cycle pulse");
 }
 
-static void check_misaligned_is_not_axi_fault(DUT &dut) {
+static void check_mmio_misaligned_is_not_axi_fault(DUT &dut) {
   constexpr uint32_t pc = 0x80000128U;
+  constexpr uint32_t mmio_address = 0x10000002U; // UART 窗口，非 cacheable
   dut.io_in_bits_WidthSelect = 2;
-  begin_memory_op(dut, 0x80000002U, false, 0, pc);
+  begin_memory_op(dut, mmio_address, false, 0, pc);
 
   for (int cycle = 0; cycle < 20 && !dut.io_out_valid; ++cycle) {
     dut.eval();
     check(!dut.io_DataBus_AR_ARVALID,
-          "misaligned load incorrectly issued an AXI read");
+          "misaligned MMIO load incorrectly issued an AXI read");
     check(!dut.io_AccessFault,
-          "misaligned load was misreported as an AXI access fault");
+          "misaligned MMIO load was misreported as an AXI access fault");
     tick(dut);
   }
   dut.eval();
-  check(dut.io_out_valid, "misaligned load never reached trap commit");
+  check(dut.io_out_valid, "misaligned MMIO load never reached trap commit");
   check(dut.io_MemTrapCommit,
-        "misaligned load did not produce a precise memory trap");
-  check(dut.io_MemTrapCause == 4,
-        "misaligned load did not report cause 4");
-  check(dut.io_MemTrapPC == pc, "misaligned load reported the wrong PC");
+        "misaligned MMIO load did not produce a precise memory trap");
+  check(dut.io_MemTrapCause == 5,
+        "misaligned MMIO load did not report cause 5");
+  check(dut.io_MemTrapPC == pc, "misaligned MMIO load reported the wrong PC");
+  // MMIO 非对齐是本地策略 trap，不能伪造 RESP=0 的 AXI access fault。
   check(!dut.io_AccessFault,
-        "misaligned load produced a fake RESP=0 AXI fault");
+        "misaligned MMIO load produced a fake RESP=0 AXI fault");
   check(!dut.io_out_bits_Retire,
-        "misaligned load was incorrectly marked retired");
+        "misaligned MMIO load was incorrectly marked retired");
   tick(dut);
 }
 
@@ -594,7 +599,7 @@ int main(int argc, char **argv) {
     check(load_hit(dut, address) == 0xaabbccddU,
           "successful store did not update the DCache mirror");
 
-    check_misaligned_is_not_axi_fault(dut);
+    check_mmio_misaligned_is_not_axi_fault(dut);
     dut.final();
   });
 }

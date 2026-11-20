@@ -3,14 +3,12 @@
 # 重点验证 RV32/RV64 同编码位的差异：RV64 的 C.FLD/C.FSD 及 SP 形式
 # 必须展开为浮点访存，而 0x6188/0xe588/0x6522/0xe82e 这些编码位在
 # RV64 仍必须是 C.LD/C.SD/C.LDSP/C.SDSP，不能被误译成 C.FLW/C.FSW。
-# 同时检查 64 位 FPR、fcsr/fflags、mstatus.FS 和 FLD 非对齐陷入。
+# 同时检查 64 位 FPR、fcsr/fflags、mstatus.FS 和 FLD 非对齐拆分加载。
 
     .section .data
     .align 3
 buf:        .zero 512
 scratch:    .zero 32
-trap_count: .word 0
-trap_cause: .word 0
 
     .section .text
     .globl _start
@@ -109,24 +107,14 @@ _start:
     li      t1, 0x6000
     bne     t0, t1, fail10
 
-    # ---- FLD 非对齐陷入（cause=4）----
-    li      t0, 0x6000
-    csrc    mstatus, t0
-    li      t0, 0x2000
-    csrs    mstatus, t0
-    la      s2, misaligned_fld
-    la      t0, trap_count
-    lw      s3, 0(t0)
-    jr      s2
-after_misaligned:
-    la      t0, trap_count
-    lw      t3, 0(t0)
-    addi    t3, t3, -1
-    bne     s3, t3, fail11
-    la      t0, trap_cause
-    lw      t0, 0(t0)
-    li      t1, 4
-    bne     t0, t1, fail12
+    # ---- 非对齐 SD/FLD（cacheable RAM）：正常完成并校验拼接数据 ----
+    li      t0, 0x0123456789abcdef
+    sd      t0, 4(s0)               # 非对齐 store
+    fcvt.d.w f8, zero               # 清掉旧值，避免漏加载时误通过
+    fld     f8, 4(s0)               # 非对齐 load
+    fsd     f8, 56(s0)
+    ld      t1, 56(s0)
+    bne     t0, t1, fail11
 
     li      a0, 0
     j       halt
@@ -153,29 +141,10 @@ fail10: li a0, 10
     j halt
 fail11: li a0, 11
     j halt
-fail12: li a0, 12
-    j halt
-
-misaligned_fld:
-    fld     f8, 4(s0)
-    j       after_misaligned
 
     .balign 4
 trap_entry:
-    csrr    t0, mcause
-    la      t1, trap_cause
-    sw      t0, 0(t1)
-    la      t1, trap_count
-    lw      t2, 0(t1)
-    addi    t2, t2, 1
-    sw      t2, 0(t1)
-    li      t1, 4
-    bne     t0, t1, fail_trap
-    csrr    t0, mepc
-    addi    t0, t0, 4
-    csrw    mepc, t0
-    mret
-fail_trap:
+    # 新语义下本测试不应产生任何 trap；意外 trap 直接失败。
     li      a0, 13
     j       halt
 

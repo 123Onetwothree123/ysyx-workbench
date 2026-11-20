@@ -178,31 +178,18 @@ static int fp_rounding(Decode *s, uint32_t inst)
 
 static uint64_t fp_mem_read(vaddr_t addr, int size)
 {
-#ifdef CONFIG_RV64
-  return (uint64_t)vaddr_read(addr, size);
-#else
-  if (size == 8) {
-    // RV32 的 word_t 只有 32 位，D 扩展的 8 字节访问拆成两个对齐字。
-    const uint64_t lo = (uint32_t)vaddr_read(addr, 4);
-    const uint64_t hi = (uint32_t)vaddr_read(addr + 4, 4);
-    return lo | (hi << 32);
+  uint64_t value = 0;
+  for (int i = 0; i < size; i++) {
+    value |= (uint64_t)(uint8_t)vaddr_read(addr + i, 1) << (8 * i);
   }
-  return (uint64_t)vaddr_read(addr, size);
-#endif
+  return value;
 }
 
 static void fp_mem_write(vaddr_t addr, int size, uint64_t value)
 {
-#ifdef CONFIG_RV64
-  vaddr_write(addr, size, (word_t)value);
-#else
-  if (size == 8) {
-    vaddr_write(addr, 4, (uint32_t)value);
-    vaddr_write(addr + 4, 4, (uint32_t)(value >> 32));
-    return;
+  for (int i = 0; i < size; i++) {
+    vaddr_write(addr + i, 1, (uint8_t)(value >> (8 * i)));
   }
-  vaddr_write(addr, size, (word_t)value);
-#endif
 }
 
 void riscv_fp_load(Decode *s, vaddr_t addr, int size, int rd)
@@ -216,12 +203,6 @@ void riscv_fp_load(Decode *s, vaddr_t addr, int size, int rd)
     return;
 #endif
   }
-  if ((addr & (vaddr_t)(size - 1)) != 0) {
-    isa_trap_tval = addr;
-    s->dnpc = isa_raise_intr(4, s->pc); // load address misaligned
-    return;
-  }
-
   const uint64_t value = fp_mem_read(addr, size);
   cpu.f[rd] = (size == 4) ? fp32_box((uint32_t)value) : value;
   fp_flags_begin();
@@ -240,12 +221,6 @@ void riscv_fp_store(Decode *s, vaddr_t addr, int size, int rs2)
     return;
 #endif
   }
-  if ((addr & (vaddr_t)(size - 1)) != 0) {
-    isa_trap_tval = addr;
-    s->dnpc = isa_raise_intr(6, s->pc); // store/AMO address misaligned
-    return;
-  }
-
   // FSW/FSD 直接写寄存器低位原始位型，不经过 unboxing/NaN 规范化。
   fp_mem_write(addr, size, cpu.f[rs2]);
   fp_flags_begin();
@@ -332,7 +307,6 @@ static uint32_t fp32_classify(uint32_t v)
          (nan && !snan) << 9;
 }
 
-#ifdef CONFIG_RV64
 static uint32_t fp64_classify(uint64_t v)
 {
   const bool sign = (v & FP64_SIGN) != 0;
@@ -354,7 +328,6 @@ static uint32_t fp64_classify(uint64_t v)
          (nan && snan) << 8 |
          (nan && !snan) << 9;
 }
-#endif
 
 /* ---------- 指令实现 ---------- */
 
@@ -700,20 +673,20 @@ static bool fp_decode_op(Decode *s, uint32_t inst)
 
   /* ---------- FMV.X.D / FCLASS.D ---------- */
   case 0x71:
-#ifdef CONFIG_RV64
     if (rs2 != 0 || funct3 > 1) { fp_illegal(s); return true; }
     fp_flags_begin();
     if (funct3 == 0) {
+#ifdef CONFIG_RV64
       gpr(rd) = (word_t)cpu.f[rs1];
+#else
+      fp_illegal(s);
+      return true;
+#endif
     } else {
-      gpr(rd) = fp64_classify(cpu.f[rs1]);
+      gpr(rd) = (word_t)fp64_classify(cpu.f[rs1]);
     }
     fp_flags_commit();
     return true;
-#else
-    fp_illegal(s);
-    return true;
-#endif
 
   /* ---------- FMV.W.X ---------- */
   case 0x78:

@@ -158,6 +158,115 @@ private[mem] trait LSURead {
     }
   }
 
+  /** 非对齐 load：按配置粒度分块，最后一块到达后拼装。 */
+  def MisalignedLoadRequestBody(): Unit = {
+    val SegmentTwoBeat = ChunkLog2 == 3 && !busWide
+    if (DCacheEnable) {
+      when(MisalignedSegmentReady && DCache.io.request.fire) {
+        state := stateMisLoadResponse
+      }
+    } else {
+      io.DataBus.AR.ARVALID := MisalignedSegmentReady
+      io.DataBus.AR.ARADDR := MisalignedSegmentPhysicalAddress
+      io.DataBus.AR.ARLEN := Mux(SegmentTwoBeat.B, 1.U, 0.U)
+      io.DataBus.AR.ARSIZE :=
+        (if (ChunkLog2 == 3 && busWide) 3.U else 2.U)
+      io.DataBus.AR.ARBURST := 1.U
+      when(MisalignedSegmentReady && io.DataBus.AR.ARREADY) {
+        state := stateMisLoadResponse
+      }
+    }
+  }
+
+  private def MisalignedLoadSegment(index: Int, incoming: UInt): UInt =
+    Mux(MisalignedSegmentIndex === index.U, incoming, MisalignedWordRegisters(index))
+
+  private def finishMisLoad(incoming: UInt): Unit = {
+    val segments = (0 until maxSegments).map(i => MisalignedLoadSegment(i, incoming))
+    val assembled = assembleSegmentedLoad(
+      segments,
+      activeVa,
+      activeInstruction.WidthSelect,
+      activeInstruction.LoadSigned,
+      ChunkLog2
+    )
+    loadDataReg := assembled
+    loadForwardValid := true.B
+    loadForwardData := assembled
+    loadForwardFault := false.B
+    transactionComplete := true.B
+    transactionFault := false.B
+    dataCacheRequestActive := false.B
+    state := stateIdle
+  }
+
+  private def MisalignedLoadFault(response: UInt): Unit = {
+    accessFaultReg := true.B
+    accessFaultResponseReg := response
+    transactionComplete := true.B
+    transactionFault := true.B
+    dataCacheRequestActive := false.B
+    state := stateIdle
+  }
+
+  private def MisalignedLoadSegmentData(response: UInt): Unit = {
+    val lastSegment = MisalignedSegmentIndex === activeSegCount - 1.U
+    when(lastSegment) {
+      finishMisLoad(response)
+    }.otherwise {
+      MisalignedWordRegisters(MisalignedSegmentIndex) := response
+      MisalignedSegmentIndex := MisalignedSegmentIndex + 1.U
+      state := stateMisLoadRequest
+    }
+  }
+
+  def MisalignedLoadResponseBody(): Unit = {
+    val SegmentTwoBeat = ChunkLog2 == 3 && !busWide
+    if (DCacheEnable) {
+      when(DCache.io.response.fire) {
+        when(DCache.io.response.bits.fault) {
+          MisalignedLoadFault(DCache.io.response.bits.FaultResponse)
+        }.otherwise {
+          val data =
+            if (ChunkLog2 == 3) DCache.io.response.bits.data
+            else DCache.io.response.bits.data(31, 0)
+          MisalignedLoadSegmentData(data)
+        }
+      }
+    } else {
+      io.DataBus.R.RREADY := true.B
+      when(io.DataBus.R.RVALID) {
+        val responseBad = io.DataBus.R.RRESP =/= 0.U
+        val beatOne = MisalignedBeat === 1.U
+        val data =
+          if (ChunkLog2 == 3 && busWide) io.DataBus.R.RDATA
+          else if (ChunkLog2 == 3) {
+            Mux(beatOne, Cat(io.DataBus.R.RDATA, MisalignedLowWordRegister),
+              busSelectWord(io.DataBus.R.RDATA, MisalignedSegmentPhysicalAddress))
+          } else busSelectWord(io.DataBus.R.RDATA, MisalignedSegmentPhysicalAddress)
+        when(responseBad) {
+          MisalignedLoadFault(io.DataBus.R.RRESP)
+        }.elsewhen(SegmentTwoBeat.B && !beatOne) {
+          when(io.DataBus.R.RLAST) {
+            accessFaultReg := true.B
+            accessFaultResponseReg := 2.U
+            state := stateReadDrain
+          }.otherwise {
+            MisalignedLowWordRegister := io.DataBus.R.RDATA
+            MisalignedBeat := 1.U
+          }
+        }.elsewhen(!io.DataBus.R.RLAST || (SegmentTwoBeat.B && !beatOne)) {
+          accessFaultReg := true.B
+          accessFaultResponseReg := 2.U
+          state := stateReadDrain
+        }.otherwise {
+          MisalignedBeat := 0.U
+          MisalignedLoadSegmentData(data)
+        }
+      }
+    }
+  }
+
   def readDrainBody(): Unit = {
     io.DataBus.R.RREADY := true.B
     when(io.DataBus.R.RVALID && io.DataBus.R.RLAST) {

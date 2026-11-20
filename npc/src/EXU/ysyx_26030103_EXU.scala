@@ -369,7 +369,7 @@ class ysyx_26030103_EXU(
     Mux(IdleIRQCommit, io.IdleIRQPC, inst.PC)
   )
   CSRUnit.io.PC := TrapBoundaryPC
-  // 非法压缩指令的 mtval 写原始 16 位编码（零扩展）；32 位非法指令沿用既有 ABI（以 PC 为 tval）。
+  // 非法指令的 mtval 写原始指令编码：压缩指令零扩展 16 位，32 位指令写 32 位原值。
   // 其余：load/store 用故障地址，misaligned 用目标地址，取指错/breakpoint 回退 PC，ecall/中断写 0。
   val activeIllegalCompressed =
     activeInst.ExceptionValid && activeInst.ExceptionCause === 2.U &&
@@ -384,7 +384,7 @@ class ysyx_26030103_EXU(
     Mux(
       activeFetchFault,
       activeInst.PredTarget,
-      Mux(activeIllegalCompressed, activeInst.Instruction, activeInst.PC)
+      Mux(activeInst.ExceptionCause === 2.U, activeInst.Instruction, activeInst.PC)
     ),
     Mux(
       activeInstructionAddressMisaligned,

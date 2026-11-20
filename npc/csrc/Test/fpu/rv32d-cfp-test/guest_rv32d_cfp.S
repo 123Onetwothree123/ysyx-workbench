@@ -7,7 +7,7 @@
 #   - C.FLD/C.FSD/C.FLW/C.FSW 及 C.FLDSP/C.FSDSP/C.FLWSP/C.FSWSP
 #     的 RV32 立即数布局和 SP 形式；
 #   - FS=Off 时压缩/普通浮点指令都必须 illegal instruction；
-#   - FLD 非对齐访问必须按 load address misaligned 陷入。
+#   - FLD 非对齐访问在 cacheable RAM 上正常拆分完成并校验数据。
 #
 # 每个失败编号对应唯一致命路径；a0=0 + custom halt 是 GOOD TRAP。
 
@@ -226,20 +226,12 @@ after_fs_off_fld:
     li      t0, 0x2000
     csrs    mstatus, t0
 
-    # ---- FLD 非对齐：load address misaligned(cause=4) ----
-    la      s2, misaligned_fld
-    la      t0, trap_count
-    lw      s3, 0(t0)
-    jr      s2
-after_misaligned_fld:
-    la      t0, trap_count
-    lw      t3, 0(t0)
-    addi    t3, t3, -1
-    bne     s3, t3, fail28
-    la      t0, trap_cause
-    lw      t0, 0(t0)
-    li      t1, 4
-    bne     t0, t1, fail29
+    # ---- FLD 非对齐（cacheable RAM）：正常完成并校验拼接数据 ----
+    fcvt.d.w f8, zero               # 清掉旧值，避免漏加载时误通过
+    fld     f8, 4(s0)
+    fsd     f8, 48(s0)
+    CHECK_WORD 48(s0), 0x89abcdef, 28
+    CHECK_WORD 52(s0), 0x01234567, 29
 
     li      a0, 0
     j       halt
@@ -282,10 +274,6 @@ fail26: li a0, 26
     j halt
 fail27: li a0, 27
     j halt
-fail28: li a0, 28
-    j halt
-fail29: li a0, 29
-    j halt
 
 fs_off_c_fld:
     c.fld   f8, 0(s0)
@@ -293,11 +281,8 @@ fs_off_c_fld:
 fs_off_fld:
     fld     f8, 0(s0)
     j       after_fs_off_fld
-misaligned_fld:
-    fld     f8, 4(s0)
-    j       after_misaligned_fld
 
-# M 模式 trap handler：只接受 illegal instruction 或 load misaligned；
+# M 模式 trap handler：只接受 FS=Off 的 illegal instruction；
 # 根据指令长度精确跳过故障指令（2 字节压缩 / 4 字节普通）。
     .balign 4
 trap_entry:
@@ -314,8 +299,6 @@ trap_entry:
 
     csrr    t0, mcause
     li      t1, 2
-    beq     t0, t1, trap_skip
-    li      t1, 4
     beq     t0, t1, trap_skip
     li      a0, 30
     j       halt

@@ -936,6 +936,38 @@ menu "CPU 与平台"
 
   endmenu
 
+  menu "非对齐访存 (LSU)"
+
+    config MISALIGNED_SUPPORT
+      bool "支持非对齐访存"
+      default y
+      help
+        关闭时保持原来的 cause 4/6 语义。
+
+    config MISALIGNED_GRANULE_BYTES
+      int "拆分粒度(字节)"
+      default 8
+      depends on MISALIGNED_SUPPORT
+      help
+        必须是 2 的幂。上限由 cache line 大小决定，不在 Kconfig 里写死。
+        大于总线宽度时，每个段会自动拆成多个按总线宽度对齐的请求。
+
+    config MISALIGNED_NC_SPLIT
+      bool "non-cacheable 也拆分"
+      default n
+      depends on MISALIGNED_SUPPORT
+      help
+        关闭时 non-cacheable 非对齐访问仍抛 cause 4/6，交给软件。
+
+    config MISALIGNED_MMIO_FAULT
+      bool "MMIO 非对齐报 access fault"
+      default y
+      depends on MISALIGNED_SUPPORT
+      help
+        关闭时 MMIO 非对齐按 cause 4/6 处理。打开时报 cause 5/7。
+
+  endmenu
+
   menu "写缓冲 (LSU)"
 
     config WBUF_DEPTH

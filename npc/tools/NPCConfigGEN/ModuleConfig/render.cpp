@@ -262,6 +262,15 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("NpcDCacheBlockSizeLog2", "DCACHE_BLOCK_SIZE_LOG2", 4);
     emitInt("NpcDCacheIndexBits", "DCACHE_INDEX_BITS", 5);
     emitInt("NpcWBufDepth", "WBUF_DEPTH", 4);
+    const auto emitBoolInt = [&](const char *name, const char *key,
+                                 bool fallback) {
+        out << "  val " << name << ": Int = "
+            << (asBool(values, key, fallback) ? 1 : 0) << "\n";
+    };
+    emitBoolInt("NpcMisalignedSupport", "MISALIGNED_SUPPORT", true);
+    emitInt("NpcMisalignedGranuleBytes", "MISALIGNED_GRANULE_BYTES", 8);
+    emitBoolInt("NpcMisalignedNCSplit", "MISALIGNED_NC_SPLIT", false);
+    emitBoolInt("NpcMisalignedMMIOFault", "MISALIGNED_MMIO_FAULT", true);
     emitInt("NpcBTBBits", "BTB_BITS", 4);
     emitInt("NpcBTBWays", "BTB_WAYS", 1);
     emitInt("NpcJalBTBBits", "JAL_BTB_BITS", 4);

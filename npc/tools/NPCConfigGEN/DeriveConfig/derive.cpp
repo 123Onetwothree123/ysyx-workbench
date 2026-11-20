@@ -21,6 +21,17 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
     if (internalWidth != 32 && internalWidth != 64)
         throw std::runtime_error("INTERNAL_BUS_WIDTH 只允许 32/64");
     values["INTERNAL_BUS_WIDTH_EFFECTIVE"] = std::to_string(internalWidth);
+    if (asBool(values, "MISALIGNED_SUPPORT", true)) {
+        const long long granule =
+            asInt(values, "MISALIGNED_GRANULE_BYTES", 8);
+        if (granule <= 0 || (granule & (granule - 1)) != 0)
+            throw std::runtime_error(
+                "MISALIGNED_GRANULE_BYTES 必须是 2 的幂");
+        const long long configuredBus =
+            asInt(values, "INTERNAL_BUS_WIDTH", internalWidth);
+        (void)configuredBus;
+        values["MISALIGNED_GRANULE_BYTES"] = std::to_string(granule);
+    }
     setConfigDefault(values, "ADDRESS_WIDTH",
                      xlen == 64 ? "64" : "32");
     values["APB_CPU_FREQ_MHZ"] = values["SYNTH_FREQ"];

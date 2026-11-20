@@ -77,6 +77,25 @@
       "cwd": "../../../bug-confirm"
     },
     {
+      "name": "scala.ysyx_26030103.mem.ysyx_26030103_LSUMisalignedTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.mem.ysyx_26030103_LSUMisalignedTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "mem"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
       "name": "scala.ysyx_26030103.mem.ysyx_26030103_LSUPMPTest",
       "tier": "functional",
       "command": [

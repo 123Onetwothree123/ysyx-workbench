@@ -72,6 +72,11 @@ case class ysyx_26030103_NPCConfig(
     ICacheIndexBits: Int = KconfigDefaults.NpcICacheIndexBits,
     DCacheBlockSizeLog2: Int = KconfigDefaults.NpcDCacheBlockSizeLog2,
     DCacheIndexBits: Int = KconfigDefaults.NpcDCacheIndexBits,
+    // 非对齐访存：拆分粒度与 non-cacheable/MMIO 策略。
+    MisalignedSupport: Boolean = KconfigDefaults.NpcMisalignedSupport != 0,
+    MisalignedGranuleBytes: Int = KconfigDefaults.NpcMisalignedGranuleBytes,
+    MisalignedNCSplit: Boolean = KconfigDefaults.NpcMisalignedNCSplit != 0,
+    MisalignedMMIOFault: Boolean = KconfigDefaults.NpcMisalignedMMIOFault != 0,
     // 自修改代码与 DMA 一致性模式。默认都保持既有行为/标准语义；
     // 只有显式选择的模式才会生成额外硬件或在 PMA 上改变可缓存性。
     ICacheCoherence: ysyx_26030103_ICacheCoherence =
@@ -220,6 +225,16 @@ case class ysyx_26030103_NPCConfig(
     if (InternalBusWidthFollowCpu) XLEN else InternalBusWidth
   require(EffectiveInternalBusWidth == 32 || EffectiveInternalBusWidth == 64,
     s"内部总线宽度只允许 32 或 64，收到 $EffectiveInternalBusWidth")
+  // 非对齐拆分粒度：2 的幂，且不超过总线字节数与 cache line。
+  require(!MisalignedSupport || MisalignedGranuleBytes > 0,
+    s"MISALIGNED_GRANULE_BYTES 必须为正，收到 $MisalignedGranuleBytes")
+  require(!MisalignedSupport ||
+      (MisalignedGranuleBytes & (MisalignedGranuleBytes - 1)) == 0,
+    s"MISALIGNED_GRANULE_BYTES 必须是 2 的幂，收到 $MisalignedGranuleBytes")
+  require(!MisalignedSupport ||
+      MisalignedGranuleBytes <= (1 << DCacheBlockSizeLog2),
+    s"拆分粒度(${MisalignedGranuleBytes}B)不能超过 cache line" +
+      s"(${1 << DCacheBlockSizeLog2}B)")
   // 仅用于配置日志：外部 SoC 不是 32 位时提示启用了边界桥。
   final val SocXLENNeedsAXIBridge: Boolean = EffectiveSocXLEN != 32
   // RV64 MMU 默认接入标准 Sv39/Sv48；显式 CUSTOM 页几何由 MMUProfile

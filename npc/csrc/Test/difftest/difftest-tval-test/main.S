@@ -1,8 +1,8 @@
     # RV64 trap tval/stval DiffTest 回归。
     #
-    # 不使用运行期 store 构造页表：页表作为镜像数据预置在 0x80004000，
-    # 因而可以在直接 NPC 上验证 illegal / 非对齐 / 页错误 的 mtval/stval
-    # 注入，而不会被无关的写通路问题干扰。
+    # 不使用运行期 store 构造页表：页表作为镜像数据预置在 0x80004000。
+    # cacheable 非对齐 load 按新策略拆分完成并校验数据；MMIO 的
+    # access fault tval 由 unit 的 LSUMisalignedTest 覆盖。
     .section .text
     .globl _start
 _start:
@@ -17,18 +17,11 @@ illegal_site:
     bne     s9, t0, fail1
     li      t0, 2
     bne     s10, t0, fail2
-    bne     s11, s0, fail3
+    li      t0, 0xffffffff
+    bne     s11, t0, fail3
 
-    # ---- M 模式：非对齐 load 的 mtval ----
-    li      s9, 0
-    li      s0, 0x80005001
-    lw      t1, 0(s0)
-    li      t0, 1
-    bne     s9, t0, fail4
-    li      t0, 4
-    bne     s10, t0, fail5
-    bne     s11, s0, fail6
-
+    # 非对齐 load 在新策略下不再 trap，其 tval 由 unit 的
+    # LSUMisalignedTest 覆盖；这里保留 illegal / page fault 的 tval 检查。
     # ---- 委托页错误到 S 模式 ----
     li      t0, 0x0000b000          # medeleg: cause 12/13/15
     csrw    medeleg, t0
@@ -109,7 +102,6 @@ fail2:  li a0, 2;  .word 0x0000000b
 fail3:  li a0, 3;  .word 0x0000000b
 fail4:  li a0, 4;  .word 0x0000000b
 fail5:  li a0, 5;  .word 0x0000000b
-fail6:  li a0, 6;  .word 0x0000000b
 fail7:  li a0, 7;  .word 0x0000000b
 fail8:  li a0, 8;  .word 0x0000000b
 fail9:  li a0, 9;  .word 0x0000000b
