@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -188,6 +189,43 @@ std::optional<TestCase> MakeTest(const Json &j, const fs::path &base) {
     return t;
 }
 
+struct Selection {
+    std::string tier;
+    std::string tag;
+    std::string name;
+    std::string arch;
+    int timeoutScale{1};
+    int retry{0};
+};
+
+std::string TrimQuotes(std::string s) {
+    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') return s.substr(1, s.size() - 2);
+    return s;
+}
+
+Selection LoadSelection(const fs::path &path) {
+    Selection sel;
+    std::ifstream in(path);
+    if (!in) return sel;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("CONFIG_TEST_", 0) != 0) continue;
+        auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        std::string key = line.substr(0, eq);
+        std::string val = TrimQuotes(line.substr(eq + 1));
+        if (key == "CONFIG_TEST_TIER_FUNCTIONAL" && val == "y") sel.tier = "functional";
+        else if (key == "CONFIG_TEST_TIER_PERFORMANCE" && val == "y") sel.tier = "performance";
+        else if (key == "CONFIG_TEST_TIER_ALL" && val == "y") sel.tier = "all";
+        else if (key == "CONFIG_TEST_TAG") sel.tag = val;
+        else if (key == "CONFIG_TEST_NAME") sel.name = val;
+        else if (key == "CONFIG_TEST_ARCH") sel.arch = val;
+        else if (key == "CONFIG_TEST_TIMEOUT_SCALE") sel.timeoutScale = std::max(1, std::atoi(val.c_str()));
+        else if (key == "CONFIG_TEST_RETRY") sel.retry = std::max(0, std::atoi(val.c_str()));
+    }
+    return sel;
+}
+
 std::vector<TestCase> Scan(const fs::path &root) {
     std::vector<TestCase> tests;
     std::error_code ec;
@@ -309,6 +347,7 @@ std::string Usage() {
     return "用法:\n"
            "  testreg list [--tier functional|performance] [--tag T] [--name S] [--json]\n"
            "  testreg run  [--tier functional|performance|all] [--tag T] [--name S] [--arch A] [--retry N]\n"
+           "  testreg menu\n"
            "  testreg clean\n"
            "环境变量 ARCH 可作为 --arch 的默认值。\n";
 }
@@ -321,11 +360,21 @@ int main(int argc, char **argv) {
         return 2;
     }
     const std::string cmd = argv[1];
-    std::string tier{"functional"}, tag, nameFilter, arch = std::getenv("ARCH") ? std::getenv("ARCH") : "";
-    bool allTiers = false;
+#ifndef TESTREG_TEST_DIR
+#define TESTREG_TEST_DIR "."
+#endif
+    const fs::path testDir = fs::weakly_canonical(fs::path{TESTREG_TEST_DIR});
+    const Selection sel = LoadSelection(testDir / ".config");
+    std::string tier{sel.tier.empty() ? "functional" : sel.tier};
+    std::string tag = sel.tag;
+    std::string nameFilter = sel.name;
+    std::string arch = !sel.arch.empty() ? sel.arch
+                      : (std::getenv("ARCH") ? std::getenv("ARCH") : "");
+    bool allTiers = (tier == "all");
     bool jsonOut = false;
     int jobs = 1;
-    int retryOverride = -1;
+    int retryOverride = sel.retry;
+    int timeoutScale = sel.timeoutScale;
     for (int i = 2; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : ""; };
@@ -340,10 +389,6 @@ int main(int argc, char **argv) {
         else if (a == "-h" || a == "--help") { std::print("{}", Usage()); return 0; }
         else { std::println(std::cerr, "未知参数: {}", a); return 2; }
     }
-#ifndef TESTREG_TEST_DIR
-#define TESTREG_TEST_DIR "."
-#endif
-    const fs::path testDir{TESTREG_TEST_DIR};
     const auto tests = Scan(testDir);
     if (jobs != 1) std::println(std::cerr, "警告：当前只实现串行执行，忽略 --jobs {}", jobs);
 
@@ -367,6 +412,26 @@ int main(int argc, char **argv) {
             std::println("");
         }
         return 0;
+    }
+    if (cmd == "menu") {
+        const fs::path kconfig = testDir / "Kconfig";
+        const fs::path cfg = testDir / ".config";
+        const fs::path npcRoot = testDir / ".." / "..";
+        const fs::path mconf = npcRoot / "tools" / "build" / "c_mconf";
+        if (!fs::exists(mconf)) {
+            std::println(std::cerr, "找不到 {}，请先在 npc 下构建 Kconfig 工具", mconf.string());
+            return 2;
+        }
+        ::setenv("KCONFIG_CONFIG", cfg.c_str(), 1);
+        ::setenv("TERM", "xterm", 1);
+        ::setenv("LC_ALL", "C.utf8", 1);
+        std::vector<std::string> args{mconf.string(), kconfig.string()};
+        std::vector<char *> argv2;
+        for (auto &a : args) argv2.push_back(a.data());
+        argv2.push_back(nullptr);
+        ::execv(argv2[0], argv2.data());
+        std::println(std::cerr, "menuconfig 启动失败");
+        return 2;
     }
     if (cmd == "clean") {
         const fs::path logDir = testDir / "build" / "test-logs";
@@ -403,6 +468,7 @@ int main(int argc, char **argv) {
         }
         TestCase tc = t;
         if (retryOverride >= 0) tc.retry = retryOverride;
+        if (timeoutScale > 1) tc.timeout *= timeoutScale;
         auto r = Run(tc, arch, logDir);
         switch (r) {
             case Result::Pass: std::println("PASS {}", t.name); ++pass; break;

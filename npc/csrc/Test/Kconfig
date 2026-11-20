@@ -1,0 +1,49 @@
+mainmenu "NPC 测试选择"
+
+choice
+	prompt "默认测试层级"
+	default TEST_TIER_FUNCTIONAL
+	help
+	  选择默认执行的测试层级；命令行 --tier 会覆盖这里。
+
+config TEST_TIER_FUNCTIONAL
+	bool "功能测试 functional"
+config TEST_TIER_PERFORMANCE
+	bool "性能测试 performance"
+config TEST_TIER_ALL
+	bool "全部 all"
+endchoice
+
+config TEST_TAG
+	string "标签过滤 tag"
+	default ""
+	help
+	  只跑带该 tag 的测试，空表示不过滤。
+	  这里填英文 tag，例如 software、scala、bench。
+
+config TEST_NAME
+	string "名字过滤 name"
+	default ""
+	help
+	  只跑名字包含该子串的测试，空表示不过滤。
+	  这里填英文测试名片段，例如 PLIC、printf。
+
+config TEST_ARCH
+	string "目标架构 ARCH"
+	default ""
+	help
+	  传给测试的 ARCH；空则使用环境变量 ARCH。
+
+config TEST_TIMEOUT_SCALE
+	int "超时倍数 timeout scale"
+	range 1 100
+	default 1
+	help
+	  所有测试超时时间乘以该倍数。
+
+config TEST_RETRY
+	int "失败重试次数 retry"
+	range 0 10
+	default 0
+	help
+	  失败后重试次数；命令行 --retry 会覆盖。
