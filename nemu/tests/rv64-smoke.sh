@@ -54,7 +54,7 @@ for test in rv64-mmu-test rv64-sv48-test; do
   grep -q "HIT GOOD TRAP" "$TEST_BUILD/$test.log"
   echo "  PASS $test"
 done
-for test in csr64 intr64 a64; do
+for test in csr64 intr64 a64 pmp-warl; do
   build_local_test "$test"
   "$NEMU64" -b --elf="$TEST_BUILD/$test.elf" "$TEST_BUILD/$test.bin" \
     >"$TEST_BUILD/$test.log" 2>&1

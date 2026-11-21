@@ -100,4 +100,14 @@ object SoCConfig {
       )
     case None => fallback
   }
+
+  def xlen(path: String): Int = {
+    val value = int(path, 32)
+    require(value == 32 || value == 64,
+      s"$path 必须是 32 或 64，当前值 $value")
+    value
+  }
+
+  def peripheralXlen(name: String): Int =
+    xlen(s"SOC.peripheral.${name.toLowerCase}_xlen")
 }

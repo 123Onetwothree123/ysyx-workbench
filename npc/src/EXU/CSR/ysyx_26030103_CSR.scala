@@ -434,9 +434,17 @@ class ysyx_26030103_CSR(
   // RV64 的 mcycle 直接返回完整 64 位；RV32 继续按 mcycle/mcycleh 选择。
   val mcycleReadData = if (XLEN == 64) mcycle.io.rdataFull else mcycle.io.rdata
   val mcyclehReadData = mcycle.io.rdataFull(63, 32)
+  // CSR 指令在 EXU 执行前会等更老的指令离开 MEM 级，但 WBU 里仍可能有
+  // 一条更老的指令在本拍退休。它的自增要到本拍时钟沿才写入 minstret，
+  // 组合读口若直接返回寄存器值就会少算这一条。该退休事件已过滤掉写
+  // minstret 的指令自身，且 mcountinhibit.IR 置位时不会自增，因此读值
+  // 只在真正会发生自增的拍补一。
+  val MinstretRetireIncrement =
+    io.MinstretRetireCommit && !mcountinhibit(2)
+  val MinstretReadValue = minstret + MinstretRetireIncrement.asUInt
   val minstretReadData =
-    if (XLEN == 64) minstret else minstret(31, 0)
-  val minstrethReadData = minstret(63, 32)
+    if (XLEN == 64) MinstretReadValue else MinstretReadValue(31, 0)
+  val minstrethReadData = MinstretReadValue(63, 32)
   // TIME 来自 CLINT 的 mtime；TM=1 时改用保持寄存器，使 time 停止递增。
   // RV64 直接返回完整 64 位；RV32 的 time 返回低 32 位，timeh 返回高 32 位。
   val timeValue = Mux(mcountinhibit(1), timeCounter, io.Mtime)
@@ -891,18 +899,20 @@ class ysyx_26030103_CSR(
   // 普通 load/store 不在 EXU 访问 CSR，MDU 后续项也可能在队列中等待。
   // 同步异常/中断和被 MEM 故障取消的指令 Retire=0，因此不会计数。
   // minstret/minstreth 是可写计数器；写口优先于本拍退休自增。
+  // CSRRS/CSRRC 的旧值同样取 MinstretReadValue，使同拍退休并入写入值，
+  // 而不会被写口吞掉。
   // MinstretWriteCommit 随指令带到 WBU：该指令自身退休时不得再自增。
   val minstretWriteEnable = CSRWriteEnable &&
     (isCSRAddress(CSRMinstret) || isCSRAddress(CSRMinstreth))
   io.MinstretWriteCommit := minstretWriteEnable
   when(minstretWriteEnable) {
     if (XLEN == 64) {
-      minstret := CSRWriteData(minstret)
+      minstret := CSRWriteData(MinstretReadValue)
     } else {
       // RV32 的 minstreth 是 64 位计数器的独立高半字；CSRRS/CSRRC 必须
       // 以高半字作为 old value 计算，不能复用低半字。
-      val writtenLow = CSRWriteData(minstret(31, 0))
-      val writtenHigh = CSRWriteData(minstret(63, 32))
+      val writtenLow = CSRWriteData(MinstretReadValue(31, 0))
+      val writtenHigh = CSRWriteData(MinstretReadValue(63, 32))
       minstret := Cat(
         Mux(isCSRAddress(CSRMinstreth), writtenHigh(31, 0), minstret(63, 32)),
         Mux(isCSRAddress(CSRMinstret), writtenLow(31, 0), minstret(31, 0))
@@ -1128,7 +1138,17 @@ class ysyx_26030103_CSR(
     )
   }
   for (index <- 0 until 16) {
-    addCSR((0x3b0 + index).U(12.W), pmpaddrReg(index), csrOn(0x3b0 + index))
+    // pmpaddr 读回按当前 A 归一化：NAPOT 最低区域补尾 1，其余模式低位为 0
+    val entryConfig = pmpcfgReg(index / PMPEntriesPerConfig)(
+      8 * (index % PMPEntriesPerConfig) + 4,
+      8 * (index % PMPEntriesPerConfig) + 3)
+    val lowZeroMask =
+      ((BigInt(1) << (profile.PMPGranularity - 2)) - 1).U(XLEN.W)
+    val napotTail =
+      ((BigInt(1) << math.max(profile.PMPGranularity - 3, 0)) - 1).U(XLEN.W)
+    val readBack = Mux(entryConfig === 3.U,
+      pmpaddrReg(index) | napotTail, pmpaddrReg(index) & ~lowZeroMask)
+    addCSR((0x3b0 + index).U(12.W), readBack, csrOn(0x3b0 + index))
   }
   val CSRRawReadData =
     if (CSRMap.isEmpty) 0.U(XLEN.W)

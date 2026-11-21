@@ -31,7 +31,8 @@ class ysyx_26030103_MMU(
   private val PTEWidth = profile.PTESizeBytes * 8
   // TLB 超级页的 shift/tag 由 profile 几何推导，fillLevel 使用统一
   // 3 位编码，因此不再限制 4 级；上限由 profile 的 8 级约束保证。
-  require(!profile.TLBSuperpage || profile.superpage, "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
+  require(!profile.TLBSuperpage || profile.superpageSupported,
+    "TLB_SUPERPAGE 需要 MMU_SUPERPAGE")
   require(profile.PTWOutstanding >= 1 && profile.PTWOutstanding <= 16, "MMU_PTW_OUTSTANDING 必须在 1..16")
   require(profile.PTWBusOutstanding >= 0 && profile.PTWBusOutstanding <= 16, "MMU_PTW_BUS_OUTSTANDING 必须在 0..16")
   require(profile.refillPorts >= 1, "TLB refill 端口数必须 >= 1")
@@ -144,7 +145,7 @@ class ysyx_26030103_MMU(
       replacement = profile.TLBReplacement,
       adMode = profile.adMode,
       storage = profile.TLBStorage,
-      superpage = profile.TLBSuperpage,
+      superpage = profile.TLBSuperpage || profile.superpageSupported,
       pageBits = profile.pageBits,
       levels = profile.levels,
       indexBits = profile.indexBitsPerLevel,
@@ -181,12 +182,12 @@ class ysyx_26030103_MMU(
           cacheEnable = profile.PTWCache,
           cacheEntries = profile.PTWCacheEntries,
           cacheWays = profile.PTWCacheWays,
-          superpage = profile.superpage,
+          superpage = profile.superpageSupported,
           PTEConfig = profile.PTEConfig,
           pageBits = profile.pageBits,
           levels = profile.levels,
           tableEntries = profile.tableEntries,
-          fillSuperpage = profile.TLBSuperpage,
+          fillSuperpage = profile.TLBSuperpage || profile.superpageSupported,
           PTESizeBytes = profile.PTESizeBytes,
           inOrder = profile.PTWOrder == "in_order",
           ResponsePorts = profile.refillPorts,
@@ -205,12 +206,12 @@ class ysyx_26030103_MMU(
           cacheEnable = profile.PTWCache,
           cacheEntries = profile.PTWCacheEntries,
           cacheWays = profile.PTWCacheWays,
-          superpage = profile.superpage,
+          superpage = profile.superpageSupported,
           PTEConfig = profile.PTEConfig,
           pageBits = profile.pageBits,
           levels = profile.levels,
           tableEntries = profile.tableEntries,
-          fillSuperpage = profile.TLBSuperpage,
+          fillSuperpage = profile.TLBSuperpage || profile.superpageSupported,
           PTESizeBytes = profile.PTESizeBytes,
           inOrder = profile.PTWOrder == "in_order",
           ResponsePorts = profile.refillPorts,
@@ -265,6 +266,7 @@ class ysyx_26030103_MMU(
     TLB.io.FillASID  := 0.U
     TLB.io.FillPTE   := 0.U
     TLB.io.fillLevel := 0.U
+    TLB.io.fillNapot := false.B
     TLB.io.fillExtra.foreach { ports =>
       for (port <- ports) {
         port.valid := false.B
@@ -272,6 +274,7 @@ class ysyx_26030103_MMU(
         port.ASID  := 0.U
         port.PTE   := 0.U
         port.level := 0.U
+        port.napot := false.B
       }
     }
   }
@@ -280,18 +283,21 @@ class ysyx_26030103_MMU(
     val ASID  = PTWResponsePayloadVec(port).FillASID
     val PTE   = PTWResponsePayloadVec(port).FillPTE
     val level = PTWResponsePayloadVec(port).fillLevel
+    val napot = PTWResponsePayloadVec(port).fillNapot
     if (port == 0) {
       TLB.io.fillValid := valid
       TLB.io.fillVirtualAddress := virtualAddress
       TLB.io.FillASID  := ASID
       TLB.io.FillPTE   := PTE
       TLB.io.fillLevel := level
+      TLB.io.fillNapot := napot
     } else {
       TLB.io.fillExtra.get(port - 1).valid := valid
       TLB.io.fillExtra.get(port - 1).vaddr := virtualAddress
       TLB.io.fillExtra.get(port - 1).ASID  := ASID
       TLB.io.fillExtra.get(port - 1).PTE   := PTE
       TLB.io.fillExtra.get(port - 1).level := level
+      TLB.io.fillExtra.get(port - 1).napot := napot
     }
   }
 

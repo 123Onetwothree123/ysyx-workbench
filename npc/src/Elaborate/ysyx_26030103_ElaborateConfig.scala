@@ -97,6 +97,9 @@ object ysyx_26030103_ElaborateConfig {
       config.int("platform.address_width", if (XLEN == 64) 64 else 32)
     val SOCXLENFollowCPU = config.bool("isa.soc_xlen_follow_cpu", false)
     val SOCXLEN = config.int("isa.soc_xlen", ysyx_26030103_KconfigDefaults.NpcSocXlen)
+    val APBXLENFollowSOC = config.bool("SOC.apb_xlen_follow_soc", true)
+    val APBXLEN =
+      config.int("SOC.apb_xlen", ysyx_26030103_KconfigDefaults.NpcApbXlen)
     val internalBusWidthFollowCPU =
       config.bool("isa.internal_bus_width_follow_cpu", true)
     val internalBusWidth =
@@ -139,6 +142,8 @@ object ysyx_26030103_ElaborateConfig {
       AddressWidth = addressWidth,
       SocXLENFollowCpu = SOCXLENFollowCPU,
       SocXLEN = SOCXLEN,
+      ApbXLENFollowSoc = APBXLENFollowSOC,
+      ApbXLEN = APBXLEN,
       InternalBusWidthFollowCpu = internalBusWidthFollowCPU,
       InternalBusWidth = internalBusWidth,
       UseM = useM,

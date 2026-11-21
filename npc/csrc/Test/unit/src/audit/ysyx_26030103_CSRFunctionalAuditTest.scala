@@ -340,16 +340,17 @@ class ysyx_26030103_CSRFunctionalAuditTest
     val PMPProfile = profile.copy(PMPEnabled = true)
     simulate(new ysyx_26030103_CSRAuditHarness(PMPProfile)) { dut =>
       setup(dut)
-      // 先写入 pmpaddr0，再锁定 entry0（L=1, A=NAPOT, RWX）。
-      writeCSR(dut, PMPADDR0, BigInt("200001ff", 16))
-      peekCSR(dut, PMPADDR0) should be(BigInt("200001ff", 16))
+      // 先写入 pmpaddr0，再锁定 entry0（L=1, A=NAPOT, RWX）
+      writeCSR(dut, PMPADDR0, BigInt("200001f0", 16))
+      peekCSR(dut, PMPADDR0) should be(BigInt("200001f0", 16))
       writeCSR(dut, PMPCFG0, BigInt(0x9f))
       peekCSR(dut, PMPCFG0) should be(BigInt(0x9f))
       writeCSR(dut, PMPCFG0, BigInt(0x0f))
       peekCSR(dut, PMPCFG0) should be(BigInt(0x9f))
 
-      writeCSR(dut, PMPADDR0, BigInt("300001ff", 16))
-      peekCSR(dut, PMPADDR0) should be(BigInt("200001ff", 16))
+      // 锁定后写入被忽略；A=NAPOT 时读回补最小区域尾 1
+      writeCSR(dut, PMPADDR0, BigInt("300001f0", 16))
+      peekCSR(dut, PMPADDR0) should be(BigInt("200001f7", 16))
     }
   }
 }

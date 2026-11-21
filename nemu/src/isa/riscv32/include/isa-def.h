@@ -82,6 +82,8 @@ https://ysyx.oscc.cc/docs/ics-pa/3.2.html
   vaddr_t mtvec; // 存放异常入口地址的
   word_t mscratch; // 陷入时存放当前内核栈顶，并暂存陷入前的 sp
   word_t satp;   // Sv32 页目录基地址与分页使能位（bit 31 为 MODE）
+  word_t Menvcfg;
+  word_t Menvcfgh;
   word_t privilege; // 当前特权级：0 = U, 1 = S, 3 = M
   bool INTR;        // 外部中断请求引脚，目前由时钟中断拉高
 } MUXDEF(CONFIG_RV64, riscv64_CPU_state, riscv32_CPU_state);
@@ -183,6 +185,20 @@ static inline word_t riscv_mstatus_warl(word_t value)
 #define PMP_CFG_ENTRY_SHIFT(i) (((i) % PMP_CFG_ENTRIES_PER_REG) * 8)
 #define PMP_CFG_REG_INDEX(i) \
   MUXDEF(CONFIG_RV64, (((i) < 8) ? 0 : 2), ((i) / PMP_CFG_ENTRIES_PER_REG))
+
+#ifdef CONFIG_PMP_GRANULARITY_LOG2
+#define PMP_GRANULARITY_LOG2 CONFIG_PMP_GRANULARITY_LOG2
+#else
+#define PMP_GRANULARITY_LOG2 6
+#endif
+#define PMP_ADDR_BITS MUXDEF(CONFIG_RV64, 54, 32)
+#define PMP_ADDR_MASK ((word_t)(((uint64_t)1 << PMP_ADDR_BITS) - 1))
+#define PMP_TOR_LOW_BITS (PMP_GRANULARITY_LOG2 > 2 ? PMP_GRANULARITY_LOG2 - 2 : 0)
+#define PMP_TOR_LOW_MASK ((word_t)(((uint64_t)1 << PMP_TOR_LOW_BITS) - 1))
+#define PMP_NAPOT_READ_ONES \
+  ((word_t)(PMP_GRANULARITY_LOG2 > 3 ? (((uint64_t)1 << (PMP_GRANULARITY_LOG2 - 3)) - 1) : 0))
+#define PMP_NA4_UNSUPPORTED (PMP_GRANULARITY_LOG2 > 2)
+#define MENVCFG_PBMTE ((word_t)1 << MUXDEF(CONFIG_RV64, 62, 30))
 
 // decode
 typedef struct

@@ -254,6 +254,7 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("NpcFPULen", "FPU_FLEN", 64);
     emitInt("NpcAddressWidth", "ADDRESS_WIDTH", 32);
     emitInt("NpcSocXlen", "SOC_XLEN_EFFECTIVE", 32);
+    emitInt("NpcApbXlen", "APB_XLEN_EFFECTIVE", 32);
     emitInt("NpcInternalBusWidth", "INTERNAL_BUS_WIDTH_EFFECTIVE", 32);
     emitInt("NpcBlockSizeLog2", "CACHE_BLOCK_SIZE_LOG2", 4);
     emitInt("NpcIndexBits", "CACHE_INDEX_BITS", 5);

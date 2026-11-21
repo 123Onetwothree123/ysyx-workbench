@@ -9,8 +9,10 @@ import org.scalatest.matchers.should.Matchers
   *
   * 覆盖 NPC 当前实际使用的访问形状：4 字节单拍、RV64 LD/SD 的
   * 8 字节两拍（32 位总线上为 ARLEN=1/AWSIZE=2），以及 64 位 SoC
-  * 入站 DMA 的 8 字节单拍（size=3）拆成两笔 4 字节事务。地址越界
-  * 必须在桥内返回 DECERR，且下游看不到任何 VALID。
+  * 入站 DMA 的 8 字节单拍（size=3）拆成两笔 4 字节事务。64->32 的
+  * 窄写必须按 WSTRB 的真实字节位置拆成 AWSIZE=0 的事务，PSRAM 等
+  * 按地址字节偏移写入的下游才能写对位置。地址越界必须在桥内返回
+  * DECERR，且下游看不到任何 VALID。
   */
 class ysyx_26030103_AXI5WidthBridgeTest extends AnyFlatSpec with Matchers {
   private def bool(Value: Bool): Boolean = Value.peek().litValue == 1
@@ -135,6 +137,37 @@ class ysyx_26030103_AXI5WidthBridgeTest extends AnyFlatSpec with Matchers {
       UpstreamDataWidth = UpData,
       DownstreamDataWidth = DownData
     )
+
+  /** 等待并检查一笔下游单拍写，再返回 OKAY B。
+    *
+    * 64->32 窄写会按有效字节拆成多笔事务，每笔都必须在 B 返回后才发下一笔；
+    * 这里固定 BID=1，与 offerAw/offerW 使用的事务 ID 一致。
+    */
+  private def completeDownstreamWrite(
+      Dut: ysyx_26030103_AXI5WidthBridge,
+      Address: BigInt,
+      Data: BigInt,
+      Strobe: BigInt,
+      Size: Int
+  ): Unit = {
+    stepUntil(
+      Dut.clock,
+      bool(Dut.io.out.AW.AWVALID) && bool(Dut.io.out.W.WVALID)
+    )
+    big(Dut.io.out.AW.AWADDR) should be(Address)
+    big(Dut.io.out.AW.AWLEN) should be(0)
+    big(Dut.io.out.AW.AWSIZE) should be(Size)
+    big(Dut.io.out.W.WDATA) should be(Data)
+    big(Dut.io.out.W.WSTRB) should be(Strobe)
+    bool(Dut.io.out.W.WLAST) should be(true)
+    Dut.clock.step()
+
+    Dut.io.out.B.BVALID.poke(true.B)
+    Dut.io.out.B.BID.poke(1.U(4.W))
+    Dut.io.out.B.BRESP.poke(0.U(2.W))
+    Dut.clock.step()
+    Dut.io.out.B.BVALID.poke(false.B)
+  }
 
   "AXI5WidthBridge" should "32->64 单拍写落到高半区并保持 WSTRB/RLAST 语义" in {
     simulate(newBridge(64, 64, 32, 64)) { dut =>
@@ -777,45 +810,114 @@ class ysyx_26030103_AXI5WidthBridgeTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  it should "64->32 非对齐 INCR 首拍只拆有效字节，后续拍从 size 对齐地址继续" in {
+  it should "64->32 单字节写按 WSTRB 所在字节发送真实地址" in {
+    simulate(newBridge(64, 32, 64, 32)) { dut =>
+      resetDut(dut)
+      // 地址 0x1001：字节在 64 位 beat 的 lane1，下游必须看到 0x1001，
+      // 且 WSTRB 保持 lane1（AWSIZE=0 时 lane 必须等于地址的字节偏移）。
+      offerAw(dut, 0x1001L, 0, 0)
+      offerW(dut, 0x0000aa00L, 0x02L, true)
+      completeDownstreamWrite(dut, 0x1001L, 0x0000aa00L, 0x02L, 0)
+      stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
+      big(dut.io.in.B.BID) should be(1)
+      dut.clock.step()
+
+      // 地址 0x1005：字节在 64 位 beat 的上半区，下游地址仍必须是 0x1005。
+      offerAw(dut, 0x1005L, 0, 0)
+      offerW(dut, BigInt("0000bb0000000000", 16), 0x20L, true)
+      completeDownstreamWrite(dut, 0x1005L, 0x0000bb00L, 0x02L, 0)
+      stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
+      big(dut.io.in.B.BID) should be(1)
+      dut.clock.step()
+
+      // 地址 0x1007 是 chunk 内最后一个有效字节；B 之后必须前进到下一
+      // chunk，而不是把字节下标 3+1 回绕成 0 后无限重发。
+      offerAw(dut, 0x1007L, 0, 0)
+      offerW(dut, BigInt("cc00000000000000", 16), 0x80L, true)
+      completeDownstreamWrite(dut, 0x1007L, 0xcc000000L, 0x08L, 0)
+      stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
+      big(dut.io.in.B.BID) should be(1)
+      dut.clock.step()
+    }
+  }
+
+  it should "64->32 半字写逐字节发送并保持字节顺序" in {
+    simulate(newBridge(64, 32, 64, 32)) { dut =>
+      resetDut(dut)
+      // SH 0xbbcc 写到 0x1002：先发地址 0x1002/lane2，再发 0x1003/lane3。
+      offerAw(dut, 0x1002L, 0, 1)
+      offerW(dut, 0xbbcc0000L, 0x0cL, true)
+      completeDownstreamWrite(dut, 0x1002L, 0xbbcc0000L, 0x04L, 0)
+      completeDownstreamWrite(dut, 0x1003L, 0xbbcc0000L, 0x08L, 0)
+      stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
+      big(dut.io.in.B.BID) should be(1)
+      big(dut.io.in.B.BRESP) should be(0)
+      dut.clock.step()
+    }
+  }
+
+  it should "64->32 稀疏 WSTRB 只发送有效字节" in {
+    simulate(newBridge(64, 32, 64, 32)) { dut =>
+      resetDut(dut)
+      // WSTRB=0b0101：lane0 与 lane2 有效，lane1 不能产生空事务。
+      offerAw(dut, 0x1000L, 0, 3)
+      offerW(dut, 0x00aa00bbL, 0x05L, true)
+      completeDownstreamWrite(dut, 0x1000L, 0x00aa00bbL, 0x01L, 0)
+      completeDownstreamWrite(dut, 0x1002L, 0x00aa00bbL, 0x04L, 0)
+      // 后半块 WSTRB=0，不能发下游 AW/W，也不能再等一笔 B。
+      stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
+      big(dut.io.in.B.BID) should be(1)
+      big(dut.io.in.B.BRESP) should be(0)
+      dut.clock.step()
+    }
+  }
+
+  it should "64->32 8B 写跳过 WSTRB=0 的 4B 块且不等待多余 B" in {
+    simulate(newBridge(64, 32, 64, 32)) { dut =>
+      resetDut(dut)
+      // 只写低 4 字节：chunk0 发一笔 4B，chunk1 的 WSTRB=0 必须直接跳过。
+      offerAw(dut, 0x2000L, 0, 3)
+      offerW(dut, 0x0000000055667788L, 0x0fL, true)
+      completeDownstreamWrite(dut, 0x2000L, 0x55667788L, 0x0fL, 2)
+      stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
+      big(dut.io.in.B.BID) should be(1)
+      big(dut.io.in.B.BRESP) should be(0)
+      dut.clock.step()
+
+      // 只写高 4 字节：chunk0 跳过，chunk1 从 0x3004 发一笔。
+      offerAw(dut, 0x3000L, 0, 3)
+      offerW(dut, BigInt("1122334400000000", 16), 0xf0L, true)
+      completeDownstreamWrite(dut, 0x3004L, 0x11223344L, 0x0fL, 2)
+      stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
+      big(dut.io.in.B.BID) should be(1)
+      big(dut.io.in.B.BRESP) should be(0)
+      dut.clock.step()
+
+      // 只写最高字节：chunk0 跳过，chunk1 内第 3 个字节发到 0x4007，
+      // 覆盖 chunk1 部分有效且字节下标到达边界的情况。
+      offerAw(dut, 0x4000L, 0, 3)
+      offerW(dut, BigInt("8800000000000000", 16), 0x80L, true)
+      completeDownstreamWrite(dut, 0x4007L, 0x88000000L, 0x08L, 0)
+      stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
+      big(dut.io.in.B.BID) should be(1)
+      big(dut.io.in.B.BRESP) should be(0)
+      dut.clock.step()
+    }
+  }
+
+  it should "64->32 非对齐 INCR 首拍按字节拆分，后续拍从 size 对齐地址继续" in {
     simulate(newBridge(64, 32, 64, 32)) { dut =>
       resetDut(dut)
       // 首拍地址 0x1002/size=2 只传 0x1002..0x1003，第二拍从 0x1004 开始。
       offerAw(dut, 0x1002L, 1, 2)
       offerW(dut, 0xaabb0000L, 0x0cL, false)
-
-      stepUntil(
-        dut.clock,
-        bool(dut.io.out.AW.AWVALID) && bool(dut.io.out.W.WVALID)
-      )
-      big(dut.io.out.AW.AWADDR) should be(0x1000L)
-      big(dut.io.out.W.WDATA) should be(0xaabb0000L)
-      big(dut.io.out.W.WSTRB) should be(0x0cL)
-      bool(dut.io.out.W.WLAST) should be(true)
-      dut.clock.step()
-
-      dut.io.out.B.BVALID.poke(true.B)
-      dut.io.out.B.BID.poke(1.U(4.W))
-      dut.clock.step()
-      dut.io.out.B.BVALID.poke(false.B)
+      completeDownstreamWrite(dut, 0x1002L, 0xaabb0000L, 0x04L, 0)
+      completeDownstreamWrite(dut, 0x1003L, 0xaabb0000L, 0x08L, 0)
 
       offerW(dut, BigInt("1122334400000000", 16), 0xf0L, true)
-      stepUntil(
-        dut.clock,
-        bool(dut.io.out.AW.AWVALID) && bool(dut.io.out.W.WVALID)
-      )
-      big(dut.io.out.AW.AWADDR) should be(0x1004L)
-      big(dut.io.out.W.WDATA) should be(BigInt("11223344", 16))
-      big(dut.io.out.W.WSTRB) should be(0xfL)
-      bool(dut.io.out.W.WLAST) should be(true)
-      dut.clock.step()
+      completeDownstreamWrite(dut, 0x1004L, 0x11223344L, 0xfL, 2)
 
-      dut.io.out.B.BVALID.poke(true.B)
-      dut.io.out.B.BID.poke(1.U(4.W))
-      dut.clock.step()
-      dut.io.out.B.BVALID.poke(false.B)
-
-      // 两拍正好两笔下游事务；若首拍规则算错会继续等第三笔 B。
+      // 两拍正好三笔下游事务；若首拍规则算错会继续等第四笔 B。
       stepUntil(dut.clock, bool(dut.io.in.B.BVALID))
       big(dut.io.in.B.BID) should be(1)
       big(dut.io.in.B.BRESP) should be(0)

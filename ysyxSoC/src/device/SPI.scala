@@ -30,8 +30,15 @@ class flash extends BlackBox {
   val io = IO(Flipped(new SPIIO(1)))
 }
 
-class APBSPI(address: Seq[AddressSet])(implicit p: Parameters)
+class APBSPI(
+    address: Seq[AddressSet],
+    val xlen: Int = Config.peripheralXlen("spi")
+)(implicit p: Parameters)
     extends LazyModule {
+  private val busBytes = APBConfig.apbBytes
+  private val coreBytes = 4 // opencores SPI 固定 32 位 Wishbone 接口
+  APBConfig.checkXlen(xlen, "spi")
+
   val node = APBSlaveNode(
     Seq(
       APBSlavePortParameters(
@@ -43,7 +50,7 @@ class APBSPI(address: Seq[AddressSet])(implicit p: Parameters)
             supportsWrite = true
           )
         ),
-        beatBytes = 4
+        beatBytes = busBytes
       )
     )
   )
@@ -58,14 +65,28 @@ class APBSPI(address: Seq[AddressSet])(implicit p: Parameters)
     mspi.io.reset := reset
     // mspi.io.in <> in
     spi_bundle <> mspi.io.spi
+
+    // SPI 内部始终按 32 位 APB 工作, 64 位总线从这里适配
+    val apb = Wire(Flipped(new APBBundle(
+      APBBundleParameters(addrBits = in.paddr.getWidth, dataBits = coreBytes * 8))))
+    if (busBytes == coreBytes) {
+      apb <> in
+    } else {
+      val bridge = Module(new APBWidthConverter(
+        in.paddr.getWidth, busBytes * 8, coreBytes * 8))
+      bridge.io.clock := clock
+      bridge.io.reset := reset
+      bridge.io.in <> in
+      apb <> bridge.io.out
+    }
     // 自己写的
     val SPI_BASE = 0x10001000L.U
     val SPI_MASK = 0x00000fffL.U
     val FLASH_BASE = 0x30000000L.U
     val FLASH_MASK = 0x0fffffffL.U
-    val IsSpiRegSpace = (in.paddr & ~SPI_MASK) === SPI_BASE
-    val IsFlashSpace = (in.paddr & ~FLASH_MASK) === FLASH_BASE
-    val XIPReq = in.psel && !in.penable && IsFlashSpace
+    val IsSpiRegSpace = (apb.paddr & ~SPI_MASK) === SPI_BASE
+    val IsFlashSpace = (apb.paddr & ~FLASH_MASK) === FLASH_BASE
+    val XIPReq = apb.psel && !apb.penable && IsFlashSpace
     val XIPStates = Enum(10)
     val XIPIdle = XIPStates(0)
     val XIPDiv  = XIPStates(1)
@@ -88,9 +109,9 @@ class APBSPI(address: Seq[AddressSet])(implicit p: Parameters)
     val FlashWordAddr = Cat(XIPAddress(23, 2), 0.U(2.W))
     val XIPAddressBitRev = Reverse(FlashWordAddr)
 
-    when(XIPReq && (!in.pwrite)) {
+    when(XIPReq && (!apb.pwrite)) {
       XIPActive := true.B
-      XIPAddress := in.paddr
+      XIPAddress := apb.paddr
       XIPStep := XIPDiv
       XIPPhase := false.B
     }
@@ -165,31 +186,31 @@ class APBSPI(address: Seq[AddressSet])(implicit p: Parameters)
     val RxReversed = Reverse(XIPRxData)
     val XIPResult =
       Cat(RxReversed(7, 0), RxReversed(15, 8), RxReversed(23, 16), RxReversed(31, 24))
-    mspi.io.in.paddr := Mux(XIPActive, XIPPaddr, in.paddr)
-    mspi.io.in.pwrite := Mux(XIPActive, XIPPwrite, in.pwrite)
-    mspi.io.in.pwdata := Mux(XIPActive, XIPPwdata, in.pwdata)
-    mspi.io.in.pstrb := Mux(XIPActive, "hF".U, in.pstrb)
-    mspi.io.in.pprot := in.pprot
-    mspi.io.in.psel := Mux(XIPActive, XIPPsel, in.psel && IsSpiRegSpace)
+    mspi.io.in.paddr := Mux(XIPActive, XIPPaddr, apb.paddr)
+    mspi.io.in.pwrite := Mux(XIPActive, XIPPwrite, apb.pwrite)
+    mspi.io.in.pwdata := Mux(XIPActive, XIPPwdata, apb.pwdata)
+    mspi.io.in.pstrb := Mux(XIPActive, "hF".U, apb.pstrb)
+    mspi.io.in.pprot := apb.pprot
+    mspi.io.in.psel := Mux(XIPActive, XIPPsel, apb.psel && IsSpiRegSpace)
     mspi.io.in.penable := Mux(
       XIPActive,
       XIPPenable,
-      in.penable && IsSpiRegSpace
+      apb.penable && IsSpiRegSpace
     )
-    val WriteError = IsFlashSpace && in.psel && in.pwrite
+    val WriteError = IsFlashSpace && apb.psel && apb.pwrite
     val WriteErrorActive = RegInit(false.B)
-    when(WriteError && !in.penable) {
+    when(WriteError && !apb.penable) {
       WriteErrorActive := true.B
     }
-    when(in.pready) {
+    when(apb.pready) {
       WriteErrorActive := false.B
     }
-    in.pready := Mux(
+    apb.pready := Mux(
       WriteErrorActive,
       true.B,
       Mux(XIPDoneReg, true.B, Mux(IsSpiRegSpace, mspi.io.in.pready, false.B))
     )
-    in.prdata := Mux(XIPDoneReg, XIPResult, mspi.io.in.prdata)
-    in.pslverr := Mux(WriteErrorActive, true.B, mspi.io.in.pslverr)
+    apb.prdata := Mux(XIPDoneReg, XIPResult, mspi.io.in.prdata)
+    apb.pslverr := Mux(WriteErrorActive, true.B, mspi.io.in.pslverr)
   }
 }

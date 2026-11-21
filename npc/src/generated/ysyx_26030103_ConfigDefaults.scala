@@ -38,6 +38,7 @@ object ysyx_26030103_KconfigDefaults {
   val NpcFPULen: Int = 64
   val NpcAddressWidth: Int = 64
   val NpcSocXlen: Int = 64
+  val NpcApbXlen: Int = 64
   val NpcInternalBusWidth: Int = 64
   val NpcBlockSizeLog2: Int = 4
   val NpcIndexBits: Int = 5

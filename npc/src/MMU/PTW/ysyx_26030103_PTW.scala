@@ -44,6 +44,8 @@ class ysyx_26030103_PTWResponse(
   // 0=基础页，k=第 k 级超级页；TLB 用 pageBits + k*indexBits 推导 shift。
   // 3 位统一编码支持最多 8 级页表，不再把 CUSTOM 限制在 4 级。
   val fillLevel = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
+  // 64KiB Svnapot 页
+  val fillNapot = Bool()
 }
 
 // PTW 内部响应荷载；`ID`/`fillLevel` 由独立寄存器在输出级拼接。
@@ -180,6 +182,7 @@ class ysyx_26030103_PTW(
     0.U.asTypeOf(new ysyx_26030103_PTWResponsePayload(XLEN, addressWidth, PTEWidth))
   )
   val fillLevelReg = RegInit(0.U(ysyx_26030103_MMUProfile.LevelBits.W))
+  val fillNapotReg = RegInit(false.B)
   val writeDataReg = RegInit(0.U(PTEWidth.W))
 
   class CacheEntry extends Bundle {
@@ -295,7 +298,23 @@ class ysyx_26030103_PTW(
     */
   def rawReservedFault(raw: UInt): Bool =
     if (XLEN <= 32 || PTEWidth <= 32 || PTEConfig.PPNHigh + 1 >= PTEWidth) false.B
-    else raw(PTEWidth - 1, PTEConfig.PPNHigh + 1) =/= 0.U
+    else {
+      val high = raw(PTEWidth - 1, PTEConfig.PPNHigh + 1)
+      val highWithoutN = raw(PTEWidth - 2, PTEConfig.PPNHigh + 1)
+      Mux(napotLeaf(raw), highWithoutN =/= 0.U, high =/= 0.U)
+    }
+  // 64KiB Svnapot：N=1、末级、PPN[3:0]=1000、RWX 至少一位
+  def napotLeaf(raw: UInt): Bool = {
+    if (XLEN <= 32 || PTEWidth <= 32 || pageBits != 12 ||
+        PTEConfig.PPNHigh >= PTEWidth - 1) false.B
+    else {
+      val flags = Cat(raw(PTEConfig.executeBit), raw(PTEConfig.writeBit),
+        raw(PTEConfig.readBit))
+      raw(PTEWidth - 1) && levelReg === (levels - 1).U &&
+        raw(PTEConfig.PPNLow + 3, PTEConfig.PPNLow) === 8.U &&
+        flags =/= 0.U
+    }
+  }
   // 超级页 PPN 的低位必须按层级对齐。
   def superpageMisaligned(PTE: UInt): Bool = {
     if (levels <= 1) false.B
@@ -370,12 +389,19 @@ class ysyx_26030103_PTW(
 
   def superOffsetBits(level: UInt): UInt =
     pageBits.U + ((levels - 1).U - level) * indexBits.U
-  def paddrOf(PTE: UInt, level: UInt): UInt = {
+  def paddrOf(PTE: UInt, level: UInt, napot: Bool = false.B): UInt = {
     val PPN = ppnValue(PTE)
     val shift = superOffsetBits(level)
     val offsetMask = ((BigInt(1) << vaBits) - 1).U(vaBits.W) >> (vaBits.U - shift)
-    ((PPN << pageBits).pad(addressWidth) |
-      (virtualAddressReg & offsetMask).pad(addressWidth))
+    val normal = (PPN << pageBits).pad(addressWidth) |
+      (virtualAddressReg & offsetMask).pad(addressWidth)
+    if (XLEN == 32) normal
+    else {
+      // NAPOT 低 4 位 PPN 是尺寸编码，不参与物理地址
+      val lowMask = ((BigInt(1) << 4) - 1).U(PaddrPPNBits.W)
+      val napotBase = ((PPN & ~lowMask) << pageBits).pad(addressWidth)
+      Mux(napot, napotBase | virtualAddressReg(15, 0).pad(addressWidth), normal)
+    }
   }
 
   // Sv39/Sv48 的高位必须是指示位的符号扩展。
@@ -428,6 +454,7 @@ class ysyx_26030103_PTW(
   io.response.bits.fillVirtualAddress := responseReg.fillVirtualAddress
   io.response.bits.FillASID := responseReg.FillASID
   io.response.bits.fillLevel := fillLevelReg
+  io.response.bits.fillNapot := fillNapotReg
   io.response.bits.ID := IDReg
 
   def setFault(cause: UInt = pageFaultCause): Unit = {
@@ -440,11 +467,12 @@ class ysyx_26030103_PTW(
     responseReg.fillVirtualAddress := 0.U
     responseReg.FillASID := 0.U
     fillLevelReg := 0.U
+    fillNapotReg := false.B
     state := done
   }
 
-  def finishLeaf(PTE: UInt, fault: Bool): Unit = {
-    responseReg.paddr := paddrOf(PTE, levelReg)
+  def finishLeaf(PTE: UInt, fault: Bool, napot: Bool = false.B): Unit = {
+    responseReg.paddr := paddrOf(PTE, levelReg, napot)
     responseReg.fault := fault
     responseReg.cause := pageFaultCause
     responseReg.tval := virtualAddressReg
@@ -452,8 +480,9 @@ class ysyx_26030103_PTW(
     responseReg.fillVirtualAddress := virtualAddressReg
     responseReg.FillASID := satpASID(satpReg)
     fillLevelReg := fillLevelOf(levelReg)
+    fillNapotReg := napot
     responseReg.fillValid := !fault &&
-      (fillSuperpage.B || levelReg === (levels - 1).U)
+      (napot || fillSuperpage.B || levelReg === (levels - 1).U)
     state := done
   }
 
@@ -472,7 +501,7 @@ class ysyx_26030103_PTW(
         writeDataReg := adRaw(raw)
         state := writeState
       }.otherwise {
-        finishLeaf(PTE, leafFaultOf(PTE))
+        finishLeaf(PTE, leafFaultOf(PTE), napotLeaf(raw))
       }
     }.otherwise {
       tableReg := (ppnValue(PTE) << pageBits).pad(addressWidth)
@@ -527,7 +556,7 @@ class ysyx_26030103_PTW(
             writeDataReg := adRaw(cacheData)
             state := writeState
           }.otherwise {
-            finishLeaf(CachePTE, leafFaultOf(CachePTE))
+            finishLeaf(CachePTE, leafFaultOf(CachePTE), napotLeaf(cacheData))
           }
         }.otherwise {
           tableReg := (ppnValue(CachePTE) << pageBits).pad(addressWidth)
@@ -606,6 +635,7 @@ class ysyx_26030103_PTW(
           responseReg.fillVirtualAddress := virtualAddressReg
           responseReg.FillASID := satpASID(satpReg)
           fillLevelReg := fillLevelOf(levelReg)
+          fillNapotReg := false.B
           responseReg.fillValid := !leafFaultOf(written) &&
             !io.bus.response.bits.fault &&
             (fillSuperpage.B || levelReg === (levels - 1).U)

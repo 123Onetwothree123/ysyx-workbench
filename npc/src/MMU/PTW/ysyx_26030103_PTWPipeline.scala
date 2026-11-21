@@ -540,6 +540,7 @@ class ysyx_26030103_PTWPipeline(
       context(resolveContext).response.fillVirtualAddress := virtualAddress
       context(resolveContext).response.FillASID := satpASID(context(resolveContext).satp)
       context(resolveContext).response.fillLevel := fillLevelOf(level)
+      context(resolveContext).response.fillNapot := false.B
       context(resolveContext).response.fillValid := !resolveBusFault &&
         !leafFaultOf(PTE, privilege, access, sum, mxr) &&
         (fillSuperpage.B || level === (levels - 1).U)
@@ -570,6 +571,7 @@ class ysyx_26030103_PTWPipeline(
         context(resolveContext).response.fillVirtualAddress := virtualAddress
         context(resolveContext).response.FillASID := satpASID(context(resolveContext).satp)
         context(resolveContext).response.fillLevel := fillLevelOf(level)
+        context(resolveContext).response.fillNapot := false.B
         context(resolveContext).response.fillValid := !leafFault &&
           (fillSuperpage.B || level === (levels - 1).U)
       }

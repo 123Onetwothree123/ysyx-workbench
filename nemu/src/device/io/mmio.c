@@ -61,3 +61,15 @@ word_t mmio_read(paddr_t addr, int len) {
 void mmio_write(paddr_t addr, int len, word_t data) {
   map_write(addr, len, data, fetch_mmio_map(addr));
 }
+
+bool mmio_is_mapped(paddr_t addr, int len) {
+  if (len <= 0) {
+    return false;
+  }
+  for (int i = 0; i < nr_map; i++) {
+    if (addr >= maps[i].low && addr + len - 1 <= maps[i].high) {
+      return true;
+    }
+  }
+  return false;
+}

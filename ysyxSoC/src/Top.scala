@@ -3,7 +3,10 @@ package ysyx
 import chisel3._
 import org.chipsalliance.cde.config.{Parameters, Config}
 import freechips.rocketchip.system._
+import freechips.rocketchip.subsystem.WithEdgeDataBits
 import freechips.rocketchip.diplomacy.LazyModule
+
+class Edge64BitConfig extends Config(new WithEdgeDataBits(64) ++ new DefaultConfig)
 
 object Config {
   def hasChipLink: Boolean =
@@ -19,6 +22,9 @@ object Config {
     value
   }
 
+  def apbXlen: Int = SoCConfig.xlen("SOC.apb_xlen")
+  def peripheralXlen(name: String): Int = SoCConfig.peripheralXlen(name)
+
   def cpuAXI4AddrBits: Int = socXlen
   def cpuAXI4DataBits: Int = socXlen
 
@@ -33,10 +39,8 @@ object Config {
 }
 
 class ysyxSoCTop extends Module {
-  // Edge32BitConfig 固定内部 TileLink/AXI 互联为 32 位。64 位 CPU
-  // 构建仍使用 32 位内部总线，只是 CPU 端口经由 AXI4Downsizer 连接。
   private val rvConfig =
-    if (Config.socXlen == 64) new Edge32BitConfig
+    if (Config.socXlen == 64) new Edge64BitConfig
     else new Edge32BitConfig ++ new DefaultRV32Config
   implicit val config: Parameters = new Config(rvConfig)
 

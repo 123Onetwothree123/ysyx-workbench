@@ -354,4 +354,30 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
       bool(dut.io.busy) should be(false)
     }
   }
-}
+
+  "LSUMMU" should "在翻译前拒绝非对齐 AMO/LR/SC 且不启动 PTW" in {
+    for (parallel <- Seq(false, true); write <- Seq(false, true)) {
+      simulate(new ysyx_26030103_LSUMMU(
+        XLEN = 32, AddressWidth = 32, ParallelVIPT = parallel
+      )) { dut =>
+        resetDut(dut, dut.clock, dut.reset)
+        dut.io.in.bits.poke(0.U.asTypeOf(new ysyx_26030103_EXUMessage))
+        dut.io.in.bits.MemoryValid.poke(true.B)
+        dut.io.in.bits.IsAtomic.poke(true.B)
+        dut.io.in.bits.MemoryWrite.poke(write.B)
+        dut.io.in.bits.ALUResult.poke((Va + 2).U(AddressW.W))
+        dut.io.in.bits.VAddress.poke((Va + 2).U(AddressW.W))
+        dut.io.in.bits.WidthSelect.poke(2.U(2.W))
+        dut.io.in.bits.PC.poke(0x80000100L.U(AddressW.W))
+        dut.io.in.valid.poke(true.B)
+
+        waitUntil(dut.clock, bool(dut.io.faultCommit), "未提交非对齐故障")
+        long(dut.io.faultCause) should be(if (write) 6L else 4L)
+        long(dut.io.faultTval) should be(Va + 2)
+        long(dut.io.FaultPC) should be(0x80000100L)
+        bool(dut.io.request.valid) should be(false)
+        bool(dut.io.out.valid) should be(false)
+        dut.io.in.valid.poke(false.B)
+      }
+    }
+  }

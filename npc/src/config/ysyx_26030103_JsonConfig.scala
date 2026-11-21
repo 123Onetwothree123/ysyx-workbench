@@ -331,6 +331,24 @@ object ysyx_26030103_JsonConfig {
             case _               => Some(joined(tail))
           }
         case "boot" => Some(joined(tail))
+        case "soc" =>
+          val key = tail.mkString(".")
+          key match {
+            case "soc_xlen"            => Some("SOC_XLEN_EFFECTIVE")
+            case "soc_xlen_follow_cpu" => Some("SOC_XLEN_FOLLOW_CPU")
+            case "apb_xlen"            => Some("APB_XLEN_EFFECTIVE")
+            case "apb_xlen_follow_soc" => Some("APB_XLEN_FOLLOW_SOC")
+            case "chiplink"            => Some("CHIPLINK")
+            case "sdram_use_axi"       => Some("SDRAM_USE_AXI")
+            case value if value.startsWith("peripheral.") =>
+              val field = value.stripPrefix("peripheral.")
+              val upperField = upper(field)
+              Some(
+                if (field.endsWith("_xlen")) upperField + "_EFFECTIVE"
+                else upperField
+              )
+            case _ => Some(joined(tail))
+          }
         case "build" =>
           tail.mkString(".") match {
             case "pdk" => Some("PDK")

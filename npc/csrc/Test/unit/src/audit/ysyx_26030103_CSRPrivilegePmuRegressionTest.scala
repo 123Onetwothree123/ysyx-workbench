@@ -290,6 +290,88 @@ class ysyx_26030103_CSRPrivilegePmuRegressionTest
     }
   }
 
+  it should "CSRRS/CSRRC 读 instret 时补上同拍退休的指令" in {
+    for (xlen <- Seq(64, 32)) {
+      val profile = if (xlen == 64) profile64() else profile32()
+      simulate(new ysyx_26030103_CSRPrivilegePmuHarness(
+        xlen, profile, useF = false)) { dut =>
+        setup(dut)
+        write(dut, MINSTRET, BigInt(0x100))
+        read(dut, MINSTRET) should be(BigInt(0x100))
+
+        // 寄存器尚未到 0x101；同拍 WBU 有一条更老的指令退休。
+        dut.io.minstretRetireCommit.poke(true.B)
+        dut.io.rs1.poke(0.U(5.W))
+        dut.io.enable.poke(true.B)
+        dut.io.isCSRrs.poke(true.B)
+        read(dut, 0xc02) should be(BigInt(0x101))
+        dut.io.isCSRrs.poke(false.B)
+        dut.io.isCSRrc.poke(true.B)
+        read(dut, 0xc02) should be(BigInt(0x101))
+
+        // 该退休只加一次；读口不能因此重复计数。
+        dut.clock.step()
+        dut.io.enable.poke(false.B)
+        dut.io.isCSRrc.poke(false.B)
+        dut.io.minstretRetireCommit.poke(false.B)
+        read(dut, 0xc02) should be(BigInt(0x101))
+
+        // mcountinhibit.IR=1 时该拍不会自增，读口也不能补一。
+        write(dut, 0x320, BigInt(0x4))
+        dut.io.minstretRetireCommit.poke(true.B)
+        dut.io.rs1.poke(0.U(5.W))
+        dut.io.enable.poke(true.B)
+        dut.io.isCSRrs.poke(true.B)
+        read(dut, 0xc02) should be(BigInt(0x101))
+        dut.clock.step()
+        dut.io.enable.poke(false.B)
+        dut.io.isCSRrs.poke(false.B)
+        dut.io.minstretRetireCommit.poke(false.B)
+        read(dut, 0xc02) should be(BigInt(0x101))
+      }
+    }
+  }
+
+  it should "CSRRS 写 minstret 时以补齐后的旧值为基准" in {
+    simulate(new ysyx_26030103_CSRPrivilegePmuHarness(
+      64, profile64(), useF = false)) { dut =>
+      setup(dut)
+      write(dut, MINSTRET, BigInt(0x100))
+      // rs1Data=0 的 CSRRS 等价于“保留旧值”，旧值必须包含同拍退休。
+      dut.io.minstretRetireCommit.poke(true.B)
+      dut.io.CSRAddress.poke(MINSTRET.U(12.W))
+      dut.io.rs1.poke(1.U(5.W))
+      dut.io.rs1Data.poke(0.U(64.W))
+      dut.io.enable.poke(true.B)
+      dut.io.isCSRrs.poke(true.B)
+      dut.clock.step()
+      dut.io.enable.poke(false.B)
+      dut.io.isCSRrs.poke(false.B)
+      dut.io.minstretRetireCommit.poke(false.B)
+      read(dut, MINSTRET) should be(BigInt(0x101))
+    }
+  }
+
+  it should "RV32 读 instreth 时补上同拍退休产生的低半字进位" in {
+    simulate(new ysyx_26030103_CSRPrivilegePmuHarness(
+      32, profile32(), useF = false)) { dut =>
+      setup(dut)
+      write(dut, MINSTRET, BigInt("ffffffff", 16))
+      write(dut, 0xb82, BigInt(0))
+      read(dut, MINSTRET) should be(BigInt("ffffffff", 16))
+      read(dut, 0xb82) should be(BigInt(0))
+
+      dut.io.minstretRetireCommit.poke(true.B)
+      read(dut, 0xc02) should be(BigInt(0))
+      read(dut, 0xc82) should be(BigInt(1))
+
+      dut.clock.step()
+      dut.io.minstretRetireCommit.poke(false.B)
+      read(dut, MINSTRET) should be(BigInt(0))
+      read(dut, 0xb82) should be(BigInt(1))
+    }
+  }
+
   "independent sstatus" should "让 FS/SD 跟随 mstatus 与 FP dirty" in {
     simulate(new ysyx_26030103_CSRPrivilegePmuHarness(
       64, profile64(viewMode = "independent"), useF = true)) { dut =>

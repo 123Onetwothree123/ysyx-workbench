@@ -32,6 +32,7 @@ paddr_t host_to_guest(uint8_t *haddr);
 void set_ysyxsoc_memory_mode(bool enable);
 bool is_ysyxsoc_memory_mode(void);
 bool in_backed_memory_range(paddr_t addr, size_t len);
+bool paddr_is_backed(paddr_t addr, int len);
 
 static inline bool in_pmem(paddr_t addr)
 {

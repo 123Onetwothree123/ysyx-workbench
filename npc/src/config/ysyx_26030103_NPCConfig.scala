@@ -52,6 +52,9 @@ case class ysyx_26030103_NPCConfig(
     // 32 位 SoC 可以搭配 64 位 CPU（访问窗口仍限制在低 4GiB）；
     SocXLENFollowCpu: Boolean = false,
     SocXLEN: Int = KconfigDefaults.NpcSocXlen,
+    // APB 数据宽度：JSON 给出生效值，Scala 不再重复推导。
+    ApbXLENFollowSoc: Boolean = true,
+    ApbXLEN: Int = KconfigDefaults.NpcApbXlen,
     // 内部 AXI 数据宽度：默认随 XLEN，也可固定 32/64。
     InternalBusWidthFollowCpu: Boolean = true,
     InternalBusWidth: Int = KconfigDefaults.NpcInternalBusWidth,
@@ -209,6 +212,9 @@ case class ysyx_26030103_NPCConfig(
   require(SocXLENFollowCpu || SocXLEN == 32 || SocXLEN == 64,
     "SOC_XLEN 只允许 32 或 64（SOC_XLEN_FOLLOW_CPU=n 时生效），" +
       s"收到 SOC_XLEN=$SocXLEN")
+  require(ApbXLENFollowSoc || ApbXLEN == 32 || ApbXLEN == 64,
+    "APB_XLEN 只允许 32 或 64（APB_XLEN_FOLLOW_SOC=n 时生效），" +
+      s"收到 APB_XLEN=$ApbXLEN")
   require(InternalBusWidthFollowCpu ||
     InternalBusWidth == 32 || InternalBusWidth == 64,
     "INTERNAL_BUS_WIDTH 只允许 32 或 64" +
@@ -221,8 +227,12 @@ case class ysyx_26030103_NPCConfig(
     * 完整 SoC（SIM_TOP=SOC）不受该投影影响。
     */
   final val EffectiveSocXLEN: Int = if (SocXLENFollowCpu) XLEN else SocXLEN
+  final val EffectiveApbXLEN: Int =
+    if (ApbXLENFollowSoc) EffectiveSocXLEN else ApbXLEN
   final val EffectiveInternalBusWidth: Int =
     if (InternalBusWidthFollowCpu) XLEN else InternalBusWidth
+  require(EffectiveApbXLEN == 32 || EffectiveApbXLEN == 64,
+    s"APB 总线宽度只允许 32 或 64，收到 $EffectiveApbXLEN")
   require(EffectiveInternalBusWidth == 32 || EffectiveInternalBusWidth == 64,
     s"内部总线宽度只允许 32 或 64，收到 $EffectiveInternalBusWidth")
   // 非对齐拆分粒度：2 的幂，且不超过总线字节数与 cache line。
@@ -730,6 +740,7 @@ case class ysyx_26030103_NPCConfig(
       s"internal_bus_w=$EffectiveInternalBusWidth" +
       s"${if (InternalBusWidthFollowCpu) "(follow)" else ""}, " +
       s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
+      s"apb_xlen=$EffectiveApbXLEN${if (ApbXLENFollowSoc) "(follow)" else ""}, " +
       s"MDU=${MDUImpl.Name}, " +
       s"mul=${MULImpl.Name}/${mulParams.Encoding.Name}, " +
       s"mul_width=${mulParams.Width}, " +

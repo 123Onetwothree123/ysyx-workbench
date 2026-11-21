@@ -162,7 +162,6 @@ private[mem] trait LSUWrite {
           atomicResultData := 0.U
           atomicReadLow := 0.U
           atomicReadBeat := 0.U
-          atomicReadFaultReg := false.B
           AtomicAWDone := false.B
           atomicWDone := false.B
           atomicWBeat := false.B

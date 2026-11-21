@@ -16,6 +16,9 @@ import chisel3.util._
   *   - RV32 的 SLLI/SRLI/SRAI 要求 shamt[5]=0；
   *   - C.ADDI4SPN/C.ADDI16SP/C.LUI 的零立即数、C.ADDIW/C.LWSP/C.LDSP
   *     的 rd=0、C.JR 的 rs1=0 都是保留编码，必须显式报非法。
+  *   - 压缩浮点访存（C.FLD/C.FSD/C.FLDSP/C.FSDSP/C.FLW/C.FSW/
+  *     C.FLWSP/C.FSWSP）的 rd/rs2 是 FPR 编号，f0 是合法寄存器，不能套用
+  *     整数 C.LWSP/C.LDSP 的 rd=0 保留规则。
   *
   * F/D 关闭时 C.FLD/C.FSD/C.FLW/C.FSW 及其 SP 形式保持非法，绝不把浮点
   * 压缩编码误当成整数指令执行。
@@ -355,11 +358,9 @@ class ysyx_26030103_RVCDecoder(
       if (XLEN == 32) { illegal := x(12) }
     }
     is("b10_001".U(5.W)) { // C.FLDSP（需要 D 扩展）
-      if (UseD) {
-        out := fldsp
-        // RVC 规范：SP 相对浮点 load 的 rd=0 是保留编码。
-        illegal := rd === 0.U
-      } else { illegal := true.B }
+      // rd 是 FPR 编号，f0 合法；rd=0 保留只适用于整数 C.LWSP/C.LDSP。
+      if (UseD) { out := fldsp }
+      else { illegal := true.B }
     }
     is("b10_010".U(5.W)) { // C.LWSP
       out := lwsp
@@ -371,8 +372,7 @@ class ysyx_26030103_RVCDecoder(
         illegal := rd === 0.U
       } else if (UseF) {
         out := flwsp
-        // RVC 规范：C.FLWSP 的 rd=0 是保留编码。
-        illegal := rd === 0.U
+        // rd 是 FPR 编号，f0 合法。
       } else {
         illegal := true.B
       }
@@ -398,11 +398,9 @@ class ysyx_26030103_RVCDecoder(
       }
     }
     is("b10_101".U(5.W)) { // C.FSDSP（需要 D 扩展）
-      if (UseD) {
-        out := fsdsp
-        // C.FSDSP 的 rs2=0 同样是保留编码。
-        illegal := rs2 === 0.U
-      } else { illegal := true.B }
+      // rs2 是 FPR 编号，f0 合法。
+      if (UseD) { out := fsdsp }
+      else { illegal := true.B }
     }
     is("b10_110".U(5.W)) { // C.SWSP
       out := swsp
@@ -410,8 +408,8 @@ class ysyx_26030103_RVCDecoder(
     is("b10_111".U(5.W)) { // RV64 C.SDSP / RV32 C.FSWSP
       if (XLEN == 64) { out := sdsp }
       else if (UseF) {
+        // rs2 是 FPR 编号，f0 合法。
         out := fswsp
-        illegal := rs2 === 0.U
       } else { illegal := true.B }
     }
 

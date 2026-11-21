@@ -70,7 +70,6 @@ module EF_PSRAM_CTRL_wb (
     wire        wb_valid        =   cyc_i & stb_i;
     wire        wb_we           =   we_i & wb_valid;
     wire        wb_re           =   ~we_i & wb_valid;
-    //wire[3:0]   wb_byte_sel     =   sel_i & {4{wb_we}};
     always @(posedge clk_i or posedge rst_i)
         if(rst_i) begin
             {init_cnt, init_sck, qpi_mode} <= 0;
@@ -100,10 +99,7 @@ module EF_PSRAM_CTRL_wb (
                     nstate = ST_IDLE;
 
             ST_WAIT :
-                // 原条件 (mw_done & wb_we) | (mr_done & wb_re) 会锁死:
-                // APB delayer 在人为延迟期间保持 psel, 控制器会重复执行同一事务;
-                // 当 delayer 释放主机、psel 撤销后, done 才到来时 wb_we/wb_re 已为 0,
-                // ST_WAIT 永远无法退出. 引擎完成即应回到 IDLE.
+                // 引擎完成即回IDLE: delayer会在delay期间保持psel, 不能等wb_we/wb_re撤销
                 if(mw_done | mr_done)
                     nstate = ST_IDLE;
                 else
@@ -111,40 +107,15 @@ module EF_PSRAM_CTRL_wb (
         endcase
     end
 
-    wire [2:0]  size =  (sel_i == 4'b0001) ? 1 :
-                        (sel_i == 4'b0010) ? 1 :
-                        (sel_i == 4'b0100) ? 1 :
-                        (sel_i == 4'b1000) ? 1 :
-                        (sel_i == 4'b0011) ? 2 :
-                        (sel_i == 4'b1100) ? 2 :
-                        (sel_i == 4'b1111) ? 4 : 4;
-
-
-
-    wire [7:0]  byte0 = (sel_i[0])          ? dat_i[7:0]   :
-                        (sel_i[1] & size==1)? dat_i[15:8]  :
-                        (sel_i[2] & size==1)? dat_i[23:16] :
-                        (sel_i[3] & size==1)? dat_i[31:24] :
-                        (sel_i[2] & size==2)? dat_i[23:16] :
-                        dat_i[7:0];
-
-    wire [7:0]  byte1 = (sel_i[1])          ? dat_i[15:8]  :
-                        dat_i[31:24];
-
-    wire [7:0]  byte2 = dat_i[23:16];
-
-    wire [7:0]  byte3 = dat_i[31:24];
-
-    wire [31:0] wdata = {byte3, byte2, byte1, byte0};
-
-    /*
-    wire [1:0]  waddr = (size==1 && sel_i[0]==1) ? 2'b00 :
-                        (size==1 && sel_i[1]==1) ? 2'b01 :
-                        (size==1 && sel_i[2]==1) ? 2'b10 :
-                        (size==1 && sel_i[3]==1) ? 2'b11 :
-                        (size==2 && sel_i[2]==1) ? 2'b10 :
-                        2'b00;
-                      */
+    // 窄写归一化: 选通位可能落在任意lane, 数据按最低有效字节下移到lane0.
+    // 地址保持调用方给出的字节偏移(上游已经把offset加进adr_i)
+    wire [1:0]  first_byte = sel_i[0] ? 2'd0 :
+                             sel_i[1] ? 2'd1 :
+                             sel_i[2] ? 2'd2 : 2'd3;
+    wire [3:0]  lane_strb  = sel_i >> first_byte;
+    wire [2:0]  size = (lane_strb == 4'b1111) ? 3'd4 :
+                       (lane_strb[1:0] == 2'b11) ? 3'd2 : 3'd1;
+    wire [31:0] wdata = dat_i >> {first_byte, 3'b0};
 
     assign mr_rd = !init_active & (state==ST_IDLE) & wb_re;
     assign mw_wr = !init_active & (state==ST_IDLE) & wb_we;

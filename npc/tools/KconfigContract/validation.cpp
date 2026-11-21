@@ -110,6 +110,35 @@ std::vector<std::string> validate_config(const Config& values,
           "（SOC_XLEN_FOLLOW_CPU=n 时生效）");
     }
   }
+  if (!as_bool(values, "APB_XLEN_FOLLOW_SOC", true)) {
+    const long long apb_xlen = as_int(values, "APB_XLEN", 32);
+    if (apb_xlen != 32 && apb_xlen != 64) {
+      err("APB_XLEN=" + std::to_string(apb_xlen) +
+          " 非法：只允许 32 或 64"
+          "（APB_XLEN_FOLLOW_SOC=n 时生效）");
+    }
+  }
+  for (const auto& [follow, key] :
+       std::initializer_list<std::pair<const char*, const char*>>{
+           {"UART_XLEN_FOLLOW_APB", "UART_XLEN"},
+           {"GPIO_XLEN_FOLLOW_APB", "GPIO_XLEN"},
+           {"KEYBOARD_XLEN_FOLLOW_APB", "KEYBOARD_XLEN"},
+           {"VGA_XLEN_FOLLOW_APB", "VGA_XLEN"},
+           {"SPI_XLEN_FOLLOW_APB", "SPI_XLEN"},
+           {"PSRAM_XLEN_FOLLOW_APB", "PSRAM_XLEN"},
+           {"SDRAM_XLEN_FOLLOW_APB", "SDRAM_XLEN"},
+           {"MROM_XLEN_FOLLOW_APB", "MROM_XLEN"},
+           {"SRAM_XLEN_FOLLOW_APB", "SRAM_XLEN"},
+       }) {
+    if (as_bool(values, follow, true)) {
+      continue;
+    }
+    const long long width = as_int(values, key, 32);
+    if (width != 32 && width != 64) {
+      err(std::string{key} + "=" + std::to_string(width) +
+          " 非法：只允许 32 或 64" + "（" + follow + "=n 时生效）");
+    }
+  }
   if (!as_bool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true)) {
     const long long internal_bus_width =
         as_int(values, "INTERNAL_BUS_WIDTH", xlen == 64 ? 64 : 32);

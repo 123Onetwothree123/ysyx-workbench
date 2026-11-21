@@ -24,6 +24,13 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
     // 指令跨字/跨页时，故障发生在第二个字（如 ...1000），而 sepc 仍是
     // 指令起点（...ffe）。这里单独锁存 faultVaddr。
     val IFUFaultTval = RegInit(0.U(XLEN.W))
+    // 取指故障 tval：首拍故障用架构 PC（可能 2 字节对齐），跨字第二拍用实际取指字地址
+    val FetchFaultFirstWord = Cat(ifu.io.FetchPC(XLEN - 1, 2), 0.U(2.W))
+    val FetchFaultTval =
+      if (config.UseC)
+        Mux(ifu.io.FetchAddress === FetchFaultFirstWord,
+          ifu.io.FetchPC, ifu.io.FetchAddress)
+      else ifu.io.FetchAddress
     val fetchTranslationValid =
       IMMUOpt.map(_.io.translationValid).getOrElse(true.B)
     val fetchTranslationFault =
@@ -114,7 +121,7 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
         // FetchPC，因此这里必须锁存故障取指自己的 PC。
         IFUFaultPC := (if (config.UseC) ifu.io.FetchPC
                        else IMMUOpt.get.io.faultVirtualAddress)
-        IFUFaultTval := IMMUOpt.get.io.faultVirtualAddress
+        IFUFaultTval := FetchFaultTval
       }.elsewhen(IFUResponse.fire) {
         IFUFaultValid := false.B
       }
@@ -132,7 +139,7 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
                             else ifu.io.FetchAddress)
         // FetchAddr 是实际被 PMP 拒绝的取指地址；C 模式下跨字第二个字
         // 故障时它比指令起点 FetchPC 更精确。
-        PMPFetchFaultTval := ifu.io.FetchAddress
+        PMPFetchFaultTval := FetchFaultTval
         PMPFetchBlocked := true.B
       }.elsewhen(PMPFetchInject && IFUResponse.fire) {
         // 只注入一次；blocked 保持到真正提交 trap 的冲刷，避免在同一 PC

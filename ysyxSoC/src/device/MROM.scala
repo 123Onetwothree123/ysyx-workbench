@@ -30,8 +30,12 @@ class MROMHelper extends BlackBox with HasBlackBoxInline {
     """.stripMargin)
 }
 
-class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyModule {
-  val beatBytes = 4
+class AXI4MROM(
+    address: Seq[AddressSet],
+    beatBytes: Int = Config.peripheralXlen("mrom") / 8
+)(implicit p: Parameters) extends LazyModule {
+  require(beatBytes == 4 || beatBytes == 8,
+    s"AXI4MROM 只支持 4/8 字节 beat，收到 $beatBytes")
   val node = AXI4SlaveNode(Seq(AXI4SlavePortParameters(
     Seq(AXI4SlaveParameters(
         address       = address,
@@ -46,57 +50,70 @@ class AXI4MROM(address: Seq[AddressSet])(implicit p: Parameters) extends LazyMod
   class Impl extends LazyModuleImp(this) {
     val (in, _) = node.in(0)
 
-    val mrom = Module(new MROMHelper)
+    val Low = Module(new MROMHelper)
+    val High = if (beatBytes == 8) Some(Module(new MROMHelper)) else None
 
-    // MROMHelper is a synchronous one-cycle read.  Keep a load state between
-    // beats so its registered output is never overwritten while RREADY is
-    // low.  In particular, only launch the next memory read after the current
-    // R beat has actually handshaken.
     val stateIdle :: stateLoad :: stateActive :: Nil = Enum(3)
     val state = RegInit(stateIdle)
+    val burstLength = RegInit(0.U(8.W))
+    val beatCount = RegInit(0.U(8.W))
+    val addressReg = RegInit(0.U(32.W))
+    val sizeReg = RegInit(2.U(3.W))
 
-    val burst_len  = RegInit(0.U(8.W))
-    val beat_cnt   = RegInit(0.U(8.W))
-    val addr_reg   = RegInit(0.U(32.W))
+    def wordBase(value: UInt): UInt =
+      if (beatBytes == 8) (value >> 3) << 3 else (value >> 2) << 2
 
-    val next_addr = addr_reg + 4.U
+    val sizeBytes = 1.U(32.W) << sizeReg
+    val alignedNext = (addressReg | (sizeBytes - 1.U)) + 1.U
+    val nextAddress =
+      Mux(beatCount === 0.U, alignedNext, addressReg + sizeBytes)
+    val NextBase = wordBase(nextAddress)
 
-    mrom.io.clock := clock
-    mrom.io.raddr := Mux(in.ar.fire, in.ar.bits.addr, next_addr)
-    mrom.io.ren := in.ar.fire ||
-      ((state === stateActive) && in.r.ready &&
-        (beat_cnt =/= burst_len))
-
-    in.ar.ready := (state === stateIdle)
-    when(in.ar.fire) {
-      state      := stateLoad
-      burst_len  := in.ar.bits.len
-      beat_cnt   := 0.U
-      addr_reg   := in.ar.bits.addr
+    Low.io.clock := clock
+    Low.io.raddr := Mux(in.ar.fire, wordBase(in.ar.bits.addr), NextBase)
+    Low.io.ren := in.ar.fire ||
+      ((state === stateActive) && in.r.ready && (beatCount =/= burstLength))
+    High.foreach { m =>
+      m.io.clock := clock
+      m.io.raddr := Mux(in.ar.fire, wordBase(in.ar.bits.addr) + 4.U,
+        NextBase + 4.U)
+      m.io.ren := Low.io.ren
     }
 
+    in.ar.ready := state === stateIdle
+    when(in.ar.fire) {
+      state := stateLoad
+      burstLength := in.ar.bits.len
+      beatCount := 0.U
+      addressReg := in.ar.bits.addr
+      sizeReg := in.ar.bits.size
+    }
     when(state === stateLoad) {
       state := stateActive
     }
 
-    in.r.bits.data := mrom.io.rdata
-    in.r.bits.id   := RegEnable(in.ar.bits.id, in.ar.fire)
+    in.r.bits.data := High
+      .map(m => Cat(m.io.rdata, Low.io.rdata))
+      .getOrElse(Low.io.rdata)
+    in.r.bits.id := RegEnable(in.ar.bits.id, in.ar.fire)
     in.r.bits.resp := 0.U
-    in.r.bits.last := (state === stateActive) && (beat_cnt === burst_len)
-    in.r.valid := (state === stateActive)
+    in.r.bits.last := (state === stateActive) && (beatCount === burstLength)
+    in.r.valid := state === stateActive
 
     when(in.r.fire) {
-      when(beat_cnt === burst_len) {
+      when(beatCount === burstLength) {
         state := stateIdle
       }.otherwise {
         state := stateLoad
-        beat_cnt := beat_cnt + 1.U
-        addr_reg := next_addr
+        beatCount := beatCount + 1.U
+        addressReg := nextAddress
       }
     }
 
     in.aw.ready := false.B
-    in. w.ready := false.B
-    in. b.valid := false.B
+    in.w.ready := false.B
+    in.b.valid := false.B
+    assert(!in.ar.valid || in.ar.bits.size <= log2Ceil(beatBytes).U,
+      "AXI4MROM: read size exceeds beat width")
   }
 }

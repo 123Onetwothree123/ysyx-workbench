@@ -675,6 +675,49 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
     }
   }
 
+  it should "menvcfg/mstatush/menvcfgh 可写且读回 0" in {
+    simulate(new ysyx_26030103_CSRHarness) { dut =>
+      setup(dut)
+      Seq(0x30a, 0x310, 0x31a).foreach { addr =>
+        write(dut, addr, BigInt("ffffffff", 16))
+        read(dut, addr) should be(BigInt(0))
+      }
+    }
+  }
+
+  it should "pmpaddr 读回按 PMP 粒度和当前 A 模式归一化" in {
+    val profile = rv32Profile.copy(PMPEnabled = true, PMPEntries = 16)
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      write(dut, 0x3a0, BigInt(0x1f))
+      write(dut, 0x3b0, BigInt(0))
+      (read(dut, 0x3b0) & 0xf) should be(BigInt(7))
+      write(dut, 0x3b0, BigInt("ffffffff", 16))
+      (read(dut, 0x3b0) & 0xf) should be(BigInt(0xf))
+
+      write(dut, 0x3a0, BigInt(0x7))
+      write(dut, 0x3b0, BigInt("ffffffff", 16))
+      (read(dut, 0x3b0) & 0x1f) should be(BigInt(0x10))
+    }
+  }
+
+  it should "RV32 pmpcfg1..3 与高位 pmpaddr 独立寻址并受锁定保护" in {
+    val profile = rv32Profile.copy(PMPEnabled = true, PMPEntries = 16)
+    simulate(new ysyx_26030103_CSRHarness(profile)) { dut =>
+      setup(dut)
+      write(dut, 0x3a1, BigInt(0x1f))
+      read(dut, 0x3a1) should be(BigInt(0x1f))
+      read(dut, 0x3a0) should be(BigInt(0))
+      read(dut, 0x3a2) should be(BigInt(0))
+
+      // 锁定 entry15 后 pmpaddr15 不可写
+      write(dut, 0x3a3, BigInt(0x80000000L))
+      read(dut, 0x3a3) should be(BigInt(0x80000000L))
+      write(dut, 0x3bf, BigInt("ffffffff", 16))
+      read(dut, 0x3bf) should be(BigInt(0))
+    }
+  }
+
   it should "HAS_S=n 的结构中不出现 S 模式状态寄存器" in {
     val profile = rv32Profile.copy(
       hasS = false,

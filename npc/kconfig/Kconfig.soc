@@ -210,6 +210,145 @@ menu "SoC 与外设"
         64 位 SoC 接口只适用于 SIM_TOP=soc 的完整 SoC 构建。
         修改后需重新 make verilog 或 make build/ysyx_26030103。
 
+    config APB_XLEN_FOLLOW_SOC
+      bool "APB 总线宽度跟随 SoC XLEN"
+      default y
+      help
+        y: EffectiveApbXLEN = EffectiveSocXLEN。
+        n: 使用 APB_XLEN。
+
+    config APB_XLEN
+      int "APB 总线宽度"
+      depends on !APB_XLEN_FOLLOW_SOC
+      default 64 if SOC_XLEN_FOLLOW_CPU && XLEN=64
+      default 64 if !SOC_XLEN_FOLLOW_CPU && SOC_XLEN=64
+      default 32
+      range 32 64
+      help
+        仅当 APB_XLEN_FOLLOW_SOC=n 时生效，只允许 32 或 64。
+        默认按 EffectiveSocXLEN 投影，33..63 由配置派生阶段拒绝。
+
+    menu "外设数据宽度"
+
+      config UART_XLEN_FOLLOW_APB
+        bool "UART 数据宽度跟随 APB"
+        default y
+        help
+          y: UART_XLEN = EffectiveApbXLEN。
+          n: 使用 UART_XLEN。
+
+      config UART_XLEN
+        int "UART 数据宽度"
+        depends on !UART_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+      config GPIO_XLEN_FOLLOW_APB
+        bool "GPIO 数据宽度跟随 APB"
+        default y
+        help
+          y: GPIO_XLEN = EffectiveApbXLEN。
+          n: 使用 GPIO_XLEN。
+
+      config GPIO_XLEN
+        int "GPIO 数据宽度"
+        depends on !GPIO_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+      config KEYBOARD_XLEN_FOLLOW_APB
+        bool "KEYBOARD 数据宽度跟随 APB"
+        default y
+        help
+          y: KEYBOARD_XLEN = EffectiveApbXLEN。
+          n: 使用 KEYBOARD_XLEN。
+
+      config KEYBOARD_XLEN
+        int "KEYBOARD 数据宽度"
+        depends on !KEYBOARD_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+      config VGA_XLEN_FOLLOW_APB
+        bool "VGA 数据宽度跟随 APB"
+        default y
+        help
+          y: VGA_XLEN = EffectiveApbXLEN。
+          n: 使用 VGA_XLEN。
+
+      config VGA_XLEN
+        int "VGA 数据宽度"
+        depends on !VGA_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+      config SPI_XLEN_FOLLOW_APB
+        bool "SPI 数据宽度跟随 APB"
+        default y
+        help
+          y: SPI_XLEN = EffectiveApbXLEN。
+          n: 使用 SPI_XLEN。
+
+      config SPI_XLEN
+        int "SPI 数据宽度"
+        depends on !SPI_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+      config PSRAM_XLEN_FOLLOW_APB
+        bool "PSRAM 数据宽度跟随 APB"
+        default y
+        help
+          y: PSRAM_XLEN = EffectiveApbXLEN。
+          n: 使用 PSRAM_XLEN。
+
+      config PSRAM_XLEN
+        int "PSRAM 数据宽度"
+        depends on !PSRAM_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+      config SDRAM_XLEN_FOLLOW_APB
+        bool "SDRAM 数据宽度跟随 APB"
+        default y
+        help
+          y: SDRAM_XLEN = EffectiveApbXLEN。
+          n: 使用 SDRAM_XLEN。
+
+      config SDRAM_XLEN
+        int "SDRAM 数据宽度"
+        depends on !SDRAM_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+      config MROM_XLEN_FOLLOW_APB
+        bool "MROM 数据宽度跟随 APB"
+        default y
+        help
+          y: MROM_XLEN = EffectiveApbXLEN。
+          n: 使用 MROM_XLEN。
+
+      config MROM_XLEN
+        int "MROM 数据宽度"
+        depends on !MROM_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+      config SRAM_XLEN_FOLLOW_APB
+        bool "SRAM 数据宽度跟随 APB"
+        default y
+        help
+          y: SRAM_XLEN = EffectiveApbXLEN。
+          n: 使用 SRAM_XLEN。
+
+      config SRAM_XLEN
+        int "SRAM 数据宽度"
+        depends on !SRAM_XLEN_FOLLOW_APB
+        default 32
+        range 32 64
+
+    endmenu
+
   endmenu
 
   menu "SoC 总线延迟模型"

@@ -17,11 +17,11 @@ class VGAIO extends Bundle {
   val valid = Output(Bool())
 }
 
-class VGACtrlIO extends Bundle {
+class VGACtrlIO(val dataBits: Int = 32) extends Bundle {
   val clock = Input(Clock())
   val reset = Input(Bool())
   val in = Flipped(
-    new APBBundle(APBBundleParameters(addrBits = 32, dataBits = 32))
+    new APBBundle(APBBundleParameters(addrBits = 32, dataBits = dataBits))
   )
   val vga = new VGAIO
 }
@@ -30,8 +30,9 @@ class vga_top_apb extends BlackBox {
   val io = IO(new VGACtrlIO)
 }
 
-class vgaChisel extends Module {
-  val io = IO(new VGACtrlIO)
+class vgaChisel(val dataBits: Int = 32) extends Module {
+  require(dataBits == 32 || dataBits == 64, s"VGA APB 宽度必须是 32 或 64，当前值 $dataBits")
+  val io = IO(new VGACtrlIO(dataBits))
   val apb = io.in
   val HFront = 96; val HActive = 144; val HBack = 784; val HTotal = 800
   val VFront = 2; val VActive = 35; val VBack = 515; val VTotal = 525
@@ -63,21 +64,34 @@ class vgaChisel extends Module {
   io.vga.g := Mux(Valid, PixData(1), 0.U)
   io.vga.b := Mux(Valid, PixData(0), 0.U)
   //拿来APB写帧缓冲的,按pstrb字节使能写,支持sb/sh/sl
-  val WriteAddr = (apb.paddr - "h21000000".U)(20, 2)
+  val ByteAddr = (apb.paddr - "h21000000".U)(20, 0)
+  val WriteAddr =
+    if (dataBits == 64) Cat(ByteAddr(20, 3), 0.U(1.W)) else ByteAddr(20, 2)
+  val LowWord = VecInit(Seq.tabulate(4)(i => apb.pwdata(8 * i + 7, 8 * i)))
   when(apb.psel && apb.penable && apb.pwrite) {
-    FrameBuffer.write(
-      WriteAddr,
-      VecInit(Seq(apb.pwdata(7, 0), apb.pwdata(15, 8), apb.pwdata(23, 16), apb.pwdata(31, 24))),
-      apb.pstrb.asBools
-    )
+    when(apb.pstrb(3, 0).orR) {
+      FrameBuffer.write(WriteAddr, LowWord, apb.pstrb(3, 0).asBools)
+    }
+    if (dataBits == 64) {
+      val HighWord = VecInit(Seq.tabulate(4)(i => apb.pwdata(32 + 8 * i + 7, 32 + 8 * i)))
+      when(apb.pstrb(7, 4).orR) {
+        FrameBuffer.write(WriteAddr + 1.U, HighWord, apb.pstrb(7, 4).asBools)
+      }
+    }
   }
-  apb.prdata := 0.U
+  apb.prdata := 0.U(dataBits.W)
   apb.pready := true.B
   apb.pslverr := false.B
 }
 
-class APBVGA(address: Seq[AddressSet])(implicit p: Parameters)
+class APBVGA(
+    address: Seq[AddressSet],
+    val xlen: Int = Config.peripheralXlen("vga")
+)(implicit p: Parameters)
     extends LazyModule {
+  private val busBytes = APBConfig.apbBytes
+  private val coreBytes = APBConfig.checkXlen(xlen, "vga") / 8
+
   val node = APBSlaveNode(
     Seq(
       APBSlavePortParameters(
@@ -89,7 +103,7 @@ class APBVGA(address: Seq[AddressSet])(implicit p: Parameters)
             supportsWrite = true
           )
         ),
-        beatBytes = 4
+        beatBytes = busBytes
       )
     )
   )
@@ -100,10 +114,19 @@ class APBVGA(address: Seq[AddressSet])(implicit p: Parameters)
     val vga_bundle = IO(new VGAIO)
 
     // val mvga = Module(new vga_top_apb)
-    val mvga = Module(new vgaChisel)
+    val mvga = Module(new vgaChisel(coreBytes * 8))
     mvga.io.clock := clock
     mvga.io.reset := reset
-    mvga.io.in <> in
+    if (busBytes == coreBytes) {
+      mvga.io.in <> in
+    } else {
+      val bridge = Module(new APBWidthConverter(
+        in.paddr.getWidth, busBytes * 8, coreBytes * 8))
+      bridge.io.clock := clock
+      bridge.io.reset := reset
+      bridge.io.in <> in
+      mvga.io.in <> bridge.io.out
+    }
     vga_bundle <> mvga.io.vga
   }
 }

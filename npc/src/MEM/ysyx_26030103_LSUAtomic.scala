@@ -7,6 +7,24 @@ import _root_.ysyx_26030103.common._
 private[mem] trait LSUAtomic {
   this: ysyx_26030103_LSU =>
 
+  // SC 读阶段完成后按 reservation 决定是否写回内存
+  def finishScRead(): Unit = {
+    when(scReservationOk) {
+      atomicResultData := 0.U
+      atomicNewData := activeInstruction.StoreData
+      AtomicAWDone := false.B
+      atomicWDone := false.B
+      atomicWBeat := false.B
+      state := stateAtomicWriteRequest
+    }.otherwise {
+      reservationValid := false.B
+      loadDataReg := 1.U
+      atomicActive := false.B
+      transactionComplete := true.B
+      state := stateIdle
+    }
+  }
+
   def finishWideAtomicRead(wideData: UInt, responseBad: Bool): Unit = {
     val fault = accessFaultReg || responseBad
     when(fault) {
@@ -21,6 +39,8 @@ private[mem] trait LSUAtomic {
       atomicActive := false.B
       transactionComplete := true.B
       state := stateIdle
+    }.elsewhen(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
+      finishScRead()
     }.otherwise {
       atomicResultData := wideData
       atomicNewData := ysyx_26030103_AtomicOp.Compute(
@@ -37,28 +57,13 @@ private[mem] trait LSUAtomic {
     when(atomicPhysicalAddressReady && io.BusQuiet && !dataCacheBusActive) {
       atomicAddressReg := addressOf(EffectiveALUResult)
       when(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
-        // SC 失败路径完全不碰内存：rd=1，清除 reservation。
-        when(reservationValid && reservationAddress === addressOf(EffectiveALUResult)) {
-          atomicResultData := 0.U
-          atomicNewData := activeInstruction.StoreData
-          AtomicAWDone := false.B
-          atomicWDone := false.B
-          atomicWBeat := false.B
-          state := stateAtomicWriteRequest
-        }.otherwise {
-          reservationValid := false.B
-          loadDataReg := 1.U
-          atomicActive := false.B
-          transactionComplete := true.B
-          state := stateIdle
-        }
-      }.otherwise {
-        // LR/AMO 先读。
-        atomicReadBeat := 0.U
-        atomicReadLow := 0.U
-        atomicReadFaultReg := false.B
-        state := stateAtomicReadRequest
+        // SC 也先读：总线/PMP 故障优先于 reservation 失败
+        scReservationOk := reservationValid &&
+          reservationAddress === addressOf(EffectiveALUResult)
       }
+      atomicReadBeat := 0.U
+      atomicReadLow := 0.U
+      state := stateAtomicReadRequest
     }
   }
 
@@ -82,7 +87,6 @@ private[mem] trait LSUAtomic {
       when(responseBad) {
         accessFaultReg := true.B
         accessFaultResponseReg := io.DataBus.R.RRESP
-        atomicReadFaultReg := true.B
       }
       if (XLEN == 64) {
         when(atomicWide && busWideBit) {
@@ -90,7 +94,6 @@ private[mem] trait LSUAtomic {
             finishWideAtomicRead(io.DataBus.R.RDATA, responseBad)
           }.otherwise {
             accessFaultReg := true.B
-            atomicReadFaultReg := true.B
             accessFaultResponseReg := Mux(responseBad, io.DataBus.R.RRESP, 2.U)
             state := stateReadDrain
           }
@@ -101,7 +104,6 @@ private[mem] trait LSUAtomic {
               accessFaultReg := true.B
               accessFaultResponseReg := Mux(responseBad,
                 io.DataBus.R.RRESP, 2.U)
-              atomicReadFaultReg := true.B
               transactionComplete := true.B
               transactionFault := true.B
               atomicActive := false.B
@@ -117,7 +119,6 @@ private[mem] trait LSUAtomic {
             }.otherwise {
               // 超长 burst：继续排空到 RLAST，最终按访问故障提交。
               accessFaultReg := true.B
-              atomicReadFaultReg := true.B
               accessFaultResponseReg := Mux(responseBad,
                 io.DataBus.R.RRESP, 2.U)
               state := stateReadDrain
@@ -141,6 +142,8 @@ private[mem] trait LSUAtomic {
               atomicActive := false.B
               transactionComplete := true.B
               state := stateIdle
+            }.elsewhen(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
+              finishScRead()
             }.otherwise {
               atomicResultData := wordData
               atomicNewData := ysyx_26030103_AtomicOp.Compute(
@@ -153,7 +156,6 @@ private[mem] trait LSUAtomic {
             }
           }.otherwise {
             accessFaultReg := true.B
-            atomicReadFaultReg := true.B
             accessFaultResponseReg := Mux(responseBad, io.DataBus.R.RRESP, 2.U)
             state := stateReadDrain
           }
@@ -175,6 +177,8 @@ private[mem] trait LSUAtomic {
             atomicActive := false.B
             transactionComplete := true.B
             state := stateIdle
+          }.elsewhen(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
+            finishScRead()
           }.otherwise {
             atomicResultData := wordData
             atomicNewData := ysyx_26030103_AtomicOp.Compute(
@@ -187,7 +191,6 @@ private[mem] trait LSUAtomic {
           }
         }.otherwise {
           accessFaultReg := true.B
-          atomicReadFaultReg := true.B
           accessFaultResponseReg := Mux(responseBad, io.DataBus.R.RRESP, 2.U)
           state := stateReadDrain
         }

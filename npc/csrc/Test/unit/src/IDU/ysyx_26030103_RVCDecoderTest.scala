@@ -216,10 +216,57 @@ class ysyx_26030103_RVCDecoderTest extends AnyFlatSpec with Matchers {
     expand(0xa584, 32, useF = true, useD = false)._2 should be(true)
   }
 
-  it should "C.FLDSP/C.FLWSP 的 rd=0 保留编码必须非法" in {
-    // 0x2002: C.FLDSP f0, 0(sp)；0x6002: RV32 C.FLWSP f0, 0(sp)。
-    expand(0x2002, 32, useF = true, useD = true)._2 should be(true)
-    expand(0x2002, 64, useF = true, useD = true)._2 should be(true)
-    expand(0x6002, 32, useF = true, useD = false)._2 should be(true)
+  it should "SP 相对浮点访存的 f0 是合法寄存器" in {
+    // 浮点压缩访存的 rd/rs2 是 FPR 编号，f0 必须是合法编码，只有整数
+    // C.LWSP/C.LDSP 的 rd=x0 才是保留编码。
+    // 0x2002: C.FLDSP f0, 0(sp)
+    val (fldspF0, fldspF0Illegal) =
+      expand(0x2002, 32, useF = true, useD = true)
+    fldspF0Illegal should be(false)
+    opcode(fldspF0) should be(0x07)
+    funct3(fldspF0) should be(3)
+    rd(fldspF0) should be(0)
+    rs1(fldspF0) should be(2)
+    immI(fldspF0) should be(0)
+
+    // 0xa002: C.FSDSP f0, 0(sp)
+    val (fsdspF0, fsdspF0Illegal) =
+      expand(0xa002, 32, useF = true, useD = true)
+    fsdspF0Illegal should be(false)
+    opcode(fsdspF0) should be(0x27)
+    funct3(fsdspF0) should be(3)
+    rs1(fsdspF0) should be(2)
+    rs2(fsdspF0) should be(0)
+    immS(fsdspF0) should be(0)
+
+    // 0x6002: RV32 C.FLWSP f0, 0(sp)
+    val (flwspF0, flwspF0Illegal) =
+      expand(0x6002, 32, useF = true, useD = false)
+    flwspF0Illegal should be(false)
+    opcode(flwspF0) should be(0x07)
+    funct3(flwspF0) should be(2)
+    rd(flwspF0) should be(0)
+    rs1(flwspF0) should be(2)
+    immI(flwspF0) should be(0)
+
+    // 0xe002: RV32 C.FSWSP f0, 0(sp)
+    val (fswspF0, fswspF0Illegal) =
+      expand(0xe002, 32, useF = true, useD = false)
+    fswspF0Illegal should be(false)
+    opcode(fswspF0) should be(0x27)
+    funct3(fswspF0) should be(2)
+    rs1(fswspF0) should be(2)
+    rs2(fswspF0) should be(0)
+    immS(fswspF0) should be(0)
+
+    // 同一编码位在 RV64 是整数 C.LDSP，rd=0 的保留语义由下一个用例覆盖。
+  }
+
+  it should "整数 C.LWSP/C.LDSP 的 rd=0 保留编码必须非法" in {
+    // 0x4002: C.LWSP x0, 0(sp)
+    expand(0x4002, 32, useF = true, useD = false)._2 should be(true)
+    expand(0x4002, 64, useF = true, useD = true)._2 should be(true)
+    // 0x6002: RV64 C.LDSP x0, 0(sp)
+    expand(0x6002, 64, useF = true, useD = true)._2 should be(true)
   }
 }

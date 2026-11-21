@@ -121,6 +121,20 @@ bool in_backed_memory_range(paddr_t addr, size_t len)
           in_psram_range(addr, len) || in_sdram_range(addr, len));
 }
 
+bool paddr_is_backed(paddr_t addr, int len)
+{
+  if (in_backed_memory_range(addr, len))
+  {
+    return true;
+  }
+#ifdef CONFIG_DEVICE
+  return mmio_is_mapped(addr, len);
+#else
+  return in_stub_mmio(addr) || in_stub_uart(addr) || in_stub_clint(addr) ||
+         in_stub_plic(addr);
+#endif
+}
+
 uint8_t *guest_to_host(paddr_t paddr)
 {
   if (ysyxsoc_memory_mode && in_sram(paddr))

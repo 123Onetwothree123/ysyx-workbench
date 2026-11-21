@@ -178,8 +178,16 @@ class psramChisel extends RawModule {
   en := state === tx_data
 }
 
-class APBPSRAM(address: Seq[AddressSet])(implicit p: Parameters)
+class APBPSRAM(
+    address: Seq[AddressSet],
+    val xlen: Int = Config.peripheralXlen("psram")
+)(implicit p: Parameters)
     extends LazyModule {
+  APBConfig.checkXlen(xlen, "psram")
+  // APB fanout要求所有外设同宽, 所以端口宽度取APB_XLEN
+  private val busBytes = APBConfig.apbBytes
+  private val coreBytes = 4 // EF_PSRAM_CTRL_wb固定32位
+
   val node = APBSlaveNode(
     Seq(
       APBSlavePortParameters(
@@ -191,7 +199,7 @@ class APBPSRAM(address: Seq[AddressSet])(implicit p: Parameters)
             supportsWrite = true
           )
         ),
-        beatBytes = 4
+        beatBytes = busBytes
       )
     )
   )
@@ -204,7 +212,17 @@ class APBPSRAM(address: Seq[AddressSet])(implicit p: Parameters)
     val mpsram = Module(new psram_top_apb)
     mpsram.io.clock := clock
     mpsram.io.reset := reset
-    mpsram.io.in <> in
+    if (busBytes == coreBytes) {
+      mpsram.io.in <> in
+    } else {
+      // 内存类外设, 64位读要读两个32位半区
+      val bridge = Module(new APBWidthConverter(
+        in.paddr.getWidth, busBytes * 8, coreBytes * 8, readFullWidth = true))
+      bridge.io.clock := clock
+      bridge.io.reset := reset
+      bridge.io.in <> in
+      mpsram.io.in <> bridge.io.out
+    }
     qspi_bundle <> mpsram.io.qspi
   }
 }

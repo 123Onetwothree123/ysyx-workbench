@@ -138,8 +138,15 @@ case class ysyx_26030103_MMUProfile(
     CSRMissingMode: String = "illegal",
     PMPEnabled: Boolean = false,
     PMPEntries: Int = KconfigDefaults.MMUPMPEntries,
-    CSREnabled: Set[Int] = ysyx_26030103_MMUProfile.DefaultCSRAddresses
+    // PMP 粒度 G：pmpaddr 低 G-2 位读回为 0，NAPOT 最小区域为 2^G 字节
+    PMPGranularity: Int = 6,
+    CSREnabled: Set[Int] =
+      ysyx_26030103_MMUProfile.DefaultCSRAddresses
 ) {
+  // 标准 Sv32/Sv39/Sv48 必须接受非末级叶子 PTE
+  def superpageSupported: Boolean =
+    superpage || (geometryMode == "standard" && levels > 1)
+
   private def isPowerOfTwo(value: Int): Boolean =
     value > 0 && (value & (value - 1)) == 0
 
@@ -233,6 +240,8 @@ case class ysyx_26030103_MMUProfile(
   require(Set("illegal", "zero").contains(CSRMissingMode), "CSR_MISSING_MODE 必须是 illegal/zero")
   require(PMPEntries >= 0 && PMPEntries <= 16, "PMP_ENTRIES 必须在 0..16")
   require(!PMPEnabled || PMPEntries > 0, "HAS_PMP=y 时 PMP_ENTRIES 必须 > 0")
+  require(PMPGranularity >= 2 && PMPGranularity <= 30,
+    s"PMP_GRANULARITY=$PMPGranularity 必须在 2..30")
   // PMP 不再依赖 MMU：无 MMU 时直接检查 IFU 物理取指地址和 LSU 的 VA==PA
   // 访存地址；有 MMU 时仍检查翻译后的物理地址。
 
@@ -255,6 +264,7 @@ case class ysyx_26030103_MMUProfile(
     !highHalfCounter &&
       ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
       (CSREnabled.contains(address) ||
+        ysyx_26030103_MMUProfile.envcfgCSRAddresses(xlen).contains(address) ||
         ysyx_26030103_MMUProfile.IdentityCSRAddresses.contains(address) ||
         (PMPEnabled &&
           // RV64 只有 pmpcfg0/pmpcfg2，0x3a1/0x3a3 是 RV32 专用编码。
@@ -431,6 +441,14 @@ object ysyx_26030103_MMUProfile {
     * 它们不参与可裁剪配置，否则 CSR_ENABLED 漏列后会在译码阶段被判非法指令。
     */
   val IdentityCSRAddresses: Set[Int] = Set(0xf11, 0xf12, 0xf13, 0xf14)
+
+  /** 环境配置 CSR 固定实现为 WARL 0。
+    *
+    * menvcfg 始终存在；mstatush/menvcfgh 只在 RV32 存在。软件写这些寄存器
+    * 必须合法，读回 0 即 Svade/无 PBMT 的语义。
+    */
+  def envcfgCSRAddresses(xlen: Int): Set[Int] =
+    if (xlen == 32) Set(0x30a, 0x310, 0x31a) else Set(0x30a)
 
   // 配置生成器未显式给出 CSR 集合时的标准实现集合。
   val DefaultCSRAddresses: Set[Int] = Set(
@@ -646,7 +664,7 @@ object ysyx_26030103_MMUProfile {
       PMPEnabled = envBool(env, "HAS_PMP", false),
       PMPEntries = envInt(env, "PMP_ENTRIES", KconfigDefaults.MMUPMPEntries),
       CSREnabled = envAddressSet(env, "CSR_ENABLED", DefaultCSRAddresses) ++
-        IdentityCSRAddresses
+        IdentityCSRAddresses ++ envcfgCSRAddresses(xlen)
     )
   }
 }

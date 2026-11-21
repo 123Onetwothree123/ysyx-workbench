@@ -35,23 +35,46 @@ object AXI4SlaveNodeGenerator {
 }
 
 class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
+  val FabricBytes = Config.socXlen / 8
+  val ApbBytes = Config.apbXlen / 8
+  require(ApbBytes == 4 || ApbBytes == 8,
+    s"APB 宽度必须是 32 或 64，当前 $ApbBytes 字节")
+  val MromBytes = Config.peripheralXlen("mrom") / 8
+  val SramBytes = Config.peripheralXlen("sram") / 8
+  val SdramBytes = Config.peripheralXlen("sdram") / 8
+
   val xbar = AXI4Xbar()
   val xbar2 = AXI4Xbar()
   val apbxbar = LazyModule(new APBFanout).node
   val cpu = LazyModule(new CPU(idBits = ChipLinkParam.idBits, xlen = Config.socXlen))
-  // SOC_XLEN=64 时，CPU 侧是 64 位地址/数据 AXI，而 xbar 及所有外设
-  // 仍是 32 位。AXI4Downsizer 负责拆 beat 和高地址 DECERR；32 位构建
-  // 不例化该桥，保持既有拓扑与面积不变。
-  val cpuDownsizer =
-    if (Config.socXlen == 64)
-      Some(LazyModule(new AXI4Downsizer(Config.cpuAXI4AddrBits, Config.cpuAXI4DataBits)))
-    else None
   val chipMaster =
     if (Config.hasChipLink) Some(LazyModule(new ChipLinkMaster)) else None
   val chiplinkNode =
     if (Config.hasChipLink)
       Some(AXI4SlaveNodeGenerator(p(ExtBus), ChipLinkParam.allSpace))
     else None
+
+  private def connectAXI4(
+      Device: AXI4Node,
+      Upstream: AXI4Node,
+      DeviceBytes: Int
+  ): Unit = {
+    if (DeviceBytes == FabricBytes) {
+      Device := Upstream
+    } else if (FabricBytes == 8 && DeviceBytes == 4) {
+      val Bridge = LazyModule(
+        new AXI4Downsizer(Config.cpuAXI4AddrBits, FabricBytes * 8,
+          ExtendAddressSpace = false))
+      Device := Bridge.node := Upstream
+    } else if (FabricBytes == 4 && DeviceBytes == 8) {
+      val Bridge = LazyModule(
+        new AXI4Upsizer(Config.cpuAXI4AddrBits, FabricBytes * 8))
+      Device := Bridge.node := Upstream
+    } else {
+      require(false,
+        s"不支持的 AXI 宽度组合 fabric=$FabricBytes device=$DeviceBytes")
+    }
+  }
 
   val luart = LazyModule(
     new APBUart16550(AddressSet.misaligned(0x10000000, 0x1000))
@@ -70,13 +93,14 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     new APBPSRAM(AddressSet.misaligned(0x80000000L, 0x400000))
   )
   val lmrom = LazyModule(
-    new AXI4MROM(AddressSet.misaligned(0x30000000, 0x10000000))
+    new AXI4MROM(AddressSet.misaligned(0x30000000, 0x10000000),
+      MromBytes)
   )
   val sramNode = AXI4RAM(
     AddressSet.misaligned(0x0f000000, 0x8000).head,
     false,
     true,
-    4,
+    SramBytes,
     None,
     Nil,
     false
@@ -84,10 +108,12 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
 
   val sdramAddressSet = AddressSet.misaligned(0xa0000000L, 0x2000000)
   val lsdram_apb =
-    if (!Config.sdramUseAXI) Some(LazyModule(new APBSDRAM(sdramAddressSet)))
+    if (!Config.sdramUseAXI)
+      Some(LazyModule(new APBSDRAM(sdramAddressSet, ApbBytes * 8)))
     else None
   val lsdram_axi =
-    if (Config.sdramUseAXI) Some(LazyModule(new AXI4SDRAM(sdramAddressSet)))
+    if (Config.sdramUseAXI)
+      Some(LazyModule(new AXI4SDRAM(sdramAddressSet, SdramBytes)))
     else None
 
   List(
@@ -98,21 +124,29 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     lkeyboard.node,
     lvga.node
   ).map(_ := apbxbar)
-  List(
-    apbxbar := APBDelayer() := AXI4ToAPB() := AXI4Buffer(),
-    lmrom.node,
-    sramNode
-  ).map(_ := xbar2)
+
+  // AXI4ToAPB 的 AXI 侧跟随 SoC fabric，APB 侧宽度由设备决定
+  val ApbAXI4 = AXI4Buffer()
+  apbxbar := APBDelayer() := AXI4ToAPB(axiBytes = FabricBytes) := ApbAXI4
+  ApbAXI4 := xbar2
+  connectAXI4(lmrom.node, xbar2, MromBytes)
+  connectAXI4(sramNode, xbar2, SramBytes)
+
   xbar2 := AXI4UserYanker(Some(1)) := AXI4Fragmenter() := xbar
-  if (Config.sdramUseAXI) lsdram_axi.get.node := ysyx.AXI4Delayer() := xbar
-  else lsdram_apb.get.node := apbxbar
+  if (Config.sdramUseAXI) {
+    val SdramAXI4 = lsdram_axi.get.node := ysyx.AXI4Delayer()
+    connectAXI4(SdramAXI4, xbar, SdramBytes)
+  } else {
+    lsdram_apb.get.node := apbxbar
+  }
   if (Config.hasChipLink) chiplinkNode.get := xbar
-  cpuDownsizer match {
-    case Some(bridge) =>
-      bridge.node := cpu.masterNode
-      xbar := bridge.node
-    case None =>
-      xbar := cpu.masterNode
+
+  if (FabricBytes == 8) {
+    val CpuAddressExtender = LazyModule(
+      new AXI4AddressExtender(Config.socXlen))
+    xbar := CpuAddressExtender.node := cpu.masterNode
+  } else {
+    xbar := cpu.masterNode
   }
 
   override lazy val module = new Impl

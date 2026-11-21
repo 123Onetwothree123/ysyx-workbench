@@ -12,6 +12,37 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
     if (SOCXlen != 32 && SOCXlen != 64)
         throw std::runtime_error("SOC_XLEN 只允许 32/64");
     values["SOC_XLEN_EFFECTIVE"] = std::to_string(SOCXlen);
+    const bool apbFollow = asBool(values, "APB_XLEN_FOLLOW_SOC", true);
+    const long long APBXlen =
+        apbFollow ? SOCXlen : asInt(values, "APB_XLEN", SOCXlen);
+    if (APBXlen != 32 && APBXlen != 64)
+        throw std::runtime_error("APB_XLEN 只允许 32/64");
+    values["APB_XLEN_EFFECTIVE"] = std::to_string(APBXlen);
+    struct PeripheralXlen {
+        const char *xlen;
+        const char *follow;
+    };
+    static constexpr PeripheralXlen peripherals[] = {
+        {"UART_XLEN", "UART_XLEN_FOLLOW_APB"},
+        {"GPIO_XLEN", "GPIO_XLEN_FOLLOW_APB"},
+        {"KEYBOARD_XLEN", "KEYBOARD_XLEN_FOLLOW_APB"},
+        {"VGA_XLEN", "VGA_XLEN_FOLLOW_APB"},
+        {"SPI_XLEN", "SPI_XLEN_FOLLOW_APB"},
+        {"PSRAM_XLEN", "PSRAM_XLEN_FOLLOW_APB"},
+        {"SDRAM_XLEN", "SDRAM_XLEN_FOLLOW_APB"},
+        {"MROM_XLEN", "MROM_XLEN_FOLLOW_APB"},
+        {"SRAM_XLEN", "SRAM_XLEN_FOLLOW_APB"},
+    };
+    for (const auto &peripheral : peripherals) {
+        const bool follow = asBool(values, peripheral.follow, true);
+        const long long width =
+            follow ? APBXlen : asInt(values, peripheral.xlen, APBXlen);
+        if (width != 32 && width != 64)
+            throw std::runtime_error(std::string{peripheral.xlen} +
+                                     " 只允许 32/64");
+        values[std::string{peripheral.xlen} + "_EFFECTIVE"] =
+            std::to_string(width);
+    }
     const bool internalFollow =
         asBool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true);
     const long long internalWidth =

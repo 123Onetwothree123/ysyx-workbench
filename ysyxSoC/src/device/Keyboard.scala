@@ -13,11 +13,11 @@ class PS2IO extends Bundle {
   val data = Input(Bool())
 }
 
-class PS2CtrlIO extends Bundle {
+class PS2CtrlIO(val dataBits: Int = 32) extends Bundle {
   val clock = Input(Clock())
   val reset = Input(Bool())
   val in = Flipped(
-    new APBBundle(APBBundleParameters(addrBits = 32, dataBits = 32))
+    new APBBundle(APBBundleParameters(addrBits = 32, dataBits = dataBits))
   )
   val ps2 = new PS2IO
 }
@@ -26,8 +26,9 @@ class ps2_top_apb extends BlackBox {
   val io = IO(new PS2CtrlIO)
 }
 
-class ps2Chisel extends Module {
-  val io = IO(new PS2CtrlIO)
+class ps2Chisel(val dataBits: Int = 32) extends Module {
+  require(dataBits == 32 || dataBits == 64, s"PS2 APB 宽度必须是 32 或 64，当前值 $dataBits")
+  val io = IO(new PS2CtrlIO(dataBits))
   val apb = io.in
 
   val CLKSync = RegInit(VecInit(Seq.fill(3)(false.B)))
@@ -72,13 +73,24 @@ class ps2Chisel extends Module {
     }
   }
 
-  apb.prdata := Mux(Ready, FIFO(RPtr), 0.U)
+  val readByte = Mux(Ready, FIFO(RPtr), 0.U(8.W))
+  apb.prdata := (if (dataBits == 64) {
+    Mux(apb.paddr(2), (readByte.pad(64) << 32)(63, 0), readByte.pad(64))
+  } else {
+    readByte.pad(32)
+  })
   apb.pready := true.B
   apb.pslverr := false.B
 }
 
-class APBKeyboard(address: Seq[AddressSet])(implicit p: Parameters)
+class APBKeyboard(
+    address: Seq[AddressSet],
+    val xlen: Int = Config.peripheralXlen("keyboard")
+)(implicit p: Parameters)
     extends LazyModule {
+  private val busBytes = APBConfig.apbBytes
+  private val coreBytes = APBConfig.checkXlen(xlen, "keyboard") / 8
+
   val node = APBSlaveNode(
     Seq(
       APBSlavePortParameters(
@@ -90,7 +102,7 @@ class APBKeyboard(address: Seq[AddressSet])(implicit p: Parameters)
             supportsWrite = true
           )
         ),
-        beatBytes = 4
+        beatBytes = busBytes
       )
     )
   )
@@ -101,10 +113,19 @@ class APBKeyboard(address: Seq[AddressSet])(implicit p: Parameters)
     val ps2_bundle = IO(new PS2IO)
 
     // val mps2 = Module(new ps2_top_apb)
-    val mps2 = Module(new ps2Chisel)
+    val mps2 = Module(new ps2Chisel(coreBytes * 8))
     mps2.io.clock := clock
     mps2.io.reset := reset
-    mps2.io.in <> in
+    if (busBytes == coreBytes) {
+      mps2.io.in <> in
+    } else {
+      val bridge = Module(new APBWidthConverter(
+        in.paddr.getWidth, busBytes * 8, coreBytes * 8))
+      bridge.io.clock := clock
+      bridge.io.reset := reset
+      bridge.io.in <> in
+      mps2.io.in <> bridge.io.out
+    }
     ps2_bundle <> mps2.io.ps2
   }
 }

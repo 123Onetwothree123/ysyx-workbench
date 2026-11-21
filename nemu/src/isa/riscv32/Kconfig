@@ -28,6 +28,12 @@ config RISCV_D
     以及 RV64 的 FMV.X.D/FMV.D.X。D 依赖 F。打开后 f 寄存器按
     FLEN=64 保存，单精度结果使用标准 NaN boxing。
 
+config PMP_GRANULARITY_LOG2
+  int "PMP granularity (log2 bytes)"
+  default 6
+  help
+    PMP region最小粒度的log2字节数
+
 config RISCV_A
   bool "A extension (LR/SC and AMO)"
   default y

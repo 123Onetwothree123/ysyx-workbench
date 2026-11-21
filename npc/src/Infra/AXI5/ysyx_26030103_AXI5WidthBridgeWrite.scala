@@ -23,6 +23,9 @@ private[infra] trait AXI5WidthBridgeWrite {
     val wError = RegInit(false.B)
     val wBeat = RegInit(0.U(8.W))
     val wChunk = RegInit(0.U(2.W))
+    // 部分有效的 4 字节 chunk 会拆成逐字节事务；该寄存器保存当前 chunk
+    // 内正在发送的字节下标，B 返回后从它的下一个字节继续。
+    val DownstreamByteIndex = RegInit(0.U(2.W))
     val wResponseCode = RegInit(OKAY)
     val WAWSent = RegInit(false.B)
     val wWDone = RegInit(false.B)
@@ -48,6 +51,32 @@ private[infra] trait AXI5WidthBridgeWrite {
       io.in.AW.AWBURST
     )
 
+    // 当前 4 字节 chunk 完成后，推进到本拍的下一个 chunk；本拍也完成时
+    // 再采集下一拍 W，或聚合出上游 B。
+    def advanceWriteChunk(): Unit = {
+      val beatAddress = beatAddressOf(wAddress, wBeat, wSize, wBurst, WLength)
+      val lastChunk = beatChunkCount(
+        beatAddress,
+        wSize,
+        wBeat === 0.U || wBurst === 0.U
+      ) - 1.U
+      when(wChunk === lastChunk) {
+        when(wBeatLast) {
+          wState := wResponse
+        }.otherwise {
+          wBeat := wBeat + 1.U
+          wBeatValid := false.B
+          wChunk := 0.U
+          DownstreamByteIndex := 0.U
+          wState := wDnBeat
+        }
+      }.otherwise {
+        wChunk := wChunk + 1.U
+        DownstreamByteIndex := 0.U
+        wState := wDnSend
+      }
+    }
+
     switch(wState) {
       is(wIdle) {
         io.in.AW.AWREADY := true.B
@@ -72,6 +101,7 @@ private[infra] trait AXI5WidthBridgeWrite {
           wError := incomingWError
           wBeat := 0.U
           wChunk := 0.U
+          DownstreamByteIndex := 0.U
           wResponseCode := OKAY
           WAWSent := false.B
           wWDone := false.B
@@ -166,6 +196,7 @@ private[infra] trait AXI5WidthBridgeWrite {
           wBeatLast := io.in.W.WLAST
           wBeatValid := true.B
           wChunk := 0.U
+          DownstreamByteIndex := 0.U
           WChunkAWSent := false.B
           wChunkWSent := false.B
           wState := wDnSend
@@ -177,39 +208,78 @@ private[infra] trait AXI5WidthBridgeWrite {
         val byteBase = beatByteBase(beatAddress)
         val chunkAddress = chunkAddressOf(beatAddress, wChunk)
         val byteOffset = (chunkAddress - byteBase)(upLaneBits - 1, 0)
+        val ChunkStrobe = extractStrobe(wBeatStrobe, byteOffset)
+        val ChunkData = extractData(wBeatData, byteOffset)
+        val FullWord = ChunkStrobe.andR
+        val HasActiveByte = (ChunkStrobe >> DownstreamByteIndex).orR
+        val ActiveByteIndex =
+          DownstreamByteIndex + PriorityEncoder(ChunkStrobe >> DownstreamByteIndex)
+        val TransactionValid = FullWord || HasActiveByte
 
-        io.out.AW.AWVALID := !WChunkAWSent
+        // 整 4 字节都有效时，仍发一个对齐的 4 字节事务；只要 WSTRB 只覆盖
+        // 部分字节，就按真实字节地址逐字节发 AWSIZE=0。PSRAM 控制器用
+        // AXI 地址的字节偏移选择写入位置，不按 WSTRB 调整字内偏移，因此
+        // 发“字对齐地址 + 部分 WSTRB”会把字节写到字首。
+        //
+        // 字节事务的 WSTRB 保持在该字节原本的 lane 上，而不是搬到 lane0：
+        // AWSIZE=0 时 WSTRB 的有效位必须等于地址的字节偏移；这样既满足
+        // PSRAM 的地址语义，也让按 WSTRB 合并写的 32 位从设备（如 direct
+        // AXIRAM）写到同一个字节。
+        val DownstreamAddress =
+          Mux(FullWord, chunkAddress, chunkAddress + ActiveByteIndex)
+        val DownstreamData = ChunkData
+        val DownstreamStrobe = Mux(
+          FullWord,
+          ChunkStrobe,
+          (1.U(downBytes.W) << ActiveByteIndex)(downBytes - 1, 0)
+        )
+
+        io.out.AW.AWVALID := !WChunkAWSent && TransactionValid
         io.out.AW.AWID := WID
-        io.out.AW.AWADDR := downAddress(chunkAddress)
+        io.out.AW.AWADDR := downAddress(DownstreamAddress)
         io.out.AW.AWLEN := 0.U
-        io.out.AW.AWSIZE := downLaneBits.U(3.W)
+        io.out.AW.AWSIZE := Mux(FullWord, downLaneBits.U(3.W), 0.U(3.W))
         io.out.AW.AWBURST := 1.U
         io.out.AW.AWPROT := wProt
         io.out.AW.AWCACHE := wCache
         io.out.AW.AWQOS := wQos
 
-        io.out.W.WVALID := !wChunkWSent
-        io.out.W.WDATA := extractData(wBeatData, byteOffset)
-        io.out.W.WSTRB := extractStrobe(wBeatStrobe, byteOffset)
-        // 每个 chunk 都是独立的 AWLEN=0 单拍事务，WLAST 必须逐笔拉高；
-        // 上游 burst 的最后一拍只用于决定何时聚合出上游 B。
+        io.out.W.WVALID := !wChunkWSent && TransactionValid
+        io.out.W.WDATA := DownstreamData
+        io.out.W.WSTRB := DownstreamStrobe
+        // 每个 chunk（或部分 chunk 内的每个字节）都是独立的 AWLEN=0
+        // 单拍事务，WLAST 必须逐笔拉高；上游 burst 的最后一拍只用于
+        // 决定何时聚合出上游 B。
         io.out.W.WLAST := true.B
 
         val AWFire = io.out.AW.AWVALID && io.out.AW.AWREADY
         val wFire = io.out.W.WVALID && io.out.W.WREADY
         when(AWFire) { WChunkAWSent := true.B }
         when(wFire) { wChunkWSent := true.B }
-        when((WChunkAWSent || AWFire) && (wChunkWSent || wFire)) {
+        when(TransactionValid &&
+          (WChunkAWSent || AWFire) && (wChunkWSent || wFire)) {
           WChunkAWSent := false.B
           wChunkWSent := false.B
+          // 记录本次真正发送的字节，wDnWaitB 从它的下一个有效字节继续。
+          when(!FullWord) { DownstreamByteIndex := ActiveByteIndex }
           wState := wDnWaitB
         }
+        // WSTRB=0 的 chunk 没有字节要写，不能发空事务，也不能等 B。
+        when(!TransactionValid) { advanceWriteChunk() }
       }
 
       is(wDnWaitB) {
         val beatAddress = beatAddressOf(wAddress, wBeat, wSize, wBurst, WLength)
-        val partial = wBeat === 0.U || wBurst === 0.U
-        val lastChunk = beatChunkCount(beatAddress, wSize, partial) - 1.U
+        val byteBase = beatByteBase(beatAddress)
+        val chunkAddress = chunkAddressOf(beatAddress, wChunk)
+        val byteOffset = (chunkAddress - byteBase)(upLaneBits - 1, 0)
+        val ChunkStrobe = extractStrobe(wBeatStrobe, byteOffset)
+        val FullWord = ChunkStrobe.andR
+        // 部分 chunk 要按字节逐笔收 B；+& 保证下标 3 加一后仍能表示 4，
+        // 否则 2 位加法回绕成 0，会把已经发过的字节再发一遍。
+        val NextByteIndex = DownstreamByteIndex +& 1.U
+        val HasRemainingByte = (ChunkStrobe >> NextByteIndex).orR
+
         io.out.B.BREADY := true.B
         when(io.out.B.BVALID) {
           assert(
@@ -219,18 +289,15 @@ private[infra] trait AXI5WidthBridgeWrite {
           when(io.out.B.BRESP =/= OKAY) {
             wResponseCode := io.out.B.BRESP
           }
-          when(wChunk === lastChunk) {
-            when(wBeatLast) {
-              wState := wResponse
-            }.otherwise {
-              wBeat := wBeat + 1.U
-              wBeatValid := false.B
-              wChunk := 0.U
-              wState := wDnBeat
-            }
+          when(FullWord) {
+            advanceWriteChunk()
           }.otherwise {
-            wChunk := wChunk + 1.U
-            wState := wDnSend
+            when(HasRemainingByte) {
+              DownstreamByteIndex := NextByteIndex(1, 0)
+              wState := wDnSend
+            }.otherwise {
+              advanceWriteChunk()
+            }
           }
         }
       }

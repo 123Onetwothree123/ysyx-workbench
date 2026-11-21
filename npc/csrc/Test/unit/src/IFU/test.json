@@ -1,0 +1,23 @@
+{
+  "tests": [
+    {
+      "name": "scala.ysyx_26030103.ifu.ysyx_26030103_IFUFaultTvalTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.ifu.ysyx_26030103_IFUFaultTvalTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "ifu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    }
+  ]
+}

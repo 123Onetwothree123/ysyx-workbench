@@ -56,6 +56,26 @@ class ysyx_26030103_PrivilegeConfigTest extends AnyFlatSpec with Matchers {
     p.hasU should be(false)
   }
 
+  it should "RV32/RV64 都实现 menvcfg，RV32 另实现 mstatush/menvcfgh" in {
+    val p32 = ysyx_26030103_MMUProfile.fromEnv(env(), xlen = 32)
+    p32.csrSupported(0x30a) should be(true)
+    p32.csrSupported(0x310) should be(true)
+    p32.csrSupported(0x31a) should be(true)
+    val p64 = ysyx_26030103_MMUProfile.fromEnv(env(), xlen = 64)
+    p64.csrSupported(0x30a) should be(true)
+    p64.csrSupported(0x310) should be(false)
+    p64.csrSupported(0x31a) should be(false)
+  }
+
+  it should "标准 Sv32/Sv39 几何始终接受超级页" in {
+    val p32 = ysyx_26030103_MMUProfile.fromEnv(env(), xlen = 32)
+    p32.superpage should be(false)
+    p32.superpageSupported should be(true)
+    val p64 = ysyx_26030103_MMUProfile.fromEnv(env(), xlen = 64)
+    p64.superpage should be(false)
+    p64.superpageSupported should be(true)
+  }
+
   it should "支持 M+U（HAS_S=n/HAS_U=y/HAS_MMU=n）" in {
     val p = ysyx_26030103_MMUProfile.fromEnv(env(
       "HAS_S" -> "n",

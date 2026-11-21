@@ -92,6 +92,21 @@ static inline word_t pmpcfg_entry(int index)
           PMP_CFG_ENTRY_SHIFT(index)) & 0xffu;
 }
 
+static inline word_t pmpaddr_read_value(int index)
+{
+  const word_t IndexValue = cpu.pmpaddr[index] & PMP_ADDR_MASK;
+  if ((pmpcfg_entry(index) & 0x18u) == 0x18u) {
+    return IndexValue | PMP_NAPOT_READ_ONES;
+  }
+  return IndexValue & ~PMP_TOR_LOW_MASK;
+}
+
+static inline void raise_illegal_inst(Decode *s)
+{
+  isa_trap_tval = s->isa.inst;
+  s->dnpc = isa_raise_intr(2, s->pc);
+}
+
 static inline word_t csr_address(const Decode *s)
 {
   return BITS(s->isa.inst, 31, 20);
@@ -115,6 +130,10 @@ static inline bool csr_is_read_only(word_t address)
 static inline bool csr_priv_ok(word_t address)
 {
   if (cpu.privilege < BITS(address, 9, 8)) {
+    return false;
+  }
+  if (address == 0x180 && cpu.privilege == RISCV_PRIV_S &&
+      (cpu.mstatus & MSTATUS_TVM)) {
     return false;
   }
 
@@ -188,6 +207,10 @@ static bool csr_exists(word_t address)
     case 0x304:
     case 0x305:
     case 0x306:
+    case 0x30a:
+#ifndef CONFIG_RV64
+    case 0x31a:
+#endif
     case 0x310:
     case 0x320:
     case 0x340:
@@ -220,7 +243,7 @@ static word_t csr_read(word_t address)
     return cpu.pmpcfg[address - 0x3a0];
   }
   if (address >= 0x3b0 && address <= 0x3bf) {
-    return cpu.pmpaddr[address - 0x3b0];
+    return pmpaddr_read_value(address - 0x3b0);
   }
 
   switch (address)
@@ -266,6 +289,12 @@ static word_t csr_read(word_t address)
   case 0x304: return cpu.mie;
   case 0x305: return cpu.mtvec;
   case 0x306: return cpu.mcounteren;
+  case 0x30a:
+    return cpu.Menvcfg;
+#ifndef CONFIG_RV64
+  case 0x31a:
+    return cpu.Menvcfgh;
+#endif
   case 0x310: return 0; // mstatush
   case 0x320: return cpu.mcountinhibit;
   case 0x340: return cpu.mscratch;
@@ -294,21 +323,38 @@ static void csr_write(word_t address, word_t value)
       panic("RV64 不存在 CSR " FMT_WORD "（pmpcfg1/pmpcfg3 仅为 RV32）", address);
     }
     const int idx = address - 0x3a0;
-    const word_t old = cpu.pmpcfg[idx];
-    word_t locked = 0;
+    word_t NextValue = cpu.pmpcfg[idx];
     for (int i = 0; i < PMP_CFG_ENTRIES_PER_REG; i++) {
-      if (old & ((word_t)0x80 << (i * 8))) {
-        locked |= (word_t)0xff << (i * 8);
+      const int Shift = i * 8;
+      const word_t OldEntry = (NextValue >> Shift) & 0xffu;
+      if (OldEntry & 0x80u) {
+        continue;
       }
+      word_t NewEntry = (value >> Shift) & 0xffu;
+      NewEntry &= 0x9fu;
+      if ((NewEntry & 0x02u) && !(NewEntry & 0x01u)) {
+        NewEntry &= ~(word_t)0x02u;
+      }
+      if (PMP_NA4_UNSUPPORTED && (NewEntry & 0x18u) == 0x10u) {
+        NewEntry = (NewEntry & ~(word_t)0x18u) | 0x18u;
+      }
+      NextValue = (NextValue & ~((word_t)0xffu << Shift)) | (NewEntry << Shift);
     }
-    cpu.pmpcfg[idx] = (old & locked) | (value & ~locked);
+    cpu.pmpcfg[idx] = NextValue;
     return;
   }
   if (address >= 0x3b0 && address <= 0x3bf) {
     const int idx = address - 0x3b0;
-    if ((pmpcfg_entry(idx) & 0x80u) == 0) {
-      cpu.pmpaddr[idx] = value;
+    if (pmpcfg_entry(idx) & 0x80u) {
+      return;
     }
+    if (idx + 1 < 16) {
+      const word_t NextCfg = pmpcfg_entry(idx + 1);
+      if ((NextCfg & 0x80u) && (NextCfg & 0x18u) == 0x08u) {
+        return;
+      }
+    }
+    cpu.pmpaddr[idx] = value & PMP_ADDR_MASK;
     return;
   }
 
@@ -366,6 +412,10 @@ static void csr_write(word_t address, word_t value)
   case 0x304: cpu.mie = value; return;
   case 0x305: cpu.mtvec = mtvec_warl(value); return;
   case 0x306: cpu.mcounteren = value; return;
+  case 0x30a: cpu.Menvcfg = value; return;
+#ifndef CONFIG_RV64
+  case 0x31a: cpu.Menvcfgh = value; return;
+#endif
   case 0x310: return; // mstatush 全 0
   case 0x320: cpu.mcountinhibit = value; return;
   case 0x340: cpu.mscratch = value; return;
@@ -510,22 +560,23 @@ enum {
 static bool reservation_valid = false;
 static vaddr_t reservation_addr = 0;
 
-static inline bool amo_aligned(Decode *s, vaddr_t addr, int size)
+static inline bool amo_aligned(Decode *s, vaddr_t addr, int size, word_t cause)
 {
   if ((addr & (vaddr_t)(size - 1)) == 0) {
     return true;
   }
-  s->dnpc = isa_raise_intr(6, s->pc); // store/AMO address misaligned
+  isa_trap_tval = addr;
+  s->dnpc = isa_raise_intr(cause, s->pc);
   return false;
 }
 
 static void amo_exec(Decode *s, vaddr_t addr, word_t rhs, int rd, int size, int op)
 {
-  if (!amo_aligned(s, addr, size)) {
+  if (!amo_aligned(s, addr, size, 6)) {
     return;
   }
 
-  const word_t old = Mr(addr, size);
+  const word_t old = vaddr_read_amo(addr, size);
   const word_t a = (size == 4) ? (uint32_t)old : old;
   const word_t b = (size == 4) ? (uint32_t)rhs : rhs;
   word_t result;
@@ -557,7 +608,7 @@ static void amo_exec(Decode *s, vaddr_t addr, word_t rhs, int rd, int size, int 
 
 static void lr_exec(Decode *s, vaddr_t addr, int rd, int size)
 {
-  if (!amo_aligned(s, addr, size)) {
+  if (!amo_aligned(s, addr, size, 4)) {
     return;
   }
   const word_t old = Mr(addr, size);
@@ -568,9 +619,10 @@ static void lr_exec(Decode *s, vaddr_t addr, int rd, int size)
 
 static void sc_exec(Decode *s, vaddr_t addr, word_t value, int rd, int size)
 {
-  if (!amo_aligned(s, addr, size)) {
+  if (!amo_aligned(s, addr, size, 6)) {
     return;
   }
+  vaddr_check_write(addr, size);
   if (reservation_valid && reservation_addr == addr) {
     Mw(addr, size, value);
     R(rd) = 0; // 成功
@@ -775,7 +827,7 @@ static void rvc_illegal(Decode *s)
   }
   else
   {
-    s->dnpc = isa_raise_intr(2, s->pc);
+    raise_illegal_inst(s);
   }
 }
 
@@ -1030,12 +1082,8 @@ static int decode_exec_c(Decode *s)
       }
       break;
     }
-    case 1: // C.FLDSP：rd=0 保留
+    case 1: // C.FLDSP：rd 是 FPR 编号，f0 合法
 #ifdef CONFIG_RISCV_D
-      if (rd == 0)
-      {
-        RVC_ILLEGAL();
-      }
       riscv_fp_load(s, R(2) + rvc_uimm_ldsp(i), 8, rd);
 #else
       RVC_ILLEGAL(); // C.FLDSP 需要 D 扩展
@@ -1059,11 +1107,7 @@ static int decode_exec_c(Decode *s)
       }
       R(rd) = Mr(R(2) + rvc_uimm_ldsp(i), 8);
 #elif defined(CONFIG_RISCV_F)
-      // RV32 C.FLWSP：rd=0 保留
-      if (rd == 0)
-      {
-        RVC_ILLEGAL();
-      }
+      // RV32 C.FLWSP：rd 是 FPR 编号，f0 合法
       riscv_fp_load(s, R(2) + rvc_uimm_lwsp(i), 4, rd);
 #else
       RVC_ILLEGAL(); // RV32 的 C.FLWSP 需要 F 扩展
@@ -1209,7 +1253,7 @@ static int decode_exec(Decode *s)
   INSTPAT("0001000 00101 00000 000 00000 11100 11", wfi, N, {
     if (cpu.privilege == RISCV_PRIV_U ||
         (cpu.privilege == RISCV_PRIV_S && (cpu.mstatus & MSTATUS_TW))) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     }
   });
   // 自己写的
@@ -1454,9 +1498,9 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 001 ????? 11100 11", csrrw, N, {
     const word_t address = csr_address(s);
     if (!csr_priv_ok(address) || !csr_exists(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else if (csr_is_read_only(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else {
       const word_t old = csr_read(address);
       csr_write(address, csr_rs1(s));
@@ -1467,9 +1511,9 @@ static int decode_exec(Decode *s)
     const word_t address = csr_address(s);
     const bool write = BITS(s->isa.inst, 19, 15) != 0;
     if (!csr_priv_ok(address) || !csr_exists(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else if (write && csr_is_read_only(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else {
       const word_t old = csr_read(address);
       if (write) csr_write(address, old | csr_rs1(s));
@@ -1480,9 +1524,9 @@ static int decode_exec(Decode *s)
     const word_t address = csr_address(s);
     const bool write = BITS(s->isa.inst, 19, 15) != 0;
     if (!csr_priv_ok(address) || !csr_exists(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else if (write && csr_is_read_only(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else {
       const word_t old = csr_read(address);
       if (write) csr_write(address, old & ~csr_rs1(s));
@@ -1492,9 +1536,9 @@ static int decode_exec(Decode *s)
   INSTPAT("??????? ????? ????? 101 ????? 11100 11", csrrwi, N, {
     const word_t address = csr_address(s);
     if (!csr_priv_ok(address) || !csr_exists(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else if (csr_is_read_only(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else {
       const word_t old = csr_read(address);
       csr_write(address, csr_zimm(s));
@@ -1505,9 +1549,9 @@ static int decode_exec(Decode *s)
     const word_t address = csr_address(s);
     const word_t source = csr_zimm(s);
     if (!csr_priv_ok(address) || !csr_exists(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else if (source != 0 && csr_is_read_only(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else {
       const word_t old = csr_read(address);
       if (source != 0) csr_write(address, old | source);
@@ -1518,9 +1562,9 @@ static int decode_exec(Decode *s)
     const word_t address = csr_address(s);
     const word_t source = csr_zimm(s);
     if (!csr_priv_ok(address) || !csr_exists(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else if (source != 0 && csr_is_read_only(address)) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else {
       const word_t old = csr_read(address);
       if (source != 0) csr_write(address, old & ~source);
@@ -1529,7 +1573,7 @@ static int decode_exec(Decode *s)
   });
   INSTPAT("0011000 00010 00000 000 00000 11100 11", mret, N, {
     if (cpu.privilege != RISCV_PRIV_M) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else {
       s->dnpc = cpu.mepc;
       mret_update_mstatus();
@@ -1538,7 +1582,7 @@ static int decode_exec(Decode *s)
   INSTPAT("0001000 00010 00000 000 00000 11100 11", sret, N, {
     if (cpu.privilege == RISCV_PRIV_U ||
         (cpu.privilege == RISCV_PRIV_S && (cpu.mstatus & MSTATUS_TSR))) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     } else {
       s->dnpc = cpu.sepc;
       sret_update_mstatus();
@@ -1548,7 +1592,7 @@ static int decode_exec(Decode *s)
     // S 模式在 mstatus.TVM=1 时执行 SFENCE.VMA 也是非法指令。
     if (cpu.privilege == RISCV_PRIV_U ||
         (cpu.privilege == RISCV_PRIV_S && (cpu.mstatus & MSTATUS_TVM))) {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     }
   });
   INSTPAT("??????? ????? ????? ??? ????? ????? ??", inv, N, {
@@ -1560,7 +1604,7 @@ static int decode_exec(Decode *s)
           s->pc, s->isa.inst);
       invalid_inst(s->pc);
     } else {
-      s->dnpc = isa_raise_intr(2, s->pc);
+      raise_illegal_inst(s);
     }
   });
   INSTPAT_END();

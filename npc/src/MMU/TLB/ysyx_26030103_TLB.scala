@@ -17,6 +17,7 @@ class ysyx_26030103_TLBWrite(
   val PTE = UInt(PTEWidth.W)
   // fillLevel 使用统一 3 位编码，支持最多 8 级页表。
   val level = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
+  val napot = Bool()
 }
 
 // 组相联 TLB，支持 Sv32/Sv39/Sv48 和 1..2 个同拍查找端口。split 模式下
@@ -120,6 +121,7 @@ class ysyx_26030103_TLB(
     val FillASID = Input(UInt(16.W))
     val FillPTE = Input(UInt(PTEWidth.W))
     val fillLevel = Input(UInt(ysyx_26030103_MMUProfile.LevelBits.W))
+    val fillNapot = Input(Bool())
     // 第 2..refillPorts 个写回端口；端口 0 保持上面的兼容接口。
     val fillExtra = if (refillPorts > 1)
       Some(Input(Vec(refillPorts - 1,
@@ -134,11 +136,13 @@ class ysyx_26030103_TLB(
   // 0=基础页，k=第 k 级超级页，shift = pageBits + k*indexBits。
   require(superpageEntries >= 1 && superpageEntries <= 16,
     "TLB superpageEntries 必须在 1..16")
+  // RV64 需要超级页 CAM 才能缓存 64KiB Svnapot 页
   private val superEntryCount =
-    if (superpage && levels > 1) superpageEntries else 0
+    if (levels > 1 && (superpage || XLEN == 64)) superpageEntries else 0
   class SuperEntry extends Bundle {
     val valid = Bool()
     val level = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
+    val napot = Bool()
     val vaddr = UInt(XLEN.W)
     val ASID = UInt(ASIDWidth.W)
     val global = Bool()
@@ -157,9 +161,12 @@ class ysyx_26030103_TLB(
   // 超级页偏移掩码：低 shift 位为 1。
   private def offsetMaskOf(shift: UInt): UInt =
     (~0.U(XLEN.W)) >> (XLEN.U - shift)
-  // 判断虚拟地址是否落在同一超级页。
-  private def superTagMatch(level: UInt, entryVirtualAddress: UInt, lookupVirtualAddress: UInt): Bool = {
-    val mask = ~offsetMaskOf(shiftOfLevel(level))
+  private val NapotShift: Int = pageBits + 4
+  private def superShiftOf(entryNapot: Bool, level: UInt): UInt =
+    Mux(entryNapot, NapotShift.U(shiftBits.W), shiftOfLevel(level))
+  // 判断虚拟地址是否落在同一超级页/NATOP 页。
+  private def superTagMatch(shift: UInt, entryVirtualAddress: UInt, lookupVirtualAddress: UInt): Bool = {
+    val mask = ~offsetMaskOf(shift)
     (entryVirtualAddress & mask) === (lookupVirtualAddress & mask)
   }
   val superVec = if (superEntryCount > 0)
@@ -264,8 +271,9 @@ class ysyx_26030103_TLB(
         val entry = superVec.get(i)
         val ASIDMatch = if (ASIDBits == 0) true.B else entry.ASID === lookup.ASID
         val globalMatch = if (globalEnable) entry.global else false.B
-        entry.valid && entry.level =/= 0.U &&
-          superTagMatch(entry.level, entry.vaddr, lookup.vaddr) &&
+        entry.valid && (entry.level =/= 0.U || entry.napot) &&
+          superTagMatch(superShiftOf(entry.napot, entry.level),
+            entry.vaddr, lookup.vaddr) &&
           (globalMatch || ASIDMatch)
       }
     } else Seq.empty
@@ -276,7 +284,8 @@ class ysyx_26030103_TLB(
     val superPhysicalAddress = if (superEntryCount > 0) {
       val paddrs = (0 until superEntryCount).map { i =>
         val entry = superVec.get(i)
-        entry.paddrBase | (lookup.vaddr & offsetMaskOf(shiftOfLevel(entry.level)))
+        entry.paddrBase |
+          (lookup.vaddr & offsetMaskOf(superShiftOf(entry.napot, entry.level)))
       }
       Mux1H(superHits, paddrs)
     } else 0.U(addressWidth.W)
@@ -376,29 +385,35 @@ class ysyx_26030103_TLB(
     }
   }
   def doFill(valid: Bool, fillVirtualAddressVal: UInt, FillASIDVal: UInt,
-      FillPTEVal: UInt, fillLevelVal: UInt): Unit = {
+      FillPTEVal: UInt, fillLevelVal: UInt, fillNapotVal: Bool): Unit = {
     if (superEntryCount > 0) {
-      // fillLevel 0 是基础页；1..levels-1 是超级页层级。TLB 只缓存
-      // 配置范围内的层级，超出范围的填充请求被忽略（PTW 不会产生）。
-      when(!io.flush && valid && fillLevelVal =/= 0.U &&
-          fillLevelVal < levels.U) {
+      // fillLevel 0 是基础页；1..levels-1 是超级页层级；NATOP 单独标记。
+      when(!io.flush && valid &&
+          (fillNapotVal || (fillLevelVal =/= 0.U && fillLevelVal < levels.U))) {
+        val fillShift = Mux(fillNapotVal, NapotShift.U(shiftBits.W),
+          shiftOfLevel(fillLevelVal))
         val hit = (0 until superEntryCount).map { i =>
           val entry = superVec.get(i)
           entry.valid && entry.level === fillLevelVal &&
-            superTagMatch(entry.level, entry.vaddr, fillVirtualAddressVal)
+            entry.napot === fillNapotVal &&
+            superTagMatch(fillShift, entry.vaddr, fillVirtualAddressVal)
         }
         val victim = Mux(hit.reduce(_ || _), PriorityEncoder(hit), superRoundRobin.get)
         val entry = Wire(new SuperEntry)
         entry := 0.U.asTypeOf(new SuperEntry)
         entry.valid := true.B
-        entry.level := fillLevelVal
+        entry.level := Mux(fillNapotVal, 0.U, fillLevelVal)
+        entry.napot := fillNapotVal
         entry.vaddr := fillVirtualAddressVal
         entry.ASID := FillASIDVal
         entry.global := (if (globalEnable) FillPTEVal(5) else false.B)
         // 与 PTW 的 paddrOf 保持一致：PPN 以基础页为单位，左移 pageBits
         // 得到超级页物理基址，低 shift 位由访问地址提供。只保留能装入
         // 物理地址宽度的低 PPNBits 位；PTW 已拒绝高位非零的 PTE。
-        entry.paddrBase := (ptePPNOf(FillPTEVal)(PPNBits - 1, 0) << pageBits)
+        val low4Mask = ((BigInt(1) << 4) - 1).U(PPNBits.W)
+        val ppnBase = Mux(fillNapotVal,
+          ptePPNOf(FillPTEVal) & ~low4Mask, ptePPNOf(FillPTEVal))
+        entry.paddrBase := (ppnBase(PPNBits - 1, 0) << pageBits)
           .pad(addressWidth)
         entry.r := FillPTEVal(1); entry.w := FillPTEVal(2); entry.x := FillPTEVal(3)
         // HAS_U=n 时不保存 U 位，避免保留无用的 U 状态。
@@ -412,7 +427,8 @@ class ysyx_26030103_TLB(
         )
       }
     }
-    when(!io.flush && valid && (!superpage.B || fillLevelVal === 0.U)) {
+    when(!io.flush && valid && !fillNapotVal &&
+        (!superpage.B || fillLevelVal === 0.U)) {
       val FillVPN = vpnOf(fillVirtualAddressVal)
       val fillSet = setOf(FillVPN)
       val victimWay =
@@ -449,10 +465,11 @@ class ysyx_26030103_TLB(
     }
   }
 
-  doFill(io.fillValid, io.fillVirtualAddress, io.FillASID, io.FillPTE, io.fillLevel)
+  doFill(io.fillValid, io.fillVirtualAddress, io.FillASID, io.FillPTE,
+    io.fillLevel, io.fillNapot)
   io.fillExtra.foreach { extra =>
     for (port <- extra) {
-      doFill(port.valid, port.vaddr, port.ASID, port.PTE, port.level)
+      doFill(port.valid, port.vaddr, port.ASID, port.PTE, port.level, port.napot)
     }
   }
 

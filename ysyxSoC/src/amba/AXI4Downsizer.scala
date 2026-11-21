@@ -7,28 +7,16 @@ import org.chipsalliance.cde.config.Parameters
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.diplomacy._
 
-/** 宽 CPU AXI4 到窄 SoC AXI4 的桥。
+/** AXI4 64 位到 32 位适配。
   *
-  * 上游端口使用 `upstreamAddrBits`/`upstreamDataBits`（SOC_XLEN=64 时为
-  * 64 位地址、64 位数据），下游仍保持 ysyxSoC 内部的 32 位地址、32 位
-  * 数据。桥把每个上游 beat 拆成一个或多个 4 字节单拍 AXI 传输，因此
-  * 不需要改动 xbar、AXI4ToAPB 或任何 32 位外设。
-  *
-  * 地址约束：
-  *   - 只有低 4GiB 的访问会进入 SoC；高地址或跨越 4GiB 边界的 burst
-  *     会得到 DECERR，不会把高 32 位静默丢弃。
-  *   - 下游只接受单拍传输（len=0），burst/size 在上游已经被本桥展开。
-  *
-  * 协议约束：
-  *   - 支持 INCR/FIXED/WRAP burst 与 1/2/4/8 字节 size；
-  *   - 每个方向同一时刻只处理一笔上游事务，靠 backpressure 保证正确性，
-  *     不追求高吞吐；
-  *   - ID 原样透传，响应顺序由串行化保证。
+  * 每个上游 beat 拆成单拍 4 字节事务；WSTRB 只覆盖部分字节时按真实字节
+  * 地址发 AWSIZE=0 的字节事务。高地址和跨 4GiB burst 返回 DECERR。
   */
 class AXI4Downsizer(
     upstreamAddrBits: Int,
     upstreamDataBits: Int,
-    downstreamDataBits: Int = 32
+    downstreamDataBits: Int = 32,
+    ExtendAddressSpace: Boolean = true
 )(implicit p: Parameters)
     extends LazyModule {
 
@@ -39,32 +27,36 @@ class AXI4Downsizer(
   private val upstreamBytes = upstreamDataBits / 8
 
   val node = AXI4AdapterNode(
-    // 对下游来说，CPU 仍然是一个 AXI master；本桥按方向串行处理，
-    // 所以给每个 ID 限制 1 笔在途事务。
     masterFn = { mp =>
       mp.copy(masters = mp.masters.map { m =>
         m.copy(aligned = true, maxFlight = Some(1))
       })
     },
-    // 对 CPU 来说，整个 SoC 是一个覆盖完整地址空间的从设备。
-    // 这里把地址范围扩到 2^upstreamAddrBits，bundle 的 addrBits 才会
-    // 真正变成 64；实际的高地址访问由本模块返回 DECERR。
     slaveFn = { sp =>
-      val fullSpace = AddressSet(0, (BigInt(1) << upstreamAddrBits) - 1)
-      val first = sp.slaves.head
-      sp.copy(
-        slaves = Seq(
-          first.copy(
-            address = Seq(fullSpace),
-            resources = Nil,
-            executable = sp.slaves.exists(_.executable),
+      if (ExtendAddressSpace) {
+        val fullSpace = AddressSet(0, (BigInt(1) << upstreamAddrBits) - 1)
+        val first = sp.slaves.head
+        sp.copy(
+          slaves = Seq(
+            first.copy(
+              address = Seq(fullSpace),
+              resources = Nil,
+              executable = sp.slaves.exists(_.executable),
+              supportsWrite = TransferSizes(1, upstreamBytes),
+              supportsRead = TransferSizes(1, upstreamBytes),
+              interleavedId = Some(0)
+            )
+          ),
+          beatBytes = upstreamBytes
+        )
+      } else {
+        sp.copy(
+          beatBytes = upstreamBytes,
+          slaves = sp.slaves.map(_.copy(
             supportsWrite = TransferSizes(1, upstreamBytes),
-            supportsRead = TransferSizes(1, upstreamBytes),
-            interleavedId = Some(0)
-          )
-        ),
-        beatBytes = upstreamBytes
-      )
+            supportsRead = TransferSizes(1, upstreamBytes)))
+        )
+      }
     }
   )
 
@@ -74,6 +66,7 @@ class AXI4Downsizer(
     val (out, _) = node.out(0)
 
     private val uBits = upstreamDataBits
+    private val DownstreamAddressWidth = 32
     private val uBytes = upstreamBytes
 
     /** 计算 AXI burst 中第 beat 拍的地址。 */
@@ -90,10 +83,20 @@ class AXI4Downsizer(
 
     /** 判断整笔 burst 是否越过低 4GiB。保守检查起始地址和结束地址。 */
     def outOfRange(addr: UInt, len: UInt, size: UInt): Bool = {
+      val AddressBits = addr.getWidth
+      val GuardBits = math.max(AddressBits, DownstreamAddressWidth)
       val totalBytes = (len + 1.U) << size
-      val end = addr.pad(upstreamAddrBits + 1) +
-        (totalBytes - 1.U).pad(upstreamAddrBits + 1)
-      addr(upstreamAddrBits - 1, 32).orR || end(upstreamAddrBits, 32).orR
+      val end = addr.pad(GuardBits + 1) +
+        (totalBytes - 1.U).pad(GuardBits + 1)
+      val highStart =
+        if (AddressBits > DownstreamAddressWidth)
+          addr(AddressBits - 1, DownstreamAddressWidth).orR
+        else false.B
+      val highEnd =
+        if (GuardBits > DownstreamAddressWidth)
+          end(GuardBits, DownstreamAddressWidth).orR
+        else false.B
+      highStart || highEnd
     }
 
     /** 32 位下游数据落到 64 位上游数据的哪个字节半区。 */
@@ -124,7 +127,7 @@ class AXI4Downsizer(
     val arError = outOfRange(in.ar.bits.addr, in.ar.bits.len, in.ar.bits.size)
     when(in.ar.fire) {
       rId := in.ar.bits.id
-      rAddr := in.ar.bits.addr(31, 0)
+      rAddr := in.ar.bits.addr.pad(32)(31, 0)
       rSize := in.ar.bits.size
       rLen := in.ar.bits.len
       rBurst := in.ar.bits.burst
@@ -209,6 +212,8 @@ class AXI4Downsizer(
     val wBurst = Reg(UInt(2.W))
     val wBeat = Reg(UInt(8.W))
     val wChunk = Reg(UInt(1.W))
+    // 当前 chunk 内已发送到的字节下标
+    val DownstreamByteIndex = RegInit(0.U(2.W))
     val wResp = Reg(UInt(AXI4Parameters.respBits.W))
     val wErr = RegInit(false.B)
     val wHoldValid = RegInit(false.B)
@@ -223,19 +228,19 @@ class AXI4Downsizer(
     when(in.aw.fire) {
       awFull := true.B
       wId := in.aw.bits.id
-      wAddr := in.aw.bits.addr(31, 0)
+      wAddr := in.aw.bits.addr.pad(32)(31, 0)
       wSize := in.aw.bits.size
       wLen := in.aw.bits.len
       wBurst := in.aw.bits.burst
       wBeat := 0.U
       wChunk := 0.U
+      DownstreamByteIndex := 0.U
       wResp := AXI4Parameters.RESP_OKAY
       wErr := awError
       wState := Mux(awError, wDrain, wWaitW)
     }
 
-    // 高地址写：AW 已接受，但仍然要把 W burst 全部吃掉再回 DECERR，
-    // 否则 CPU 会认为 W 通道被永久阻塞。
+    // 高地址写仍需吃完整笔 W burst 再回 DECERR
     in.w.ready := (wState === wDrain && awFull) ||
       (wState === wWaitW && awFull && !wHoldValid)
     when(in.w.fire) {
@@ -262,6 +267,28 @@ class AXI4Downsizer(
     in.b.bits.id := wId
     in.b.bits.resp := Mux(wErr, AXI4Parameters.RESP_DECERR, wResp)
 
+    def advanceWriteChunk(): Unit = {
+      when(wSize === 3.U && wChunk === 0.U) {
+        wChunk := 1.U
+        DownstreamByteIndex := 0.U
+        awSent := false.B
+        wSent := false.B
+        wState := wSend
+      }.otherwise {
+        when(wHoldLast) {
+          wState := wOut
+        }.otherwise {
+          wBeat := wBeat + 1.U
+          wChunk := 0.U
+          DownstreamByteIndex := 0.U
+          wHoldValid := false.B
+          awSent := false.B
+          wSent := false.B
+          wState := wWaitW
+        }
+      }
+    }
+
     when(wState === wSend) {
       val beatAddr = beatAddress(wAddr, wBeat, wSize, wBurst, wLen)
       val wordAddr = Mux(wSize === 3.U, beatAddr + (wChunk << 2), (beatAddr >> 2) << 2)
@@ -270,23 +297,40 @@ class AXI4Downsizer(
         Mux(wChunk === 0.U, wHoldData(31, 0), wHoldData(63, 32)),
         Mux(beatAddr(2), wHoldData(63, 32), wHoldData(31, 0))
       )
-      val chunkStrb = (wHoldStrb >> strbShift(wSize, beatAddr, wChunk))(3, 0)
+      val ChunkStrobe = (wHoldStrb >> strbShift(wSize, beatAddr, wChunk))(3, 0)
+      val FullWord = ChunkStrobe.andR
+      val HasActiveByte = (ChunkStrobe >> DownstreamByteIndex).orR
+      val ActiveByteIndex =
+        DownstreamByteIndex + PriorityEncoder(ChunkStrobe >> DownstreamByteIndex)
+      val TransactionValid = FullWord || HasActiveByte
 
-      out.aw.valid := !awSent
+      // 部分 WSTRB 按真实字节地址拆成单字节事务，lane 保持原位置
+      val DownstreamAddress =
+        Mux(FullWord, wordAddr, wordAddr + ActiveByteIndex)
+      val DownstreamData = chunkData
+      val DownstreamStrobe = Mux(
+        FullWord,
+        ChunkStrobe,
+        (1.U(4.W) << ActiveByteIndex)(3, 0)
+      )
+
+      out.aw.valid := !awSent && TransactionValid
       out.aw.bits.id := wId
-      out.aw.bits.addr := wordAddr
+      out.aw.bits.addr := DownstreamAddress
       out.aw.bits.len := 0.U
-      out.aw.bits.size := 2.U
+      out.aw.bits.size := Mux(FullWord, 2.U(3.W), 0.U(3.W))
       out.aw.bits.burst := AXI4Parameters.BURST_INCR
       out.aw.bits.lock := 0.U
       out.aw.bits.cache := 0.U
       out.aw.bits.prot := 0.U
       out.aw.bits.qos := 0.U
 
-      out.w.valid := !wSent
-      out.w.bits.data := chunkData
-      out.w.bits.strb := chunkStrb
+      out.w.valid := !wSent && TransactionValid
+      out.w.bits.data := DownstreamData
+      out.w.bits.strb := DownstreamStrobe
       out.w.bits.last := true.B
+
+      when(!TransactionValid) { advanceWriteChunk() }
     }
 
     when(out.aw.fire) { awSent := true.B }
@@ -294,6 +338,13 @@ class AXI4Downsizer(
     when(wState === wSend && (awSent || out.aw.fire) && (wSent || out.w.fire)) {
       awSent := false.B
       wSent := false.B
+      val beatAddr = beatAddress(wAddr, wBeat, wSize, wBurst, wLen)
+      val ChunkStrobe = (wHoldStrb >> strbShift(wSize, beatAddr, wChunk))(3, 0)
+      when(!ChunkStrobe.andR) {
+        val ActiveByteIndex =
+          DownstreamByteIndex + PriorityEncoder(ChunkStrobe >> DownstreamByteIndex)
+        DownstreamByteIndex := ActiveByteIndex
+      }
       wState := wWaitB
     }
 
@@ -303,22 +354,21 @@ class AXI4Downsizer(
         when(out.b.bits.resp =/= AXI4Parameters.RESP_OKAY) {
           wResp := out.b.bits.resp
         }
-        when(wSize === 3.U && wChunk === 0.U) {
-          // 8 字节 beat 的后半部分还要再发一笔 4 字节写。
-          wChunk := 1.U
-          awSent := false.B
-          wSent := false.B
-          wState := wSend
+        val beatAddr = beatAddress(wAddr, wBeat, wSize, wBurst, wLen)
+        val ChunkStrobe = (wHoldStrb >> strbShift(wSize, beatAddr, wChunk))(3, 0)
+        val FullWord = ChunkStrobe.andR
+        val NextByteIndex = DownstreamByteIndex +& 1.U
+        val HasRemainingByte = (ChunkStrobe >> NextByteIndex).orR
+        when(FullWord) {
+          advanceWriteChunk()
         }.otherwise {
-          when(wHoldLast) {
-            wState := wOut
-          }.otherwise {
-            wBeat := wBeat + 1.U
-            wChunk := 0.U
-            wHoldValid := false.B
+          when(HasRemainingByte) {
+            DownstreamByteIndex := NextByteIndex(1, 0)
             awSent := false.B
             wSent := false.B
-            wState := wWaitW
+            wState := wSend
+          }.otherwise {
+            advanceWriteChunk()
           }
         }
       }

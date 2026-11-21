@@ -181,7 +181,9 @@ class ysyx_26030103_IFU(
     // 异常指令不消费预测目标；这里复用 PredTarget 把实际发生故障的取指
     // 地址送到 EXU 作为 stval/mtval。32 位指令跨字时第二个字（如 ...1000）
     // 才故障，而 Out.bits.PC/sepc 仍保持指令起点（...ffe）。
-    io.Out.bits.PredTarget := Mux(outException, fetchAddress, outPredTarget)
+    // 取指故障的 tval 是架构 PC；跨字第二拍才故障时用实际取指地址
+    io.Out.bits.PredTarget :=
+      Mux(outException, Mux(secondWord, fetchAddress, PCReg), outPredTarget)
 
     // 第一个半字只是内部中间结果，可以直接消费；产生输出或故障的响应
     // 必须等下游握手，避免在反压时丢指令。

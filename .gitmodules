@@ -7,3 +7,40 @@
 [submodule "riscv-arch-test-4.1.0"]
 	path = riscv-arch-test-4.1.0
 	url = https://github.com/riscv/riscv-arch-test.git
+[submodule "vendor/test-suites/riscv-dv"]
+	path = vendor/test-suites/riscv-dv
+	url = https://github.com/chipsalliance/riscv-dv.git
+[submodule "vendor/test-suites/riscv-torture"]
+	path = vendor/test-suites/riscv-torture
+	url = https://github.com/ucb-bar/riscv-torture.git
+[submodule "vendor/test-suites/ProcessorFuzz"]
+	path = vendor/test-suites/ProcessorFuzz
+	url = https://github.com/bu-icsg/ProcessorFuzz.git
+[submodule "vendor/test-suites/RISCVuzz"]
+	path = vendor/test-suites/RISCVuzz
+	url = https://github.com/gskang-22/RISCVuzz.git
+[submodule "vendor/test-suites/riscv-coretp"]
+	path = vendor/test-suites/riscv-coretp
+	url = https://github.com/tenstorrent/riscv-coretp.git
+	branch = v0.15.0
+[submodule "vendor/test-suites/riescue"]
+	path = vendor/test-suites/riescue
+	url = https://github.com/tenstorrent/riescue.git
+	branch = v1.18.0
+[submodule "vendor/test-suites/riscv_arch_tests"]
+	path = vendor/test-suites/riscv_arch_tests
+	url = https://github.com/tenstorrent/riscv_arch_tests.git
+	branch = v0.2.0+aligned-access
+[submodule "vendor/test-suites/cvw-arch-verif"]
+	path = vendor/test-suites/cvw-arch-verif
+	url = https://github.com/openhwfoundation/cvw-arch-verif.git
+	branch = ctp-release-bfc6044-2025-09-09
+[submodule "vendor/test-suites/encarsia"]
+	path = vendor/test-suites/encarsia
+	url = https://github.com/comsec-group/encarsia.git
+[submodule "vendor/test-suites/hartbreaker"]
+	path = vendor/test-suites/hartbreaker
+	url = https://github.com/comsec-group/hartbreaker.git
+[submodule "vendor/test-suites/litmus-tests-riscv"]
+	path = vendor/test-suites/litmus-tests-riscv
+	url = https://github.com/litmus-tests/litmus-tests-riscv.git

@@ -20,5 +20,6 @@
 
 word_t mmio_read(paddr_t addr, int len);
 void mmio_write(paddr_t addr, int len, word_t data);
+bool mmio_is_mapped(paddr_t addr, int len);
 
 #endif

@@ -337,7 +337,9 @@ static void clint_io_handler(uint32_t offset, int len, bool is_write)
   }
 
   if (offset >= CLINT_MTIMECMP_OFF && offset + len <= CLINT_MTIMECMP_OFF + 8) {
-    clint_mtimecmp = host_read(clint_base + CLINT_MTIMECMP_OFF, 8);
+    // RV32 下 host_read 没有 8 字节分支，直接用 memcpy 组装 64 位值。
+    clint_mtimecmp = 0;
+    memcpy(&clint_mtimecmp, clint_base + CLINT_MTIMECMP_OFF, 8);
     clint_update();
   }
 }

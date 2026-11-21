@@ -205,24 +205,17 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     bool(dut.io.DataBus.W.WVALID) should be(false)
   }
 
-  /** SC 失败路径：等待退休，同时每一拍都确认没有 AR/AW/W。 */
+  /** SC 失败路径：先完成一次读，再等待退休，且不得出现写事务。 */
   private def waitScFail(
       dut: ysyx_26030103_LSU,
       clock: Clock,
-      limit: Int = 20
+      address: Long
   ): BigInt = {
-    var cycles = 0
-    var result: Option[BigInt] = None
-    while (result.isEmpty && cycles < limit) {
-      expectNoBus(dut)
-      if (bool(dut.io.out.valid)) {
-        bool(dut.io.out.bits.Retire) should be(true)
-        result = Some(big(dut.io.out.bits.LoadData))
-      }
-      clock.step(); cycles += 1
-    }
-    withClue("SC failure did not retire") { result.isDefined should be(true) }
-    result.get
+    doAtomicRead(dut, clock, address, wide = false, low = 0)
+    val result = waitOut(dut, clock)
+    bool(dut.io.DataBus.AW.AWVALID) should be(false)
+    bool(dut.io.DataBus.W.WVALID) should be(false)
+    result
   }
 
   "RV32 LSU A extension" should "LR 后同地址 SC 成功并写回内存" in {
@@ -247,7 +240,7 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  it should "SC 地址不匹配时失败且不访问内存" in {
+  it should "SC 地址不匹配时读后失败且不写回" in {
     simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
@@ -263,12 +256,12 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
         memoryWrite = true)
       dut.io.in.valid.poke(true.B)
       waitFire(dut, clock)
-      waitScFail(dut, clock) should be(BigInt(1))
+      waitScFail(dut, clock, addr + 4) should be(BigInt(1))
       dut.io.in.valid.poke(false.B)
     }
   }
 
-  it should "CSR/异常提交后 reservation 失效" in {
+  it should "ReservationClear 在 LSU 空闲时使 reservation 失效" in {
     simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
@@ -287,7 +280,33 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
       pokeAtomic(dut, SC, addr, 1, 2, memoryWrite = true)
       dut.io.in.valid.poke(true.B)
       waitFire(dut, clock)
-      waitScFail(dut, clock) should be(BigInt(1))
+      waitScFail(dut, clock, addr) should be(BigInt(1))
+      dut.io.in.valid.poke(false.B)
+    }
+  }
+
+  it should "原子事务在途时 younger CSR 提交不清除 reservation" in {
+    simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
+      val clock = dut.clock
+      resetDut(dut, clock, dut.reset)
+      val addr = 0x80004300L
+      pokeAtomic(dut, LR, addr, 0, 2, memoryWrite = false)
+      dut.io.in.valid.poke(true.B)
+      waitFire(dut, clock)
+      doAtomicRead(dut, clock, addr, wide = false, low = 0x0badf00dL)
+      waitOut(dut, clock)
+      dut.io.in.valid.poke(false.B)
+
+      pokeAtomic(dut, SC, addr, 0x1234, 2, memoryWrite = true)
+      dut.io.in.valid.poke(true.B)
+      waitFire(dut, clock)
+      // SC 在途时提交年轻 CSR 不应撤销它看到的 reservation
+      dut.io.ReservationClear.poke(true.B)
+      clock.step()
+      dut.io.ReservationClear.poke(false.B)
+      doAtomicRead(dut, clock, addr, wide = false, low = 0x0badf00dL)
+      finishAtomicWrite(dut, clock, addr, wide = false) should be(BigInt(0x1234))
+      waitOut(dut, clock) should be(BigInt(0))
       dut.io.in.valid.poke(false.B)
     }
   }
@@ -373,12 +392,12 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  it should "PMP 拒绝新 AMO 时清除上一次读阶段故障并按 cause=7 提交" in {
+  it should "PMP 拒绝新 AMO 时按 cause=7 提交，不复用上一次读故障" in {
     simulate(new ysyx_26030103_LSU(XLEN = 32, AddressWidth = 32, BusDataWidth = 32)) { dut =>
       val clock = dut.clock
       resetDut(dut, clock, dut.reset)
 
-      // 第一笔 AMO 的读响应报 SLVERR：锁存 AtomicReadFaultReg，cause=5。
+      // 第一笔 AMO 的读响应报 SLVERR：AMO 整体按 cause=7 提交
       val firstAddress = 0x80004600L
       pokeAtomic(dut, AMOADD, firstAddress, 1, 2, memoryWrite = true)
       dut.io.in.valid.poke(true.B)
@@ -405,15 +424,14 @@ class ysyx_26030103_LSUAtomicTest extends AnyFlatSpec with Matchers {
       for (_ <- 0 until 20) {
         if (bool(dut.io.MemTrapCommit)) {
           sawReadFault = true
-          long(dut.io.MemTrapCause) should be(5L)
+          long(dut.io.MemTrapCause) should be(7L)
         }
         clock.step()
       }
       withClue("第一笔 AMO 读故障未提交: ") { sawReadFault should be(true) }
       clock.step(2)
 
-      // 第二笔 AMO 在进入原子通路前被 PMP 拒绝：必须使用本次访问的
-      // store/AMO cause=7，不能复用上一笔的 AtomicReadFaultReg 报成 5。
+      // 第二笔 AMO 在进入原子通路前被 PMP 拒绝：按 store/AMO cause=7 提交
       pokeAtomic(dut, AMOADD, 0x80004700L, 1, 2, memoryWrite = true)
       dut.io.PMPFault.poke(true.B)
       dut.io.in.valid.poke(true.B)

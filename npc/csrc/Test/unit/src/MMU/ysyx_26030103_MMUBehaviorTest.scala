@@ -122,12 +122,14 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.FillASID.poke(0.U)
       dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
+      dut.io.fillNapot.poke(false.B)
       val extra = dut.io.fillExtra.get(0)
       extra.valid.poke(false.B)
       extra.vaddr.poke(0.U)
       extra.ASID.poke(0.U)
       extra.PTE.poke(0.U)
       extra.level.poke(0.U)
+      extra.napot.poke(false.B)
       dut.io.lookup(0).vaddr.poke(0.U)
       dut.io.lookup(0).ASID.poke(0.U)
       dut.io.lookup(0).privilege.poke(0.U)
@@ -167,12 +169,14 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.FillASID.poke(0.U)
       dut.io.FillPTE.poke(0.U)
       dut.io.fillLevel.poke(0.U)
+      dut.io.fillNapot.poke(false.B)
       val extra = dut.io.fillExtra.get(0)
       extra.valid.poke(false.B)
       extra.vaddr.poke(0.U)
       extra.ASID.poke(0.U)
       extra.PTE.poke(0.U)
       extra.level.poke(0.U)
+      extra.napot.poke(false.B)
       for (p <- 0 until 2) {
         dut.io.lookup(p).vaddr.poke(0.U)
         dut.io.lookup(p).ASID.poke(0.U)
@@ -250,6 +254,51 @@ class ysyx_26030103_MMUBehaviorTest extends AnyFlatSpec with Matchers {
       dut.io.lookup(0).vaddr.poke("h80543210".U)
       asBool(dut.io.result(0).hit) should be(true)
       asLong(dut.io.result(0).paddr) should be(BigInt("80543210", 16).toLong)
+    }
+  }
+
+  "TLB" should "缓存 64KiB Svnapot 页并可跨 4KiB 地址命中" in {
+    simulate(new ysyx_26030103_TLB(
+      entries = 4, ways = 1, ASIDBits = 9, globalEnable = true,
+      adMode = "fault", XLEN = 64, addressWidth = 64,
+      vaBits = 39, pageBits = 12, levels = 3, indexBits = 9,
+      PTEWidth = 64, PTEPPNLow = 10, PTEPPNHigh = 53
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.flush.poke(true.B)
+      dut.io.fillValid.poke(false.B)
+      dut.io.fillNapot.poke(false.B)
+      dut.io.fillVirtualAddress.poke(0.U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke(0.U)
+      dut.io.fillLevel.poke(0.U)
+      dut.io.lookup(0).vaddr.poke(0.U)
+      dut.io.lookup(0).ASID.poke(0.U)
+      dut.io.lookup(0).privilege.poke(0.U)
+      dut.io.lookup(0).access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.lookup(0).sum.poke(false.B)
+      dut.io.lookup(0).mxr.poke(false.B)
+      dut.clock.step()
+      dut.io.flush.poke(false.B)
+
+      // PPN[3:0]=8 表示 64KiB NAPOT，物理基址为 0x80000000
+      dut.io.fillValid.poke(true.B)
+      dut.io.fillNapot.poke(true.B)
+      dut.io.fillVirtualAddress.poke(BigInt("140860000", 16).U)
+      dut.io.FillASID.poke(0.U)
+      dut.io.FillPTE.poke((BigInt("80008", 16) << 10 | 0xcf).U(64.W))
+      dut.io.fillLevel.poke(0.U)
+      dut.clock.step()
+      dut.io.fillValid.poke(false.B)
+      dut.io.fillNapot.poke(false.B)
+
+      dut.io.lookup(0).vaddr.poke(BigInt("140860abc", 16).U)
+      asBool(dut.io.result(0).hit) should be(true)
+      asLong(dut.io.result(0).paddr) should be(0x80000abcL)
+      dut.io.lookup(0).vaddr.poke(BigInt("140870abc", 16).U)
+      asBool(dut.io.result(0).hit) should be(false)
     }
   }
 

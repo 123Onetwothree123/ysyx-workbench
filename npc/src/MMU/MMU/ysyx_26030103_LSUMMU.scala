@@ -73,6 +73,13 @@ class ysyx_26030103_LSUMMU(
     if (XLEN == 32) satp(31) else satp(63, 60)
   val bypass = satpMode(io.satp) === 0.U || io.privilege === 3.U
   val isMem = io.in.bits.MemoryValid
+  // AMO/LR/SC 的自然对齐必须在翻译前判定，避免页错误/访问故障抢先
+  val AtomicAddressMisaligned = io.in.bits.IsAtomic &&
+    MuxLookup(io.in.bits.WidthSelect, false.B)(Seq(
+      1.U -> io.in.bits.ALUResult(0),
+      2.U -> io.in.bits.ALUResult(1, 0).orR,
+      3.U -> io.in.bits.ALUResult(2, 0).orR
+    ))
 
   io.in.ready := false.B
   io.out.valid := false.B
@@ -139,6 +146,15 @@ class ysyx_26030103_LSUMMU(
       when(!isMem) {
         io.out.valid := io.in.valid
         io.out.bits := io.in.bits
+      }.elsewhen(io.in.valid && AtomicAddressMisaligned) {
+        // 对齐检查失败：不翻译、不进入 LSU
+        when(io.in.fire) {
+          faultReg := true.B
+          faultCauseReg := Mux(io.in.bits.MemoryWrite, 6.U, 4.U)
+          faultTvalReg := io.in.bits.ALUResult
+          FaultPCReg := io.in.bits.PC
+          state := fault
+        }
       }.elsewhen(bypass) {
         // Bare/M 模式没有页表翻译，但 PMP 仍必须检查。必须用 in.fire 而不是
         // valid：LSU 忙时请求尚未被受理，不能提前锁存/提交 PMP 故障。
@@ -276,7 +292,14 @@ class ysyx_26030103_LSUMMU(
       }.elsewhen(io.in.fire) {
         // load/store 都先锁存原始 VA 并转发给 LSU：store 此时只进入写
         // 缓冲登记，不会发 AW/W；PA 由翻译结果带标签返回。
-        when(bypass && io.PMPFault) {
+        when(AtomicAddressMisaligned) {
+          // 对齐检查失败：不转发、不翻译
+          faultReg := true.B
+          faultCauseReg := Mux(io.in.bits.MemoryWrite, 6.U, 4.U)
+          faultTvalReg := io.in.bits.ALUResult
+          FaultPCReg := io.in.bits.PC
+          state := fault
+        }.elsewhen(bypass && io.PMPFault) {
           // Bare/M 模式没有翻译，但 PMP 必须先生效；不要进入 fwd，
           // 否则故障 load/store 会被 LSU 当成正常请求接收。
           faultReg := true.B

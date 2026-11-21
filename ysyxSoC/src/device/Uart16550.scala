@@ -24,14 +24,22 @@ class uart_top_apb extends BlackBox {
   })
 }
 
-class APBUart16550(address: Seq[AddressSet])(implicit p: Parameters) extends LazyModule {
+class APBUart16550(
+    address: Seq[AddressSet],
+    val xlen: Int = Config.peripheralXlen("uart")
+)(implicit p: Parameters)
+    extends LazyModule {
+  APBConfig.checkXlen(xlen, "uart")
+  private val busBytes = APBConfig.apbBytes
+  private val coreBytes = 4 // opencores 16550 固定 32 位寄存器接口
+
   val node = APBSlaveNode(Seq(APBSlavePortParameters(
     Seq(APBSlaveParameters(
       address       = address,
       executable    = false,
       supportsRead  = true,
       supportsWrite = true)),
-    beatBytes  = 4)))
+    beatBytes  = busBytes)))
 
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
@@ -42,7 +50,16 @@ class APBUart16550(address: Seq[AddressSet])(implicit p: Parameters) extends Laz
     val muart = Module(new uart_top_apb)
     muart.io.clock := clock
     muart.io.reset := reset
-    muart.io.in <> in
+    if (busBytes == coreBytes) {
+      muart.io.in <> in
+    } else {
+      val bridge = Module(new APBWidthConverter(
+        in.paddr.getWidth, busBytes * 8, coreBytes * 8))
+      bridge.io.clock := clock
+      bridge.io.reset := reset
+      bridge.io.in <> in
+      muart.io.in <> bridge.io.out
+    }
     uart <> muart.io.uart
     interrupt := muart.io.interrupt
   }

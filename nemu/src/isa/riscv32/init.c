@@ -78,6 +78,8 @@ static void restart()
   cpu.mip = 0;
   memset(cpu.pmpcfg, 0, sizeof(cpu.pmpcfg));
   memset(cpu.pmpaddr, 0, sizeof(cpu.pmpaddr));
+  cpu.Menvcfg = 0;
+  cpu.Menvcfgh = 0;
   cpu.mcounteren = 0;
   cpu.scounteren = 0;
   cpu.mcountinhibit = 0;

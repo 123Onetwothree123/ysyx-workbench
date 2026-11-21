@@ -96,6 +96,36 @@ void addSoc(TypedFields &root, const Config &values, long long xlen,
     addField(SOC, "soc_xlen", TypedJson::integer(SOCXlen));
     addField(SOC, "soc_xlen_follow_cpu",
              TypedJson::boolean(flatBool(values, "SOC_XLEN_FOLLOW_CPU")));
+    const long long APBXlen =
+        flatInt(values, "APB_XLEN_EFFECTIVE", SOCXlen);
+    addField(SOC, "apb_xlen", TypedJson::integer(APBXlen));
+    addField(SOC, "apb_xlen_follow_soc",
+             TypedJson::boolean(flatBool(values, "APB_XLEN_FOLLOW_SOC", true)));
+    struct PeripheralXlen {
+        const char *name;
+        const char *key;
+    };
+    static constexpr PeripheralXlen peripherals[] = {
+        {"uart", "UART_XLEN"},
+        {"gpio", "GPIO_XLEN"},
+        {"keyboard", "KEYBOARD_XLEN"},
+        {"vga", "VGA_XLEN"},
+        {"spi", "SPI_XLEN"},
+        {"psram", "PSRAM_XLEN"},
+        {"sdram", "SDRAM_XLEN"},
+        {"mrom", "MROM_XLEN"},
+        {"sram", "SRAM_XLEN"},
+    };
+    TypedFields peripheral;
+    for (const auto &item : peripherals) {
+        addField(peripheral, std::string{item.name} + "_xlen",
+                 TypedJson::integer(flatInt(
+                     values, std::string{item.key} + "_EFFECTIVE", APBXlen)));
+        addField(peripheral, std::string{item.name} + "_xlen_follow_apb",
+                 TypedJson::boolean(flatBool(
+                     values, std::string{item.key} + "_FOLLOW_APB", true)));
+    }
+    addField(SOC, "peripheral", TypedJson::object(std::move(peripheral)));
     addField(SOC, "chiplink",
              TypedJson::boolean(flatBool(values, "CHIPLINK")));
     addField(SOC, "sdram_use_axi",

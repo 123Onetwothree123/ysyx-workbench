@@ -313,7 +313,10 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
     // 原子事务总线独占：LSU 先等总线安静，再拉 AtomicBusy 阻止 DMA 插入。
     arbiter.io.atomicBusy := LSU.io.AtomicBusy
     LSU.io.BusQuiet := arbiter.io.busQuiet
-    // 异常或 CSR 提交（上下文切换）后，旧 reservation 不再有效。
-    LSU.io.ReservationClear := exu.io.ExceptionTaken || exu.io.CSRCommit
+    // mstatus/envcfg 等普通 CSR 写不清 reservation（LR/SC 之间可能重设 MPRV）；
+    // trap 与 satp/sfence.vma 换地址空间才清，且等更老访存离开
+    LSU.io.ReservationClear :=
+      (exu.io.ExceptionTaken || exu.io.CSRFlushTLB) &&
+        !LSU.io.Busy && !DMMUOpt.map(_.io.busy).getOrElse(false.B)
   }
 }

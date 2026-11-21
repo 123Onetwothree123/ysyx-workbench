@@ -182,9 +182,6 @@ class ysyx_26030103_LSU(
   val atomicResultData = RegInit(0.U(XLEN.W))
   val atomicReadLow = RegInit(0.U(32.W))
   val atomicReadBeat = RegInit(0.U(1.W))
-  // AMO 的读阶段故障应按 load access fault(cause=5) 提交，
-  // 写阶段故障才是 store/AMO access fault(cause=7)。
-  val atomicReadFaultReg = RegInit(false.B)
   val AtomicAWDone = RegInit(false.B)
   val atomicWDone = RegInit(false.B)
   val atomicWBeat = RegInit(false.B)
@@ -192,6 +189,8 @@ class ysyx_26030103_LSU(
   // 上下文切换/异常都会清除。LR 成功时重新建立。
   val reservationValid = RegInit(false.B)
   val reservationAddress = Reg(UInt(AddressWidth.W))
+  // SC 发起读时锁存的 reservation 匹配结果，读返回后决定是否写
+  val scReservationOk = RegInit(false.B)
   // 原子写内存完成（无论 BRESP 是否正确）的单拍事件。
   val atomicWriteComplete = WireDefault(false.B)
 
@@ -208,11 +207,6 @@ class ysyx_26030103_LSU(
     (stageIsIdle || StageCanReplaceDone) && stageInputFire && isMemOp
   when(startMem) {
     messageReg := stageInputBits
-    // 每次新的原子事务（包括随后因非对齐/PMP 被拒绝的）都必须清除上一次
-    // AMO 读阶段的故障标记，否则拒绝路径会把它误当成当前访问的 cause=5。
-    when(stageInputBits.IsAtomic) {
-      atomicReadFaultReg := false.B
-    }
   }
   val activeInstruction = Mux(stageIsIdle, stageInputBits, messageReg)
   val viptActiveMem = activeInstruction.MemoryValid
@@ -306,9 +300,7 @@ class ysyx_26030103_LSU(
   io.MemTrapCause := Mux(
     misalignedReg,
     Mux(messageReg.MemoryWrite, 6.U(32.W), 4.U(32.W)), // 地址非对齐：写=6，读=4
-    Mux(messageReg.IsAtomic && atomicReadFaultReg,
-      5.U(32.W), // AMO 读阶段失败按 load access fault 处理
-      Mux(messageReg.MemoryWrite, 7.U(32.W), 5.U(32.W))) // 访问故障：写=7，读=5
+    Mux(messageReg.MemoryWrite, 7.U(32.W), 5.U(32.W)) // 访问故障：写/AMO=7，读=5
   )
   io.MemTrapPC := messageReg.PC
   io.MemTrapTval := messageReg.VAddress

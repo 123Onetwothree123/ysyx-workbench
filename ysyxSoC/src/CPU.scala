@@ -10,10 +10,7 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 
 object CPUAXI4BundleParameters {
-  // CPU 侧 AXI4 端口的地址/数据宽度由 SOC_XLEN 决定：
-  //   SOC_XLEN=32 -> 32 位地址、32 位数据（与旧版完全一致）
-  //   SOC_XLEN=64 -> 64 位地址、64 位数据（由 AXI4Downsizer 接入 32 位 SoC）
-  // ID 宽度沿用 ChipLinkParam.idBits，保持 4 位边界 ABI。
+  // AXI4 地址/数据宽度由 SOC_XLEN 决定
   def apply(
       addrBits: Int = 32,
       dataBits: Int = 32,
@@ -248,9 +245,8 @@ class CPU(idBits: Int, xlen: Int)(implicit p: Parameters) extends LazyModule {
   lazy val module = new Impl
   class Impl extends LazyModuleImp(this) {
     val (master, _) = masterNode.out(0)
-    // CPU 侧宽度由下游第一个节点决定；SOC_XLEN=64 时必须先接
-    // AXI4Downsizer，否则这里会在 elaboration 期直接报错，而不是
-    // 让 64 位端口被静默接到 32 位 xbar。
+    // CPU 黑盒端口宽度固定等于 SOC_XLEN，CPU 内部与 SoC 的宽度差异
+    // 已由 NPC 的 AXI5WidthBridge 处理
     require(
       master.params.dataBits == xlen,
       s"CPU AXI4 数据宽度 ${master.params.dataBits} 与 SOC_XLEN=$xlen 不一致"

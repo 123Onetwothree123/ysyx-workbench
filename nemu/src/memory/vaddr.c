@@ -43,24 +43,32 @@ word_t vaddr_ifetch(vaddr_t addr, int len) {
   return paddr_read(addr, len);
 }
 
+static paddr_t translate_checked(vaddr_t addr, int len, int type) {
+  const vaddr_t VirtualAddress = addr;
+  if (isa_mmu_check(addr, len, type) == MMU_TRANSLATE) {
+    addr = isa_mmu_translate(addr, len, type);
+  }
+  if (!isa_pmp_check(addr, len, type) || !paddr_is_backed(addr, len)) {
+    isa_raise_mem_exception(access_fault_cause(type), VirtualAddress);
+  }
+  return addr;
+}
+
 word_t vaddr_read(vaddr_t addr, int len) {
-  const vaddr_t va = addr;
-  if (isa_mmu_check(addr, len, MEM_TYPE_READ) == MMU_TRANSLATE) {
-    addr = isa_mmu_translate(addr, len, MEM_TYPE_READ);
-  }
-  if (!isa_pmp_check(addr, len, MEM_TYPE_READ)) {
-    isa_raise_mem_exception(access_fault_cause(MEM_TYPE_READ), va);
-  }
-  return paddr_read(addr, len);
+  const paddr_t PhysicalAddress = translate_checked(addr, len, MEM_TYPE_READ);
+  return paddr_read(PhysicalAddress, len);
+}
+
+word_t vaddr_read_amo(vaddr_t addr, int len) {
+  const paddr_t PhysicalAddress = translate_checked(addr, len, MEM_TYPE_WRITE);
+  return paddr_read(PhysicalAddress, len);
 }
 
 void vaddr_write(vaddr_t addr, int len, word_t data) {
-  const vaddr_t va = addr;
-  if (isa_mmu_check(addr, len, MEM_TYPE_WRITE) == MMU_TRANSLATE) {
-    addr = isa_mmu_translate(addr, len, MEM_TYPE_WRITE);
-  }
-  if (!isa_pmp_check(addr, len, MEM_TYPE_WRITE)) {
-    isa_raise_mem_exception(access_fault_cause(MEM_TYPE_WRITE), va);
-  }
-  paddr_write(addr, len, data);
+  const paddr_t PhysicalAddress = translate_checked(addr, len, MEM_TYPE_WRITE);
+  paddr_write(PhysicalAddress, len, data);
+}
+
+void vaddr_check_write(vaddr_t addr, int len) {
+  translate_checked(addr, len, MEM_TYPE_WRITE);
 }

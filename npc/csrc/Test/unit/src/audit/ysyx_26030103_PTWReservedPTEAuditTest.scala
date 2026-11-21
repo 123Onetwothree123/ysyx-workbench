@@ -190,4 +190,59 @@ class ysyx_26030103_PTWReservedPTEAuditTest
       dut.io.response.ready.poke(false.B)
     }
   }
+
+  it should "支持 64KiB Svnapot 叶子并给出 NAPOT 物理地址" in {
+    val root = 0x80001000L
+    val level1 = 0x80002000L
+    val level2 = 0x80003000L
+    val NAPOTPPN = 0x80008L // 64KiB 对齐 + PPN[3]=1
+    val bus = new BusModel
+    bus.writePTE(root, PTE(0x80002L, 0x1L))
+    bus.writePTE(level1, PTE(0x80003L, 0x1L))
+    bus.writePTE(level2 + 0x12 * 8, PTE(NAPOTPPN, 0xcfL) | (BigInt(1) << 63))
+
+    simulate(new ysyx_26030103_PTW(
+      adMode = "ignore",
+      PTESizeBytes = 8,
+      levels = 3,
+      tableEntries = 512,
+      pageBits = 12,
+      XLEN = 64,
+      addressWidth = 64,
+      vaBits = 39,
+      PTEConfig = ysyx_26030103_PTEConfig(PTEBits = 64, PPNHigh = 53)
+    )) { dut =>
+      dut.reset.poke(true.B)
+      dut.clock.step(2)
+      dut.reset.poke(false.B)
+      dut.io.bus.request.ready.poke(true.B)
+      dut.io.bus.response.valid.poke(false.B)
+      dut.io.bus.response.bits.ID.poke(0.U)
+      dut.io.bus.response.bits.data.poke(0.U)
+      dut.io.bus.response.bits.fault.poke(false.B)
+      dut.io.flush.poke(false.B)
+      dut.io.response.ready.poke(true.B)
+      dut.io.request.valid.poke(true.B)
+      dut.io.request.bits.ID.poke(0.U)
+      dut.io.request.bits.vaddr.poke(BigInt("12345", 16).U(64.W))
+      dut.io.request.bits.satp.poke(
+        ((BigInt(8) << 60) | BigInt("80001", 16)).U(64.W))
+      dut.io.request.bits.privilege.poke(3.U)
+      dut.io.request.bits.access.poke(ysyx_26030103_AccessType.Load)
+      dut.io.request.bits.sum.poke(false.B)
+      dut.io.request.bits.mxr.poke(false.B)
+
+      var done = false
+      var cycles = 0
+      while (!done && cycles < 200) {
+        bus.tick(dut, dut.clock)
+        if (bool(dut.io.response.valid)) { done = true }
+        cycles += 1
+      }
+      withClue("PTW did not respond: ") { done should be(true) }
+      bool(dut.io.response.bits.fault) should be(false)
+      bool(dut.io.response.bits.fillNapot) should be(true)
+      long(dut.io.response.bits.paddr) should be(0x80002345L)
+    }
+  }
 }

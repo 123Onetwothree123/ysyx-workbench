@@ -44,7 +44,12 @@ private[mem] trait LSUPMP {
   }
 
   def pmpAndStallBody(): Unit = {
-    when(io.ReservationClear || wbPop || memTrapCommit) {
+    // 年轻 CSR/异常提交不能撤销仍在执行或当拍启动的原子事务的 reservation
+    val AtomicStarting = startMem && stageInputBits.IsAtomic
+    val ReservationClear = io.ReservationClear && !atomicActive && !AtomicStarting
+    val StoreStarts = startMem && stageInputBits.MemoryWrite &&
+      !stageInputBits.IsAtomic
+    when(ReservationClear || StoreStarts || memTrapCommit) {
       reservationValid := false.B
     }
     io.Active := state =/= stateIdle
@@ -103,7 +108,6 @@ private[mem] trait LSUPMP {
         WbAWDone := false.B
         wbWDone := false.B
         atomicActive := false.B
-        atomicReadFaultReg := false.B
         reservationValid := false.B
         wbPhysicalAddressValid.foreach(_ := false.B)
       }

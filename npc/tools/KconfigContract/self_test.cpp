@@ -167,6 +167,18 @@ struct SelfTest {
     values["SOC_XLEN"] = Value::make_int(48);
     expect_ok("soc_xlen_follow_ignores_value", values);
     values = base_rv64();
+    values["APB_XLEN_FOLLOW_SOC"] = Value::make_bool(false);
+    values["APB_XLEN"] = Value::make_int(48);
+    expect_error("apb_xlen_48_rejected", values, "APB_XLEN=48");
+    values = base_rv64();
+    values["UART_XLEN_FOLLOW_APB"] = Value::make_bool(false);
+    values["UART_XLEN"] = Value::make_int(48);
+    expect_error("uart_xlen_48_rejected", values, "UART_XLEN=48");
+    values = base_rv64();
+    values["UART_XLEN_FOLLOW_APB"] = Value::make_bool(true);
+    values["UART_XLEN"] = Value::make_int(48);
+    expect_ok("uart_xlen_follow_ignores_value", values);
+    values = base_rv64();
     values["INTERNAL_BUS_WIDTH_FOLLOW_CPU"] = Value::make_bool(false);
     values["INTERNAL_BUS_WIDTH"] = Value::make_int(48);
     expect_error("internal_bus_width_48_rejected", values,
