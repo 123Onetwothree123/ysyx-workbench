@@ -12,6 +12,8 @@
 !kconfig/**/*
 !configs/
 !configs/**/*
+!/fpga/
+!/fpga/**/*
 !*.py
 !*.scala
 !*.[cSh]

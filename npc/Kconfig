@@ -4,7 +4,13 @@ mainmenu "NPC配置菜单"
 # 重排只移动 menu，不改变 CONFIG_* 符号名、默认值或依赖关系。
 
 source "kconfig/Kconfig.hardware"   # CPU 与平台
-source "kconfig/Kconfig.soc"        # SoC 与外设
+source "kconfig/Kconfig.fpga"       # 运行模式 + FPGA 部署
+
+# ysyxSoC 专属的 APB、外设宽度、PMA 和 NVBoard 选项只在
+# ysyx 或双模式构建中出现；FPGA-only 不依赖 ysyxSoC。
+if !NPC_MODE_FPGA_ONLY
+  source "kconfig/Kconfig.soc"      # ysyxSoC 与外设
+endif
 
 menu "运行时与调试"
   source "kconfig/Kconfig.debug"    # 调试、追踪与性能
@@ -16,8 +22,6 @@ menu "固件与启动"
   source "kconfig/Kconfig.linux"
   source "kconfig/Kconfig.rootfs"
 endmenu
-
-source "kconfig/Kconfig.fpga"      # FPGA 部署
 
 menu "构建与仿真"
   source "kconfig/Kconfig.cpp"      # 编译器与构建选项

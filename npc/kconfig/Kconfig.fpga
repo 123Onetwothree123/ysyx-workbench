@@ -4,9 +4,11 @@ menu "运行模式"
     prompt "目标运行模式"
     default NPC_MODE_YSYX_ONLY
     help
-      FPGA 模式：保留 FPGA 部署选项，关闭一生一芯 Verilator 仿真。
-      一生一芯模式：只保留 Verilator 仿真，关闭 FPGA 部署。
-      同时开启：FPGA 与 Verilator 仿真都保留。
+      FPGA 模式：只生成独立 FPGA 顶层，关闭一生一芯 Verilator 仿真，
+      不依赖 ysyxSoC 的 APB、PSRAM、PMA 和板级外设。
+      一生一芯模式：只保留 ysyxSoC Verilator 仿真，关闭 FPGA 部署。
+      双模式：同时生成 ysyxSoC 仿真顶层和独立 FPGA 顶层，两套顶层
+      互不依赖；不是在一个顶层里同时实例化两套 SoC。
     config NPC_MODE_FPGA_ONLY
       bool "FPGA 模式（关闭一生一芯仿真）"
     config NPC_MODE_YSYX_ONLY
@@ -21,6 +23,15 @@ menu "运行模式"
     default "ysyx" if NPC_MODE_YSYX_ONLY
     default "both" if NPC_MODE_BOTH
     default "ysyx"
+
+  # 构建目标开关：BOTH 表示两个独立顶层都要生成。
+  config NPC_BUILD_YSYXSOC
+    bool
+    default y if !NPC_MODE_FPGA_ONLY
+
+  config NPC_BUILD_FPGA
+    bool
+    default y if NPC_MODE_FPGA_ONLY || NPC_MODE_BOTH
 
 endmenu
 
@@ -447,9 +458,10 @@ if NPC_MODE_FPGA_ONLY || NPC_MODE_BOTH
 
         choice
           prompt "DDR 控制器"
-          default FPGA_DDR_CTRL_YSYXSOC
+          default FPGA_DDR_CTRL_VENDOR
           config FPGA_DDR_CTRL_YSYXSOC
-            bool "ysyxSoC SDRAM AXI 控制器"
+            bool "ysyxSoC SDRAM AXI 控制器（仅双模式/仿真复用）"
+            depends on NPC_MODE_BOTH
           config FPGA_DDR_CTRL_VENDOR
             bool "厂商 MIG/EMIF IP"
           config FPGA_DDR_CTRL_CUSTOM
@@ -461,7 +473,7 @@ if NPC_MODE_FPGA_ONLY || NPC_MODE_BOTH
           default "ysyx_soc" if FPGA_DDR_CTRL_YSYXSOC
           default "vendor" if FPGA_DDR_CTRL_VENDOR
           default "custom" if FPGA_DDR_CTRL_CUSTOM
-          default "ysyx_soc"
+          default "vendor"
 
         config FPGA_DDR_ECC
           bool "启用 DDR ECC"
