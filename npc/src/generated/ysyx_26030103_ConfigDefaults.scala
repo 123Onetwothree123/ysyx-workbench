@@ -5,7 +5,7 @@ object ysyx_26030103_KconfigDefaults {
   val PLICBase: Long = 0xc000000L
   val PLICSize: Long = 0x300000L
   val NpcRamBase: Long = 0x80000000L
-  val NpcRamSize: Long = 0x20000000L
+  val NpcRamSize: Long = 0x4000000L
   val Pma: ysyx_26030103_PMAOptions = ysyx_26030103_PMAOptions(
     CLINTBase = 0x2000000L,
     CLINTSize = 0x10000L,
