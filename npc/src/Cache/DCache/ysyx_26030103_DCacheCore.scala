@@ -266,7 +266,11 @@ private[cache] trait ysyx_26030103_DCacheCore {
     if (wordsPerBeat == 1) {
       word === refillCount
     } else {
-      word >= refillCount && word < (refillCount + wordsPerBeat.U)
+      // refillCount 与 wordsPerBeat 都只占 countWidth 位；直接相加在
+      // 最后一拍（refillCount = wordsPerBlock - wordsPerBeat）会溢出回 0，
+      // 使该拍上的关键字被误判为不在本拍中，demand 响应永远不产生。
+      // 用 +& 扩一位后再比较。
+      word >= refillCount && word < (refillCount +& wordsPerBeat.U)
     }
   private def refillBeatWord(word: UInt, data: UInt): UInt =
     if (wordsPerBeat == 1) {

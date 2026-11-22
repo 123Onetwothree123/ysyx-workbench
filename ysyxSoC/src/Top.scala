@@ -25,6 +25,17 @@ object Config {
   def apbXlen: Int = SoCConfig.xlen("SOC.apb_xlen")
   def peripheralXlen(name: String): Int = SoCConfig.peripheralXlen(name)
 
+  // 内存映射的唯一来源是 Kconfig 的 PMA_PSRAM_*/PMA_SDRAM_*。typed JSON
+  // 的 PMA 字段已经包含这些值，SoC 的 AddressSet 直接读取，避免 RTL
+  // 与 CPU PMA/DTB/C++ 模型各写一份地址。
+  def psramBase: Long = SoCConfig.long("PMA.psram_base", 0x80000000L)
+  def psramSize: Long = SoCConfig.long("PMA.psram_size", 0x00400000L)
+  def sdramBase: Long = SoCConfig.long("PMA.sdram_base", 0xa0000000L)
+  def sdramSize: Long = SoCConfig.long("PMA.sdram_size", 0x02000000L)
+
+  def linuxMemoryMap: Boolean =
+    SoCConfig.boolean("SOC.memory_map_linux", false)
+
   def cpuAXI4AddrBits: Int = socXlen
   def cpuAXI4DataBits: Int = socXlen
 
@@ -60,6 +71,9 @@ object Elaborate extends App {
     s"[ysyxSoC] config source: ${Config.source}; " +
       s"soc_xlen=${Config.socXlen}, chiplink=${Config.hasChipLink}, " +
       s"sdram_axi=${Config.sdramUseAXI}, " +
+      s"memory_map=${if (Config.linuxMemoryMap) "linux" else "act"} " +
+      s"psram=0x${Config.psramBase.toHexString}+0x${Config.psramSize.toHexString} " +
+      s"sdram=0x${Config.sdramBase.toHexString}+0x${Config.sdramSize.toHexString}, " +
       s"apb=${Config.apbCpuFreqMhz}/${Config.apbDeviceFreqMhz}MHz/S=${Config.apbDelayScale}, " +
       s"axi=${Config.axiCpuFreqMhz}/${Config.axiDeviceFreqMhz}MHz/S=${Config.axiDelayScale}"
   )

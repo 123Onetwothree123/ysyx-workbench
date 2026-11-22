@@ -42,6 +42,27 @@ menu "SoC 与外设"
     # 这里只改 CPU PMA、C++ SoC 模型、DTB 和 OpenSBI；ysyxSoC 的实际
     # 器件地址由 SoC RTL 决定，换板时需要同步修改。
 
+    choice SOC_MEMORY_MAP
+      prompt "ysyxSoC 内存映射"
+      default SOC_MEMORY_MAP_ACT
+      help
+        选择 full-SoC 的 PSRAM/SDRAM 地址布局。CPU 的 PMA、C++ SoC
+        模型、DTB 和 ysyxSoC 的 AXI/APB 地址集必须使用同一张映射。
+
+        ACT 是历史测试布局：PSRAM 4 MiB @0x80000000，SDRAM 32 MiB
+        @0xa0000000。Linux 布局把 SDRAM 放到 0x80000000 并扩到
+        128 MiB，PSRAM 移到 0xb0000000。该项目前只同步 CPU PMA、
+        C++ SoC 模型和 ysyxSoC 的 AXI/APB 地址集，供后续 FPGA
+        Linux 使用；仿真侧 128 MiB SDRAM 模型/控制器仍需单独扩展，
+        默认 ACT 映射不受影响。
+
+      config SOC_MEMORY_MAP_ACT
+        bool "ACT/测试映射（PSRAM 4 MiB @0x80000000，SDRAM 32 MiB @0xa0000000）"
+
+      config SOC_MEMORY_MAP_LINUX
+        bool "Linux/FPGA 128 MiB 映射（预留；仿真 SDRAM 模型未扩展）"
+    endchoice
+
     config PMA_SOC_RESET_ADDR
       hex "SoC 复位入口地址"
       default PMA_MROM_BASE
@@ -106,6 +127,7 @@ menu "SoC 与外设"
 
     config PMA_PSRAM_BASE
       hex "PSRAM 基地址"
+      default 0xb0000000 if SOC_MEMORY_MAP_LINUX
       default 0x80000000
     config PMA_PSRAM_SIZE
       hex "PSRAM 大小"
@@ -113,9 +135,11 @@ menu "SoC 与外设"
 
     config PMA_SDRAM_BASE
       hex "SDRAM 基地址"
+      default 0x80000000 if SOC_MEMORY_MAP_LINUX
       default 0xa0000000
     config PMA_SDRAM_SIZE
       hex "SDRAM 大小"
+      default 0x08000000 if SOC_MEMORY_MAP_LINUX
       default 0x02000000
 
     config PMA_CHIPLINK_MMIO_BASE

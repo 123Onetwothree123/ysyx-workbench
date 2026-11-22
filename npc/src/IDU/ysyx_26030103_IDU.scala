@@ -470,7 +470,11 @@ class ysyx_26030103_IDU(
        else Seq.empty)
   ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a) ||
     FPCSRAddresses.contains(a) || pmuMachineAddresses.contains(a))
-    .distinct.sorted
+    .distinct.sorted ++
+    // 本核不实现调试触发器，但把触发相关 CSR 硬连为只读零而不是
+    // 非法指令。软件（如 riscv-tests/breakpoint.S）通过写入后读回
+    // 判断能力；非法陷入会让“未实现即跳过”的探测路径误判失败。
+    (0x7a0 to 0x7af)
   val CSRAddressValid =
     if (config.MMU.CSRMissingMode == "zero") true.B
     else CSRAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)
@@ -499,8 +503,9 @@ class ysyx_26030103_IDU(
   else
     (effectivePrivilege >= CSRAddress(9, 8)) &&
       (if (hasU) true.B else CSRAddress(9, 8) =/= 0.U(2.W)))
-  val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W) ||
-    CSRAddress === "h301".U(12.W) // misa 当前只读 */
+  // misa 是 WARL 而不是只读：写必须在架构上合法（可以忽略写值），
+  // 否则 ma_fetch.S 里试探性开关 misa.C 会先触发非法指令异常。
+  val CSRReadOnly = CSRAddress(11, 10) === "b11".U(2.W)
   // 读只读 CSR 合法；CSRRW/带非零源的 CSRRS/CSRRC 写只读 CSR 非法。
   val CSRWriteIntent = isCSRrw || ((isCSRrs || isCSRrc) && (rs1 =/= 0.U))
   // mcounteren/scounteren 的第 N 位对应 CSR 的计数器编号 N；

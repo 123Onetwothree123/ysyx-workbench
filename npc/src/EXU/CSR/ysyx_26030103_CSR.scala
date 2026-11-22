@@ -264,7 +264,10 @@ class ysyx_26030103_CSR(
       else Seq.empty)
   ).filter(a => profile.csrSupported(a) || FPCSRAddresses.contains(a) ||
     userCounterAddresses.contains(a) || pmuMachineAddresses.contains(a))
-    .distinct.sorted
+    .distinct.sorted ++
+    // 不实现调试触发器：tselect/tdata*/tcontrol 等地址读回零、写被
+    // 忽略，作为合法的只读零 CSR 暴露给软件。
+    (0x7a0 to 0x7af)
   val CSRImplemented =
     EnabledCSRAddresses.map(a => io.CSRAddress === a.U(12.W))
       .reduceOption(_ || _).getOrElse(false.B)
@@ -886,11 +889,15 @@ class ysyx_26030103_CSR(
     when(CSRWriteEnable && io.CSRAddress === (0x3b0 + entry).U(12.W) &&
       !entryLocked && !nextTorLocked) {
       // RV32 PMP 地址为 30 位；RV64 pmpaddr 为标准 54 位。
+      // 读-改-写旧值必须使用架构读回值（按当前 A 模式归一化），
+      // 不能直接用底层 pmpaddrReg，否则 OFF 模式下被屏蔽的位会被 csrs
+      // 意外保留下来。读写掩码再把低于 G 的位和保留高位清零。
+      val readOld = pmpaddrReadValue(entry)
       if (XLEN == 64) {
-        pmpaddrReg(entry) := CSRWriteData(pmpaddrReg(entry)) &
+        pmpaddrReg(entry) := CSRWriteData(readOld) &
           "h003fffffffffffff".U(64.W)
       } else {
-        pmpaddrReg(entry) := write32(pmpaddrReg(entry)) & "h3fffffff".U(32.W)
+        pmpaddrReg(entry) := write32(readOld) & "h3fffffff".U(32.W)
       }
     }
   }
@@ -1137,8 +1144,11 @@ class ysyx_26030103_CSR(
       csrOn(configAddress)
     )
   }
-  for (index <- 0 until 16) {
-    // pmpaddr 读回按当前 A 归一化：NAPOT 最低区域补尾 1，其余模式低位为 0
+  // pmpaddr 读回按当前 A 归一化：NAPOT 最低区域补尾 1，其余模式低位为 0。
+  // 这个归一化值同时是 CSRRS/CSRRC 的读-改-写旧值：例如 OFF 模式下
+  // pmpaddr[G-1] 读为 0，csrs 写其他位时必须把底层该位一并清 0，否则
+  // 切回 NAPOT 后会读出一个本应被 RMW 清掉的旧 1（pmpaddr.S 的用例）。
+  def pmpaddrReadValue(index: Int): UInt = {
     val entryConfig = pmpcfgReg(index / PMPEntriesPerConfig)(
       8 * (index % PMPEntriesPerConfig) + 4,
       8 * (index % PMPEntriesPerConfig) + 3)
@@ -1146,9 +1156,16 @@ class ysyx_26030103_CSR(
       ((BigInt(1) << (profile.PMPGranularity - 2)) - 1).U(XLEN.W)
     val napotTail =
       ((BigInt(1) << math.max(profile.PMPGranularity - 3, 0)) - 1).U(XLEN.W)
-    val readBack = Mux(entryConfig === 3.U,
+    Mux(entryConfig === 3.U,
       pmpaddrReg(index) | napotTail, pmpaddrReg(index) & ~lowZeroMask)
-    addCSR((0x3b0 + index).U(12.W), readBack, csrOn(0x3b0 + index))
+  }
+  for (index <- 0 until 16) {
+    addCSR((0x3b0 + index).U(12.W), pmpaddrReadValue(index),
+      csrOn(0x3b0 + index))
+  }
+  // 触发相关 CSR 全部硬连为 0；写入不会落到任何寄存器。
+  for (address <- 0x7a0 to 0x7af) {
+    addCSR(address.U(12.W), 0.U(XLEN.W), enabled = true)
   }
   val CSRRawReadData =
     if (CSRMap.isEmpty) 0.U(XLEN.W)

@@ -130,6 +130,9 @@ void addSoc(TypedFields &root, const Config &values, long long xlen,
              TypedJson::boolean(flatBool(values, "CHIPLINK")));
     addField(SOC, "sdram_use_axi",
              TypedJson::boolean(flatBool(values, "SDRAM_USE_AXI", true)));
+    // 与 PMA_PSRAM_*/PMA_SDRAM_* 一起决定 full-SoC 的物理内存布局。
+    addField(SOC, "memory_map_linux",
+             TypedJson::boolean(flatBool(values, "SOC_MEMORY_MAP_LINUX")));
     const bool internalFollow =
         flatBool(values, "INTERNAL_BUS_WIDTH_FOLLOW_CPU", true);
     const long long internalWidth =

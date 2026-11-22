@@ -44,9 +44,6 @@ cmake_force:
 #=============================================================================
 # Set environment variables for the build.
 
-# Prefix for USES_TERMINAL recipes under output sync.
-CMAKE_USES_TERMINAL_PREFIX =
-
 # The shell in which to execute make rules.
 SHELL = /bin/sh
 
@@ -71,7 +68,7 @@ CMAKE_BINARY_DIR = /home/abc/ysyx-workbench/build
 # Special rule for the target edit_cache
 edit_cache:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running CMake cache editor..."
-	$(CMAKE_USES_TERMINAL_PREFIX)/usr/sbin/ccmake -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)
+	/usr/sbin/ccmake -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)
 .PHONY : edit_cache
 
 # Special rule for the target edit_cache
@@ -81,7 +78,7 @@ edit_cache/fast: edit_cache
 # Special rule for the target rebuild_cache
 rebuild_cache:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running CMake to regenerate build system..."
-	$(CMAKE_USES_TERMINAL_PREFIX)/usr/sbin/cmake --regenerate-during-build -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)
+	/usr/sbin/cmake --regenerate-during-build -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR)
 .PHONY : rebuild_cache
 
 # Special rule for the target rebuild_cache

@@ -60,12 +60,22 @@ object SoCConfig {
       .filterNot(value => value == JNothing || value == JNull)
   }
 
-  def int(path: String, fallback: => Int): Int = lookup(path) match {
-    case Some(JInt(value))     => value.toInt
-    case Some(JLong(value))    => value.toInt
-    case Some(JDouble(value))  => value.toInt
-    case Some(JDecimal(value)) => value.toInt
-    case Some(JString(value))  => value.trim.toInt
+  def int(path: String, fallback: => Int): Int = {
+    val value = long(path, fallback.toLong)
+    require(
+      value >= Int.MinValue && value <= Int.MaxValue,
+      s"SoC 配置项 $path 超出 32 位整数范围：$value"
+    )
+    value.toInt
+  }
+
+  // 地址常量经常超过 Int.MaxValue（例如 0xa0000000），必须按 Long 读取。
+  def long(path: String, fallback: => Long): Long = lookup(path) match {
+    case Some(JInt(value))     => value.toLong
+    case Some(JLong(value))    => value
+    case Some(JDouble(value))  => value.toLong
+    case Some(JDecimal(value)) => value.toLong
+    case Some(JString(value))  => value.trim.toLong
     case Some(other) =>
       throw new IllegalArgumentException(
         s"SoC 配置项 $path 不是整数：$other"

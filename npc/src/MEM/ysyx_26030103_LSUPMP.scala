@@ -44,12 +44,13 @@ private[mem] trait LSUPMP {
   }
 
   def pmpAndStallBody(): Unit = {
-    // 年轻 CSR/异常提交不能撤销仍在执行或当拍启动的原子事务的 reservation
+    // 年轻 CSR/异常提交不能撤销仍在执行或当拍启动的原子事务的 reservation。
+    // 普通 store 不主动清 reservation：RISC-V 允许 SC 因任意理由失败，
+    // 但 CVW/Sail 的默认平台语义是 same-hart store 不使 reservation 失效；
+    // ACT 和 riscv-tests 也不会因此变严。跨 hart 的一致性由平台保证。
     val AtomicStarting = startMem && stageInputBits.IsAtomic
     val ReservationClear = io.ReservationClear && !atomicActive && !AtomicStarting
-    val StoreStarts = startMem && stageInputBits.MemoryWrite &&
-      !stageInputBits.IsAtomic
-    when(ReservationClear || StoreStarts || memTrapCommit) {
+    when(ReservationClear || memTrapCommit) {
       reservationValid := false.B
     }
     io.Active := state =/= stateIdle
