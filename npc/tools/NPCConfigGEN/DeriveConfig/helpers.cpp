@@ -63,6 +63,18 @@ std::string deriveCSREnabled(const std::map<std::string, std::string> &values)
         if (asBool(values, "HAS_CSR_" + upper) || isForced)
             enabled.push_back(entry.address);
     }
+    // RV32 的 mcycle/minstret 是 64 位计数器，高半字必须和低半字一起
+    // 暴露；否则 csrr/csrw minstreth/mcycleh 会被当成非法 CSR。
+    const auto xlenIt = values.find("XLEN");
+    if (xlenIt != values.end() && std::stoi(xlenIt->second, nullptr, 0) == 32) {
+        const auto enableHigh = [&enabled](int low, int high) {
+            if (std::find(enabled.begin(), enabled.end(), low) != enabled.end() &&
+                std::find(enabled.begin(), enabled.end(), high) == enabled.end())
+                enabled.push_back(high);
+        };
+        enableHigh(0xb00, 0xb80);
+        enableHigh(0xb02, 0xb82);
+    }
     for (const int address : {0xf11, 0xf12, 0xf13, 0xf14}) {
         if (std::find(enabled.begin(), enabled.end(), address) == enabled.end())
             enabled.push_back(address);

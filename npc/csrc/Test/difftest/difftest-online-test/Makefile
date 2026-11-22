@@ -58,7 +58,7 @@ difftest: insert-arg $(REF_SO) $(LEGACY_REF_SO)
 	@grep -Fq 'DiffTest 初始化失败' $(DIFFTEST_REJECT_LOG)
 	@! grep -Fq 'HIT GOOD TRAP' $(DIFFTEST_REJECT_LOG)
 
-# Exercise the real full-SoC reset/image path at 0x30000000 and the SoC
+# Exercise the real full-SoC reset/image path at MROM 0x20000000 / Flash 0x30000000 and the SoC
 # SRAM/SDRAM/MMIO map.  Recursion is required so AM selects the ysyxsoc linker
 # script before it computes IMAGE and architecture-specific sources.
 difftest-soc:

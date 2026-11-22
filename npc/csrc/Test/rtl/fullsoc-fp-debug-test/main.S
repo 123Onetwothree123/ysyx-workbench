@@ -1,9 +1,9 @@
 // full-SoC 浮点/trap 调试端口最小探针。
 //
-// 从 MROM 0x30000000 启动，只使用寄存器和两条必须成功的 FP 指令：
+// 从 MROM 0x20000000 启动，只使用寄存器和两条必须成功的 FP 指令：
 //   1. 打开 mstatus.FS，写 f2=1.5，执行 fadd.s 得到 f3=3.0；
 //   2. 把 fcsr 写成 0x40（frm=2），随后读回确认；
-//   3. 执行一条地址未对齐的 lw，要求 mcause=4、mtval=0x30000001；
+//   3. 执行一条地址未对齐的 lw，要求 mcause=4、mtval=0x20000001；
 //      trap handler 中再次读 f2/fcsr，确认异常没有破坏浮点状态。
 //
 // 本镜像同时服务于两个检查：
@@ -12,7 +12,7 @@
 //   - NPC --diff：handler 对 mtval 的断言会迫使 REF 注入真实的 trap tval，
 //     逐退休 f0-f31/fcsr 比对则覆盖浮点 DiffTest ABI。
 
-.equ MROM_BASE, 0x30000000
+.equ MROM_BASE, 0x20000000
 .equ F1_5,     0x3fc00000
 .equ F3_0,     0x40400000
 .equ FCSR_VAL, 0x40
@@ -47,7 +47,7 @@ _start:
   li t2, FCSR_VAL
   bne t1, t2, fail_fcsr
 
-  // 地址未对齐 load：mcause=4，mtval=0x30000001。
+  // 地址未对齐 load：mcause=4，mtval=0x20000001。
   li t0, MROM_BASE
   lw t1, 1(t0)
   // 未陷入说明异常分类错误。

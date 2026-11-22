@@ -895,8 +895,10 @@ std::vector<std::string> validate_config(const Config& values,
        0x00000008LL, false},
       {"VGA", "PMA_VGA_BASE", "PMA_VGA_SIZE", 0x21000000LL, 0x00200000LL,
        false},
-      {"MROM", "PMA_MROM_BASE", "PMA_MROM_SIZE", 0x30000000LL, 0x10000000LL,
+      {"MROM", "PMA_MROM_BASE", "PMA_MROM_SIZE", 0x20000000LL, 0x00001000LL,
        true},
+      {"FLASH", "PMA_FLASH_BASE", "PMA_FLASH_SIZE", 0x30000000LL,
+       0x10000000LL, true},
       {"PSRAM", "PMA_PSRAM_BASE", "PMA_PSRAM_SIZE", 0x80000000LL,
        0x00400000LL, true},
       {"SDRAM", "PMA_SDRAM_BASE", "PMA_SDRAM_SIZE", 0xa0000000LL,
@@ -942,7 +944,7 @@ std::vector<std::string> validate_config(const Config& values,
     }
   }
   const long long resetAddr =
-      as_int(values, "PMA_SOC_RESET_ADDR", 0x30000000LL);
+      as_int(values, "PMA_SOC_RESET_ADDR", 0x20000000LL);
   bool resetInExecutable = false;
   for (const auto &range : checkedPma) {
     if (range.executable &&

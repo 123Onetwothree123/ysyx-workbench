@@ -16,11 +16,11 @@
 #include <vector>
 
 namespace {
-constexpr std::uint32_t MromBase = 0x30000000u;
+constexpr std::uint32_t MromBase = 0x20000000u;
 constexpr std::uint32_t F1_5 = 0x3fc00000u;
 constexpr std::uint32_t F3_0 = 0x40400000u;
 constexpr std::uint32_t FcsrValue = 0x40u;
-constexpr std::uint32_t TrapTval = 0x30000001u;
+constexpr std::uint32_t TrapTval = 0x20000001u;
 std::vector<std::uint8_t> Mrom;
 std::vector<std::uint8_t> Flash;
 

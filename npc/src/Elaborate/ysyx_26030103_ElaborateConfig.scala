@@ -77,6 +77,8 @@ object ysyx_26030103_ElaborateConfig {
       VGASize = config.long("PMA.vga_size", PMADefaults.VGASize),
       mromBase = config.long("PMA.mrom_base", PMADefaults.mromBase),
       mromSize = config.long("PMA.mrom_size", PMADefaults.mromSize),
+      flashBase = config.long("PMA.flash_base", PMADefaults.flashBase),
+      flashSize = config.long("PMA.flash_size", PMADefaults.flashSize),
       psramBase = config.long("PMA.psram_base", PMADefaults.psramBase),
       psramSize = config.long("PMA.psram_size", PMADefaults.psramSize),
       sdramBase = config.long("PMA.sdram_base", PMADefaults.sdramBase),

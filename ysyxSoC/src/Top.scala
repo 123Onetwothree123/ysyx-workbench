@@ -32,9 +32,22 @@ object Config {
   def psramSize: Long = SoCConfig.long("PMA.psram_size", 0x00400000L)
   def sdramBase: Long = SoCConfig.long("PMA.sdram_base", 0xa0000000L)
   def sdramSize: Long = SoCConfig.long("PMA.sdram_size", 0x02000000L)
+  def mromBase: Long = SoCConfig.long("PMA.mrom_base", 0x20000000L)
+  def mromSize: Long = SoCConfig.long("PMA.mrom_size", 0x00001000L)
+  def flashBase: Long = SoCConfig.long("PMA.flash_base", 0x30000000L)
+  def flashSize: Long = SoCConfig.long("PMA.flash_size", 0x10000000L)
+  def spiBase: Long = SoCConfig.long("PMA.spi_base", 0x10001000L)
+  def spiSize: Long = SoCConfig.long("PMA.spi_size", 0x00001000L)
 
   def linuxMemoryMap: Boolean =
     SoCConfig.boolean("SOC.memory_map_linux", false)
+
+  def fastFlashXip: Boolean =
+    sys.env.get("SOC_FLASH_XIP_FAST").exists { value =>
+      val normalized = value.trim.toLowerCase
+      normalized == "1" || normalized == "y" || normalized == "yes" ||
+        normalized == "true" || normalized == "on"
+    }
 
   def cpuAXI4AddrBits: Int = socXlen
   def cpuAXI4DataBits: Int = socXlen

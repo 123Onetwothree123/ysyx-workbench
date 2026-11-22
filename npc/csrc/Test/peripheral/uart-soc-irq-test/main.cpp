@@ -1,5 +1,5 @@
 // ysyxSoCFull UART -> PLIC source 10 -> CPU 的定向仿真测试平台。
-// 镜像从 MROM 0x30000000 取指；测试程序只使用寄存器，不依赖可写内存，
+// 镜像从 MROM 0x20000000 取指；测试程序只使用寄存器，不依赖可写内存，
 // 因此不需要 flash/PSRAM/SDRAM 的启动复制流程。
 #include "VysyxSoCFull.h"
 #include <verilated.h>
@@ -13,7 +13,7 @@
 #include <vector>
 
 namespace {
-constexpr std::uint32_t MromBase = 0x30000000u;
+constexpr std::uint32_t MromBase = 0x20000000u;
 std::vector<std::uint8_t> Mrom;
 std::vector<std::uint8_t> Flash;
 

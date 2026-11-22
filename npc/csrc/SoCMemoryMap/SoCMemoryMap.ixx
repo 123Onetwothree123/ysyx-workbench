@@ -10,7 +10,8 @@ public:
     SoCMemoryMap() = delete;
     ~SoCMemoryMap() = default;
     static inline const AddressRange CLINT{"clint", npc::PmaCLINTBase, npc::PmaCLINTSize};
-    static inline const AddressRange FLASH{"flash", npc::SocMBase, npc::SocMSize};
+    static inline const AddressRange MROM{"mrom", npc::PmaMromBase, npc::PmaMromSize};
+    static inline const AddressRange FLASH{"flash", npc::PmaFlashBase, npc::PmaFlashSize};
     static inline const AddressRange UART{"uart", npc::PmaUartBase, npc::PmaUartSize};
     static inline const AddressRange SPI{"spi", npc::PmaSpiBase, npc::PmaSpiSize};
     static inline const AddressRange GPIO{"gpio", npc::PmaGpioBase, npc::PmaGpioSize};
@@ -26,5 +27,5 @@ public:
 
 private:
     inline static const std::array Ranges{
-        CLINT, FLASH, UART, SPI, GPIO, KEYBOARD, VGA, SRAM, PSRAM, SDRAM};
+        CLINT, MROM, FLASH, UART, SPI, GPIO, KEYBOARD, VGA, SRAM, PSRAM, SDRAM};
 };

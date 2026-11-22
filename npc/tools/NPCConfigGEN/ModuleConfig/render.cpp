@@ -60,14 +60,20 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     const long long NpcRAMSize = asInt(values, "NPC_RAM_SIZE", 0x04000000);
     const long long NpcRAMBase = asInt(values, "NPC_RAM_BASE", 0x80000000LL);
     const long long cachePadding = asInt(values, "CACHE_PADDING", 0);
-    const long long pmaMromBase = asInt(values, "PMA_MROM_BASE", 0x30000000LL);
-    const long long pmaMromSize = asInt(values, "PMA_MROM_SIZE", 0x10000000LL);
+    const long long pmaMromBase = asInt(values, "PMA_MROM_BASE", 0x20000000LL);
+    const long long pmaMromSize = asInt(values, "PMA_MROM_SIZE", 0x00001000LL);
+    const long long pmaFlashBase = asInt(values, "PMA_FLASH_BASE", 0x30000000LL);
+    const long long pmaFlashSize = asInt(values, "PMA_FLASH_SIZE", 0x10000000LL);
     const long long pmaSocResetAddr =
-        asInt(values, "PMA_SOC_RESET_ADDR", 0x30000000LL);
+        asInt(values, "PMA_SOC_RESET_ADDR", 0x20000000LL);
     out << "inline constexpr std::uint64_t SocMBase{0x" << std::hex
         << pmaMromBase << "ULL};\n";
     out << "inline constexpr std::uint64_t SocMSize{0x" << std::hex
         << pmaMromSize << "ULL};\n";
+    out << "inline constexpr std::uint64_t SocFlashBase{0x" << std::hex
+        << pmaFlashBase << "ULL};\n";
+    out << "inline constexpr std::uint64_t SocFlashSize{0x" << std::hex
+        << pmaFlashSize << "ULL};\n";
     out << "inline constexpr std::uint64_t SocResetPC{0x" << std::hex
         << pmaSocResetAddr << "ULL};\n";
     out << std::dec;
@@ -91,8 +97,10 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     pmaConst("PmaKeyboardSize", "PMA_KEYBOARD_SIZE", 0x00000008LL);
     pmaConst("PmaVgaBase", "PMA_VGA_BASE", 0x21000000LL);
     pmaConst("PmaVgaSize", "PMA_VGA_SIZE", 0x00200000LL);
-    pmaConst("PmaMromBase", "PMA_MROM_BASE", 0x30000000LL);
-    pmaConst("PmaMromSize", "PMA_MROM_SIZE", 0x10000000LL);
+    pmaConst("PmaMromBase", "PMA_MROM_BASE", 0x20000000LL);
+    pmaConst("PmaMromSize", "PMA_MROM_SIZE", 0x00001000LL);
+    pmaConst("PmaFlashBase", "PMA_FLASH_BASE", 0x30000000LL);
+    pmaConst("PmaFlashSize", "PMA_FLASH_SIZE", 0x10000000LL);
     pmaConst("PmaPsramBase", "PMA_PSRAM_BASE", 0x80000000LL);
     pmaConst("PmaPsramSize", "PMA_PSRAM_SIZE", 0x00400000LL);
     pmaConst("PmaSdramBase", "PMA_SDRAM_BASE", 0xa0000000LL);
@@ -101,7 +109,7 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     pmaConst("PmaChipLinkMmioSize", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
     pmaConst("PmaChipLinkMemBase", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
     pmaConst("PmaChipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
-    pmaConst("PmaSocResetAddr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
+    pmaConst("PmaSocResetAddr", "PMA_SOC_RESET_ADDR", 0x20000000LL);
     out << "inline constexpr std::uint64_t NpcMBase{0x" << std::hex
         << NpcRAMBase << "ULL};\n";
     out << "inline constexpr std::uint64_t NpcMSize{0x" << std::hex << NpcRAMSize
@@ -232,8 +240,10 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitField("keyboardSize", "PMA_KEYBOARD_SIZE", 0x00000008LL);
     emitField("VGABase", "PMA_VGA_BASE", 0x21000000LL);
     emitField("VGASize", "PMA_VGA_SIZE", 0x00200000LL);
-    emitField("mromBase", "PMA_MROM_BASE", 0x30000000LL);
-    emitField("mromSize", "PMA_MROM_SIZE", 0x10000000LL);
+    emitField("mromBase", "PMA_MROM_BASE", 0x20000000LL);
+    emitField("mromSize", "PMA_MROM_SIZE", 0x00001000LL);
+    emitField("flashBase", "PMA_FLASH_BASE", 0x30000000LL);
+    emitField("flashSize", "PMA_FLASH_SIZE", 0x10000000LL);
     emitField("psramBase", "PMA_PSRAM_BASE", 0x80000000LL);
     emitField("psramSize", "PMA_PSRAM_SIZE", 0x00400000LL);
     emitField("sdramBase", "PMA_SDRAM_BASE", 0xa0000000LL);
@@ -242,7 +252,7 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitField("ChipLinkMMIOSize", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
     emitField("chipLinkMemBase", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
     emitField("chipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
-    emitField("SOCResetAddress", "PMA_SOC_RESET_ADDR", 0x30000000LL);
+    emitField("SOCResetAddress", "PMA_SOC_RESET_ADDR", 0x20000000LL);
     out << "    NpcRAMBase = NpcRamBase\n";
     out << "  )\n";
     const auto emitInt = [&](const char *name, const char *key,

@@ -61,7 +61,7 @@ $(SOC_RTL): $(SOC_SCALA) $(PERIP_VSRCS) $(SOC_CONFIG_JSON)
 $(IMAGE): main.S
 	@mkdir -p $(BUILD_DIR)
 	$(CC_RV32) -march=rv32imaf_zicsr -mabi=ilp32 -nostdlib -nostartfiles \
-	  -Ttext=0x30000000 -Wl,--no-relax -o $(BUILD_DIR)/main.elf $<
+	  -Ttext=0x20000000 -Wl,--no-relax -o $(BUILD_DIR)/main.elf $<
 	$(OBJCOPY) -O binary $(BUILD_DIR)/main.elf $@
 
 $(TEST_BIN): main.cpp $(NPC_RTL) $(SOC_RTL)

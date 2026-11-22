@@ -120,9 +120,16 @@ menu "SoC 与外设"
 
     config PMA_MROM_BASE
       hex "MROM 基地址"
-      default 0x30000000
+      default 0x20000000
     config PMA_MROM_SIZE
       hex "MROM 大小"
+      default 0x00001000
+
+    config PMA_FLASH_BASE
+      hex "XIP Flash 基地址"
+      default 0x30000000
+    config PMA_FLASH_SIZE
+      hex "XIP Flash 窗口大小"
       default 0x10000000
 
     config PMA_PSRAM_BASE

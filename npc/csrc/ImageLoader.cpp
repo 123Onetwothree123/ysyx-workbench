@@ -12,12 +12,35 @@ constexpr std::size_t kCachePadding{npc::CachePadding};
 constexpr std::uintmax_t kImageCapacity{npc::MSize};
 #else
 constexpr std::size_t kCachePadding{0};
-constexpr std::uintmax_t kImageCapacity{npc::SocMSize}; // ysyxSoC MROM window
+constexpr std::uintmax_t kImageCapacity{npc::SocFlashSize}; // ysyxSoC Flash window
+constexpr std::size_t kSocStubBytes{0x1000};
+constexpr std::size_t kSocStubSizeOffset{0xff0};
 #endif
 namespace
 {
 // RV32 不允许把 64 位地址截断。
 constexpr npc::XWord kImageBase{npc::MBase};
+#ifndef VRISCV32E_NPC
+std::uint32_t LoadLe32(const std::vector<std::uint8_t> &Bytes,
+                       std::size_t Offset)
+{
+    std::uint32_t value{0};
+    if (Offset <= Bytes.size() && Bytes.size() - Offset >= sizeof(value))
+    {
+        std::memcpy(&value, Bytes.data() + Offset, sizeof(value));
+    }
+    return value;
+}
+
+void StoreLe32(std::vector<std::uint8_t> &Bytes, std::size_t Offset,
+               std::uint32_t Value)
+{
+    if (Offset <= Bytes.size() && Bytes.size() - Offset >= sizeof(Value))
+    {
+        std::memcpy(Bytes.data() + Offset, &Value, sizeof(Value));
+    }
+}
+#endif
 
 std::expected<std::vector<std::uint8_t>, std::string> ReadWholeFile(
     const std::filesystem::path &Path,
@@ -235,6 +258,57 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(
                 return std::unexpected{std::format("不支持的 ELF class：{}", static_cast<unsigned>(ident[EI_CLASS]))};
             }
         }
+#ifndef VRISCV32E_NPC
+        // C5 SoC 启动镜像：4 KiB MROM stub + Flash payload。
+        // build_soc_image.sh 在偏移 0xff0 写入 payload 字节数；这里
+        // 只在 size 与文件长度严格对应时拆分，避免把普通裸镜像误判。
+        if (FileSize > kSocStubBytes)
+        {
+            auto file{ReadWholeFile(path, FileSize)};
+            if (!file)
+            {
+                return std::unexpected{file.error()};
+            }
+            const auto payloadSize{LoadLe32(*file, kSocStubSizeOffset)};
+            if (payloadSize == FileSize - kSocStubBytes)
+            {
+                std::vector<std::uint8_t> stub(
+                    file->begin(), file->begin() + kSocStubBytes);
+                std::vector<std::uint8_t> payload(
+                    file->begin() + kSocStubBytes, file->end());
+                // 兼容 49ff8519e 之前生成的旧 ACT 镜像：旧 stub 从
+                // Flash +0x1000 复制、从 Flash +0xff0 读 size。拆分后
+                // payload 已在 Flash +0，size 又留在 MROM +0xff0，因此
+                // 只重定位这两条 lui 立即数。
+                if (LoadLe32(stub, 0x0) == 0x300012b7U &&
+                    LoadLe32(stub, 0xc) == 0x300013b7U)
+                {
+                    StoreLe32(stub, 0x0, 0x300002b7U);
+                    StoreLe32(stub, 0xc, 0x200013b7U);
+                    out.Info("检测到旧版 ACT stub，已重定位到 C5 MROM/Flash 布局");
+                }
+                if (stub.size() > npc::SocMSize)
+                {
+                    return std::unexpected{std::format(
+                        "MROM stub {} 字节超过 MROM 窗口 {} 字节",
+                        stub.size(), npc::SocMSize)};
+                }
+                if (payload.size() > npc::SocFlashSize)
+                {
+                    return std::unexpected{std::format(
+                        "Flash payload {} 字节超过 Flash 窗口 {} 字节",
+                        payload.size(), npc::SocFlashSize)};
+                }
+                Context.Mrom() = std::move(stub);
+                Context.Flash() = std::move(payload);
+                out.Info("SoC 镜像拆分: MROM stub {} 字节 @0x{:x}, "
+                         "Flash payload {} 字节 @0x{:x}",
+                         Context.Mrom().size(), npc::SocMBase,
+                         Context.Flash().size(), npc::SocFlashBase);
+                return Context.Flash().size();
+            }
+        }
+#endif
         const auto allocationSize{static_cast<std::size_t>(FileSize + padding)};
         std::ifstream ifs(path, std::ios::binary);
         if (!ifs)

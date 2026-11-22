@@ -86,7 +86,8 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
   val lvga = LazyModule(new APBVGA(AddressSet.misaligned(0x21000000, 0x200000)))
   val lspi = LazyModule(
     new APBSPI(
-      AddressSet.misaligned(0x10001000, 0x1000) // SPI controller (XIP moved to MROM)
+      AddressSet.misaligned(Config.spiBase, Config.spiSize) ++ // SPI controller
+        AddressSet.misaligned(Config.flashBase, Config.flashSize) // XIP flash
     )
   )
   // PSRAM/SDRAM 地址来自 Kconfig PMA，和 CPU PMA、C++ SoC 模型、
@@ -97,7 +98,7 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     AddressSet.misaligned(Config.sdramBase, Config.sdramSize)
   val lpsram = LazyModule(new APBPSRAM(psramAddressSet))
   val lmrom = LazyModule(
-    new AXI4MROM(AddressSet.misaligned(0x30000000, 0x10000000),
+    new AXI4MROM(AddressSet.misaligned(Config.mromBase, Config.mromSize),
       MromBytes)
   )
   val sramNode = AXI4RAM(

@@ -21,8 +21,10 @@ object ysyx_26030103_KconfigDefaults {
     keyboardSize = 0x8L,
     VGABase = 0x21000000L,
     VGASize = 0x200000L,
-    mromBase = 0x30000000L,
-    mromSize = 0x10000000L,
+    mromBase = 0x20000000L,
+    mromSize = 0x1000L,
+    flashBase = 0x30000000L,
+    flashSize = 0x10000000L,
     psramBase = 0x80000000L,
     psramSize = 0x400000L,
     sdramBase = 0xa0000000L,
@@ -31,7 +33,7 @@ object ysyx_26030103_KconfigDefaults {
     ChipLinkMMIOSize = 0x40000000L,
     chipLinkMemBase = 0xc0000000L,
     chipLinkMemSize = 0x40000000L,
-    SOCResetAddress = 0x30000000L,
+    SOCResetAddress = 0x20000000L,
     NpcRAMBase = NpcRamBase
   )
   val NpcXlen: Int = 64

@@ -1,5 +1,5 @@
 // full-SoC (ysyxSoCFull) UART 中断路径回归。
-// 程序从 MROM 0x30000000 启动，只使用寄存器，不依赖可写内存。
+// 程序从 MROM 0x20000000 启动，只使用寄存器，不依赖可写内存。
 // 目标：打开 APBUart16550 的 IER.THRE，进入 S 模式，等待 CPU 内部 PLIC
 // source 10 的外部中断；中断处理程序必须 claim 到 10，并从 UART IIR
 // 读到 THRE 编码，证明 full-SoC 的 UART 中断确实经过 PLIC，而不是被

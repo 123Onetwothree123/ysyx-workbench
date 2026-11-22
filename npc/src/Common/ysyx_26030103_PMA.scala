@@ -34,6 +34,8 @@ final case class ysyx_26030103_PMAOptions(
     VGASize: Long,
     mromBase: Long,
     mromSize: Long,
+    flashBase: Long,
+    flashSize: Long,
     psramBase: Long,
     psramSize: Long,
     sdramBase: Long,
@@ -82,6 +84,13 @@ final case class ysyx_26030103_PMAOptions(
       ysyx_26030103_PMARegion(
         mromBase,
         mromSize,
+        Writable = false,
+        Cacheable = true,
+        Executable = true
+      ),
+      ysyx_26030103_PMARegion(
+        flashBase,
+        flashSize,
         Writable = false,
         Cacheable = true,
         Executable = true

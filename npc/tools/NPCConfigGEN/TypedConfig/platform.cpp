@@ -61,7 +61,7 @@ void addPma(TypedFields &root, const Config &values)
         addField(PMA, name,
                  TypedJson::integer(flatInt(values, key, fallback)));
     };
-    add("soc_reset_addr", "PMA_SOC_RESET_ADDR", 0x30000000LL);
+    add("soc_reset_addr", "PMA_SOC_RESET_ADDR", 0x20000000LL);
     add("clint_base", "PMA_CLINT_BASE", 0x02000000LL);
     add("clint_size", "PMA_CLINT_SIZE", 0x00010000LL);
     add("sram_base", "PMA_SRAM_BASE", 0x0f000000LL);
@@ -76,8 +76,10 @@ void addPma(TypedFields &root, const Config &values)
     add("keyboard_size", "PMA_KEYBOARD_SIZE", 0x00000008LL);
     add("vga_base", "PMA_VGA_BASE", 0x21000000LL);
     add("vga_size", "PMA_VGA_SIZE", 0x00200000LL);
-    add("mrom_base", "PMA_MROM_BASE", 0x30000000LL);
-    add("mrom_size", "PMA_MROM_SIZE", 0x10000000LL);
+    add("mrom_base", "PMA_MROM_BASE", 0x20000000LL);
+    add("mrom_size", "PMA_MROM_SIZE", 0x00001000LL);
+    add("flash_base", "PMA_FLASH_BASE", 0x30000000LL);
+    add("flash_size", "PMA_FLASH_SIZE", 0x10000000LL);
     add("psram_base", "PMA_PSRAM_BASE", 0x80000000LL);
     add("psram_size", "PMA_PSRAM_SIZE", 0x00400000LL);
     add("sdram_base", "PMA_SDRAM_BASE", 0xa0000000LL);
