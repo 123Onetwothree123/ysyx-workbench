@@ -161,7 +161,6 @@ private[mem] trait LSURead {
 
   /** 非对齐 load：按配置粒度分块，最后一块到达后拼装。 */
   def MisalignedLoadRequestBody(): Unit = {
-    val SegmentTwoBeat = ChunkLog2 == 3 && !busWide
     if (DCacheEnable) {
       when(MisalignedSegmentReady && DCache.io.request.fire) {
         state := stateMisLoadResponse
@@ -169,9 +168,9 @@ private[mem] trait LSURead {
     } else {
       io.DataBus.AR.ARVALID := MisalignedSegmentReady
       io.DataBus.AR.ARADDR := MisalignedSegmentPhysicalAddress
-      io.DataBus.AR.ARLEN := Mux(SegmentTwoBeat.B, 1.U, 0.U)
+      io.DataBus.AR.ARLEN := 0.U
       io.DataBus.AR.ARSIZE :=
-        (if (ChunkLog2 == 3 && busWide) 3.U else 2.U)
+        (if (ChunkLog2 == 3) 3.U else 2.U)
       io.DataBus.AR.ARBURST := 1.U
       when(MisalignedSegmentReady && io.DataBus.AR.ARREADY) {
         state := stateMisLoadResponse
@@ -222,7 +221,6 @@ private[mem] trait LSURead {
   }
 
   def MisalignedLoadResponseBody(): Unit = {
-    val SegmentTwoBeat = ChunkLog2 == 3 && !busWide
     if (DCacheEnable) {
       when(DCache.io.response.fire) {
         when(DCache.io.response.bits.fault) {
@@ -238,34 +236,19 @@ private[mem] trait LSURead {
       io.DataBus.R.RREADY := true.B
       when(io.DataBus.R.RVALID) {
         val responseBad = io.DataBus.R.RRESP =/= 0.U
-        val beatOne = MisalignedBeat === 1.U
         val data =
-          if (ChunkLog2 == 3 && busWide) io.DataBus.R.RDATA
-          else if (ChunkLog2 == 3) {
-            Mux(beatOne, Cat(io.DataBus.R.RDATA, MisalignedLowWordRegister),
-              SelectWord(io.DataBus.R.RDATA, MisalignedSegmentPhysicalAddress,
-                busWide))
-          } else {
+          if (ChunkLog2 == 3) io.DataBus.R.RDATA
+          else {
             SelectWord(io.DataBus.R.RDATA, MisalignedSegmentPhysicalAddress,
               busWide)
           }
         when(responseBad) {
           MisalignedLoadFault(io.DataBus.R.RRESP)
-        }.elsewhen(SegmentTwoBeat.B && !beatOne) {
-          when(io.DataBus.R.RLAST) {
-            accessFaultReg := true.B
-            accessFaultResponseReg := 2.U
-            state := stateReadDrain
-          }.otherwise {
-            MisalignedLowWordRegister := io.DataBus.R.RDATA
-            MisalignedBeat := 1.U
-          }
-        }.elsewhen(!io.DataBus.R.RLAST || (SegmentTwoBeat.B && !beatOne)) {
+        }.elsewhen(!io.DataBus.R.RLAST) {
           accessFaultReg := true.B
           accessFaultResponseReg := 2.U
           state := stateReadDrain
         }.otherwise {
-          MisalignedBeat := 0.U
           MisalignedLoadSegmentData(data)
         }
       }

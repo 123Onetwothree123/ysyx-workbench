@@ -312,36 +312,10 @@ private[infra] trait AXI5WidthBridgeWrite {
           when(io.in.B.BREADY) {
             wState := wIdle
           }
-        } else if (addressNarrows) {
-          // 地址变窄但数据同宽（RV64 CPU + 32 位 SoC）：AW/W 走 wUpsize，
-          // 下游 B 仍在途，必须等它返回后再交给上游，不能提前伪造 B。
-          // 越界事务没有下发 AW/W，必须本地生成 DECERR。
-          when(wError) {
-            io.in.B.BVALID := true.B
-            io.in.B.BID := WID
-            io.in.B.BRESP := DECERR
-            when(io.in.B.BREADY) {
-              wState := wIdle
-            }
-          }.otherwise {
-            io.in.B.BVALID := io.out.B.BVALID
-            io.in.B.BID := io.out.B.BID
-            io.in.B.BRESP := io.out.B.BRESP
-            io.out.B.BREADY := io.in.B.BREADY
-            when(io.out.B.BVALID) {
-              assert(
-                io.out.B.BID === WID,
-                "AXI5WidthBridge: downstream write response ID mismatch"
-              )
-            }
-            when(io.out.B.BVALID && io.in.B.BREADY) {
-              wState := wIdle
-            }
-          }
         } else {
           when(wError) {
-            // 地址越界但数据同宽/变宽：没有下发任何下游 AW/W，本地
-            // 返回 DECERR，不能等待一个不存在的下游 B。
+            // 地址越界：没有下发任何下游 AW/W，本地返回 DECERR，
+            // 不能等待一个不存在的下游 B。
             io.in.B.BVALID := true.B
             io.in.B.BID := WID
             io.in.B.BRESP := DECERR
@@ -349,9 +323,8 @@ private[infra] trait AXI5WidthBridgeWrite {
               wState := wIdle
             }
           }.otherwise {
-            // 数据同宽（包括 addressNarrows）或 32->64：下游 AW/W 已经
-            // 下发，必须等下游 B 返回后再透传给上游。地址窄化本身不
-            // 产生本地响应。
+            // 地址窄化/同宽/32->64 都已在上面下发下游 AW/W，必须等下游 B
+            // 返回后再透传给上游；地址窄化本身不产生本地响应。
             io.in.B.BVALID := io.out.B.BVALID
             io.in.B.BID := io.out.B.BID
             io.in.B.BRESP := io.out.B.BRESP

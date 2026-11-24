@@ -4,7 +4,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
-import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.LaneWord
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.{LaneWord, SelectStrobe, SelectWord}
 import ysyx_26030103_AXI5WriteData.{merge32}
 
 // 简化 PLIC：只支持单拍 AXI 访问，source 由上层以电平输入；
@@ -124,12 +124,8 @@ class ysyx_26030103_PLIC(
   val rData = RegInit(0.U(DataWidth.W))
   val rResponse = RegInit(OKAY)
   private val busWide = DataWidth == 64
-  val wWord =
-    if (busWide) Mux(AWAddress(2), wData(63, 32), wData(31, 0))
-    else wData(31, 0)
-  val wByte =
-    if (busWide) Mux(AWAddress(2), wStrobe(7, 4), wStrobe(3, 0))
-    else wStrobe(3, 0)
+  val wWord = SelectWord(wData, AWAddress, busWide)
+  val wByte = SelectStrobe(wStrobe, AWAddress, busWide)
   val rWord = WireDefault(0.U(32.W))
 
   io.AW.AWREADY := !awValid && !bValid

@@ -2,7 +2,11 @@ package ysyx_26030103.infra
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
-import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.LaneWord
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.{
+  LaneWord,
+  SelectStrobe,
+  SelectWord
+}
 import ysyx_26030103_AXI5WriteData.{merge32}
 class ysyx_26030103_CLINTIO(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
@@ -119,12 +123,8 @@ class ysyx_26030103_AXI5CLINTSlave(
   )
   val wDataWide = wDataReg.pad(64)
   val wStrobeWide = wStrobeReg.pad(8)
-  val wDataWord =
-    if (busWide) Mux(wAddressReg(2), wDataWide(63, 32), wDataWide(31, 0))
-    else wDataReg(31, 0)
-  val wStrobeWord =
-    if (busWide) Mux(wAddressReg(2), wStrobeWide(7, 4), wStrobeWide(3, 0))
-    else wStrobeReg(3, 0)
+  val wDataWord = SelectWord(wDataWide, wAddressReg, busWide)
+  val wStrobeWord = SelectStrobe(wStrobeWide, wAddressReg, busWide)
   val wBeatAddressValid =
     wAddressReg === mtimecmpLowAddress || wAddressReg === mtimecmpHighAddress
   val wBeatExpectedLast = wBeatReg === AWLengthReg
@@ -222,8 +222,8 @@ class ysyx_26030103_AXI5CLINTSlave(
     ARSizeReg := io.AR.ARSIZE
     ARBurstReg := io.AR.ARBURST
     ARBeatReg := 0.U
-    ARConfigErrorReg := io.AR.ARSIZE > busLaneBits.U || io.AR.ARBURST > 1.U
     val configError = io.AR.ARSIZE > busLaneBits.U || io.AR.ARBURST > 1.U
+    ARConfigErrorReg := configError
     val addressValid = isMtime(io.AR.ARADDR) || isMtimecmp(io.AR.ARADDR)
     rDataReg := Mux(!configError && addressValid,
       readBeatData(io.AR.ARADDR, io.AR.ARSIZE), 0.U)

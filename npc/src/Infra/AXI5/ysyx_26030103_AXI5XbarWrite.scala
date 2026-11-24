@@ -103,18 +103,14 @@ private[infra] trait AXI5XbarWrite {
     )
     val WriteTargets = Seq(SOCBusWriteTarget, CLINTWriteTarget, PLICWriteTarget)
 
-    val WriteTargetAfterAW =
-      Mux(
-        InAWFire,
-        decode(
-          io.in.AW.AWADDR,
-          io.in.AW.AWLEN,
-          io.in.AW.AWSIZE,
-          io.in.AW.AWBURST,
-          isWrite = true
-        ),
-        writeTargetReg
-      )
+    val AWDecodedTarget = decode(
+      io.in.AW.AWADDR,
+      io.in.AW.AWLEN,
+      io.in.AW.AWSIZE,
+      io.in.AW.AWBURST,
+      isWrite = true
+    )
+    val WriteTargetAfterAW = Mux(InAWFire, AWDecodedTarget, writeTargetReg)
     val WriteLengthAfterAW = Mux(InAWFire, io.in.AW.AWLEN, AWLengthReg)
     val AWCollected = AWValidReg || InAWFire
     val wCollected = wValidReg || inWFire
@@ -138,13 +134,7 @@ private[infra] trait AXI5XbarWrite {
       AWProtReg := io.in.AW.AWPROT
       AWCacheReg := io.in.AW.AWCACHE
       AWQosReg := io.in.AW.AWQOS
-      writeTargetReg := decode(
-        io.in.AW.AWADDR,
-        io.in.AW.AWLEN,
-        io.in.AW.AWSIZE,
-        io.in.AW.AWBURST,
-        isWrite = true
-      )
+      writeTargetReg := AWDecodedTarget
       AWValidReg := true.B
     }
     // Idle/Collect阶段只缓存首个W beat；进入转发阶段后其余beat直接流过。
@@ -171,34 +161,8 @@ private[infra] trait AXI5XbarWrite {
     io.in.B.BVALID := false.B
     io.in.B.BRESP := OKAY
 
-    when(writeState === stateWriteIdle) {
-      val hasWriteRequest =
-        io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || wValidReg
-      when(hasWriteRequest) { // 哪个通道还没缓存，就对哪个通道拉ready
-        InAWReady := !AWValidReg
-        inWReady := !wValidReg
-
-        // 如果本周期结束后AW和W都已经收到了，就可以进入转发阶段
-        when(AWCollected && wCollected) {
-          DownstreamAWDone := false.B
-          downstreamWDone := false.B
-          when(writeCannotForward) {
-            // 首beat已由收集级接收；若它不是最后一拍，继续排空余下W。
-            wValidReg := false.B
-            writeState := Mux(
-              firstWLastAfterW,
-              stateWriteDECERR,
-              stateWriteDrain
-            )
-          }.otherwise {
-            writeState := stateWriteRequest
-          }
-        }.otherwise {
-          writeState := stateWriteCollect
-        }
-      }
-    }.elsewhen(writeState === stateWriteCollect) {
-      // AW/W 还没都收到：可能 AW 先到，也可能 W 先到。
+    // Idle 需要有请求才拉 ready 并转入 Collect；Collect 已在收集中，无需门控。
+    def collectWrite(enterCollect: Boolean): Unit = {
       InAWReady := !AWValidReg
       inWReady := !wValidReg
 
@@ -206,6 +170,7 @@ private[infra] trait AXI5XbarWrite {
         DownstreamAWDone := false.B
         downstreamWDone := false.B
         when(writeCannotForward) {
+          // 首beat已由收集级接收；若它不是最后一拍，继续排空余下W。
           wValidReg := false.B
           writeState := Mux(
             firstWLastAfterW,
@@ -215,7 +180,22 @@ private[infra] trait AXI5XbarWrite {
         }.otherwise {
           writeState := stateWriteRequest
         }
+      }.otherwise {
+        // Idle 收到首个请求后转入 Collect，继续等另一半通道。
+        if (enterCollect) {
+          writeState := stateWriteCollect
+        }
       }
+    }
+
+    when(writeState === stateWriteIdle) {
+      val hasWriteRequest =
+        io.in.AW.AWVALID || io.in.W.WVALID || AWValidReg || wValidReg
+      when(hasWriteRequest) {
+        collectWrite(enterCollect = true)
+      }
+    }.elsewhen(writeState === stateWriteCollect) {
+      collectWrite(enterCollect = false)
     }.elsewhen(writeState === stateWriteRequest) {
       when(writeTargetReg === targetSoCBus) {
         ForwardWriteRequest(SOCBusWriteTarget)

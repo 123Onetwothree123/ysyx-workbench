@@ -83,6 +83,43 @@ private[mem] trait LSUAtomic {
     }
   }
 
+  // 32 位原子读的公共响应处理；XLEN=64 时由 atomicSignExtend32 扩展。
+  def finishWordAtomicRead(rawWord: UInt, responseBad: Bool): Unit = {
+    val wordData = atomicSignExtend32(rawWord)
+    when(io.DataBus.R.RLAST) {
+      val fault = accessFaultReg || responseBad
+      when(fault) {
+        transactionComplete := true.B
+        transactionFault := true.B
+        atomicActive := false.B
+        state := stateIdle
+      }.elsewhen(ysyx_26030103_AtomicOp.IsLr(atomicOpReg)) {
+        // LR 成功：建立 reservation，写回旧值。
+        loadDataReg := wordData
+        reservationValid := true.B
+        reservationAddress := atomicAddressReg
+        atomicActive := false.B
+        transactionComplete := true.B
+        state := stateIdle
+      }.elsewhen(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
+        finishScRead()
+      }.otherwise {
+        atomicResultData := wordData
+        atomicNewData := ysyx_26030103_AtomicOp.Compute(
+          atomicOpReg, wordData, activeInstruction.StoreData,
+          word = true)
+        AtomicAWDone := false.B
+        atomicWDone := false.B
+        atomicWBeat := false.B
+        state := stateAtomicWriteRequest
+      }
+    }.otherwise {
+      accessFaultReg := true.B
+      accessFaultResponseReg := Mux(responseBad, io.DataBus.R.RRESP, 2.U)
+      state := stateReadDrain
+    }
+  }
+
   def atomicReadResponseBody(): Unit = {
     io.DataBus.R.RREADY := true.B
     when(io.DataBus.R.RVALID) {
@@ -128,76 +165,14 @@ private[mem] trait LSUAtomic {
             }
           }
         }.otherwise {
-          when(io.DataBus.R.RLAST) {
-            val wordData =
-              atomicSignExtend32(
-                SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide))
-            val fault = accessFaultReg || responseBad
-            when(fault) {
-              transactionComplete := true.B
-              transactionFault := true.B
-              atomicActive := false.B
-              state := stateIdle
-            }.elsewhen(ysyx_26030103_AtomicOp.IsLr(atomicOpReg)) {
-              // LR 成功：建立 reservation，写回旧值。
-              loadDataReg := wordData
-              reservationValid := true.B
-              reservationAddress := atomicAddressReg
-              atomicActive := false.B
-              transactionComplete := true.B
-              state := stateIdle
-            }.elsewhen(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
-              finishScRead()
-            }.otherwise {
-              atomicResultData := wordData
-              atomicNewData := ysyx_26030103_AtomicOp.Compute(
-                atomicOpReg, wordData, activeInstruction.StoreData,
-                word = true)
-              AtomicAWDone := false.B
-              atomicWDone := false.B
-              atomicWBeat := false.B
-              state := stateAtomicWriteRequest
-            }
-          }.otherwise {
-            accessFaultReg := true.B
-            accessFaultResponseReg := Mux(responseBad, io.DataBus.R.RRESP, 2.U)
-            state := stateReadDrain
-          }
+          finishWordAtomicRead(
+            SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide),
+            responseBad)
         }
       } else {
-        when(io.DataBus.R.RLAST) {
-          val wordData =
-            SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide)
-          val fault = accessFaultReg || responseBad
-          when(fault) {
-            transactionComplete := true.B
-            transactionFault := true.B
-            atomicActive := false.B
-            state := stateIdle
-          }.elsewhen(ysyx_26030103_AtomicOp.IsLr(atomicOpReg)) {
-            loadDataReg := wordData
-            reservationValid := true.B
-            reservationAddress := atomicAddressReg
-            atomicActive := false.B
-            transactionComplete := true.B
-            state := stateIdle
-          }.elsewhen(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
-            finishScRead()
-          }.otherwise {
-            atomicResultData := wordData
-            atomicNewData := ysyx_26030103_AtomicOp.Compute(
-              atomicOpReg, wordData, activeInstruction.StoreData,
-              word = true)
-            AtomicAWDone := false.B
-            atomicWDone := false.B
-            atomicWBeat := false.B
-            state := stateAtomicWriteRequest
-          }
-        }.otherwise {
-          accessFaultReg := true.B
-          accessFaultResponseReg := Mux(responseBad, io.DataBus.R.RRESP, 2.U)
-          state := stateReadDrain
-        }
+        finishWordAtomicRead(
+          SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide),
+          responseBad)
       }
     }
   }

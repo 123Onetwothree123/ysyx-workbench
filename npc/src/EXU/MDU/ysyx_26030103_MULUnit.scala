@@ -32,29 +32,20 @@ class ysyx_26030103_MULUnit(
     IO.Request.bits.RHS,
     IO.Request.bits.SignedMode
   )
-  val lhsMagnitude = ysyx_26030103_MULAdapterUtils.Magnitude(
+  val lhsMagnitude = ysyx_26030103_MDUArithmetic.Magnitude(
     IO.Request.bits.LHS,
     ysyx_26030103_MULSignedMode.LHSSigned(IO.Request.bits.SignedMode)
   )
-  val rhsMagnitude = ysyx_26030103_MULAdapterUtils.Magnitude(
+  val rhsMagnitude = ysyx_26030103_MDUArithmetic.Magnitude(
     IO.Request.bits.RHS,
     ysyx_26030103_MULSignedMode.RHSSigned(IO.Request.bits.SignedMode)
   )
   core.IO.Flush := IO.Flush
-  private val coreLHSMagnitude = if (coreWidth == 32) {
-    lhsMagnitude
-  } else if (coreWidth > 32) {
-    Cat(0.U((coreWidth - 32).W), lhsMagnitude)
-  } else {
-    lhsMagnitude(coreWidth - 1, 0)
-  }
-  private val coreRHSMagnitude = if (coreWidth == 32) {
-    rhsMagnitude
-  } else if (coreWidth > 32) {
-    Cat(0.U((coreWidth - 32).W), rhsMagnitude)
-  } else {
-    rhsMagnitude(coreWidth - 1, 0)
-  }
+  private def alignOperand(value: UInt): UInt =
+    if (coreWidth == 32) value
+    else Cat(0.U((coreWidth - 32).W), value)
+  private val coreLHSMagnitude = alignOperand(lhsMagnitude)
+  private val coreRHSMagnitude = alignOperand(rhsMagnitude)
   core.IO.Request.bits.LHSMagnitude := coreLHSMagnitude
   core.IO.Request.bits.RHSMagnitude := coreRHSMagnitude
   core.IO.Response.ready := !IO.Flush && metadataValid && IO.Response.ready
@@ -68,12 +59,10 @@ class ysyx_26030103_MULUnit(
   private val archProductWidth = 2 * config.XLEN
   val coreProductWidthAdjusted = if (coreProductWidth == archProductWidth) {
     core.IO.Response.bits.Product
-  } else if (coreProductWidth > archProductWidth) {
-    core.IO.Response.bits.Product(archProductWidth - 1, 0)
   } else {
-    Cat(0.U((archProductWidth - coreProductWidth).W), core.IO.Response.bits.Product)
+    core.IO.Response.bits.Product(archProductWidth - 1, 0)
   }
-  val coreProduct = ysyx_26030103_MULAdapterUtils.RestoreSign(
+  val coreProduct = ysyx_26030103_MDUArithmetic.RestoreSign(
     coreProductWidthAdjusted,
     headNegative
   )

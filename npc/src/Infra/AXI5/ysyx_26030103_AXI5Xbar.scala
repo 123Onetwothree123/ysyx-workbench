@@ -29,13 +29,11 @@ class ysyx_26030103_AXI5Xbar(
   require(ResponseQueueDepth >= 2 && ResponseQueueDepth <= 16,
     s"AXI5Xbar RespQueueDepth 非法: $ResponseQueueDepth")
   val io = IO(new Bundle {
-    // 先做过笔记，因为这个是接裁决器的，裁决器是master，所以这里的对反
     val in = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IDWidth))
     val SoCBus = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IDWidth)
     val CLINT = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IDWidth)
     val PLIC = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, IDWidth)
   })
-  // 我真的是烦死了ARM的命名规则
   val OKAY = "b00".U(2.W)
   val DECERR = "b11".U(2.W)
   // RISC-V标准CLINT区间：默认 0x02000000 ~ 0x0200FFFF（64KiB）。
@@ -240,8 +238,9 @@ class ysyx_26030103_AXI5Xbar(
 
   readBody()
 
-  // 响应小FIFO（4拍）：仲裁同拍到达的响应，并在上游反压时保持RID/RDATA/
-  // RRESP/RLAST稳定；单拍缓冲会让被反压的响应阻塞无关owner（队头阻塞）。
+  // 响应队列深度由 ResponseQueueDepth 配置（2..16）：仲裁同拍到达的响应，
+  // 并在上游反压时保持RID/RDATA/RRESP/RLAST稳定；单拍缓冲会让被反压的
+  // 响应阻塞无关owner（队头阻塞）。
   private[infra] class RPayload extends Bundle {
     val ID = UInt(IDWidth.W)
     val data = UInt(DataWidth.W)

@@ -47,14 +47,10 @@ class ysyx_26030103_MULShiftAddCore(
       encoder.IO.Multiplicand := multiplicand(encoderWidth - 1, 0) //输入未移位被乘数
       encoder.IO.Window := multiplier(windowLow + boothBits, windowLow) //取当前窗口
       val shiftAmount = boothShift + (group * boothBits).U(shiftWidth.W) //当前部分积位置
-      val signedPartialProduct = if (encoderProductWidth >= internalWidth) {
-        encoder.IO.PartialProduct(internalWidth - 1, 0)
-      } else {
-        Cat(
-          Fill(internalWidth - encoderProductWidth, encoder.IO.PartialProduct(encoderProductWidth - 1)),
-          encoder.IO.PartialProduct
-        )
-      }
+      val signedPartialProduct = Cat(
+        Fill(internalWidth - encoderProductWidth, encoder.IO.PartialProduct(encoderProductWidth - 1)),
+        encoder.IO.PartialProduct
+      )
       val shiftedPartialProduct = signedPartialProduct << shiftAmount //部分积左移
       val partialProduct = shiftedPartialProduct(internalWidth - 1, 0) //截取内部宽度
       boothSum = (boothSum +& partialProduct)(internalWidth - 1, 0) //累加本拍部分积
@@ -88,13 +84,9 @@ class ysyx_26030103_MULShiftAddCore(
     accumulator := 0.U
     multiplicand := Cat(0.U((internalWidth - operandWidth).W), IO.Request.bits.LHSMagnitude) //锁存被乘数
     if (useBooth) {
+      // 无符号乘数需要一位符号 0 参与最后一组 Booth 窗口，padding 恒 >= 1。
       val paddingWidth = paddedGroups * boothBits - operandWidth
-      val multiplierValue = if (paddingWidth == 0) {
-        Cat(IO.Request.bits.RHSMagnitude, 0.U(1.W))
-      } else {
-        Cat(0.U(paddingWidth.W), IO.Request.bits.RHSMagnitude, 0.U(1.W))
-      }
-      multiplier := multiplierValue //补高位和最低位
+      multiplier := Cat(0.U(paddingWidth.W), IO.Request.bits.RHSMagnitude, 0.U(1.W))
     } else {
       val paddingWidth = cycleCount * cycleBits - operandWidth
       val multiplierValue = if (paddingWidth == 0) {

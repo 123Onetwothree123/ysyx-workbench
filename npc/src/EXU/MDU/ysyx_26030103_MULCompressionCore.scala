@@ -249,12 +249,9 @@ abstract class ysyx_26030103_MULCompressionCore(
       0.U(productWidth.W)
     )
   } else {
+    // 无符号乘数需要一位符号 0 参与最后一组 Booth 窗口，padding 恒 >= 1。
     val multiplierPadding = boothPaddedBits - operandWidth
-    val multiplier = if (multiplierPadding == 0) {
-      Cat(IO.Request.bits.RHSMagnitude, 0.U(1.W))
-    } else {
-      Cat(0.U(multiplierPadding.W), IO.Request.bits.RHSMagnitude, 0.U(1.W))
-    }
+    val multiplier = Cat(0.U(multiplierPadding.W), IO.Request.bits.RHSMagnitude, 0.U(1.W))
     val multiplicand = Cat(0.U(boothBits.W), IO.Request.bits.LHSMagnitude)
     val rows = scala.collection.mutable.ArrayBuffer[UInt]()
     val correctionBits = scala.collection.mutable.ArrayBuffer[(Int, Bool)]()
@@ -264,11 +261,7 @@ abstract class ysyx_26030103_MULCompressionCore(
       encoder.IO.Multiplicand := multiplicand
       encoder.IO.Window := multiplier(windowLow + boothBits, windowLow)
       val partialProduct = encoder.IO.PartialProduct
-      val finiteProduct = if (boothProductWidth >= productWidth) {
-        partialProduct(productWidth - 1, 0)
-      } else {
-        Cat(0.U((productWidth - boothProductWidth).W), partialProduct)
-      }
+      val finiteProduct = Cat(0.U((productWidth - boothProductWidth).W), partialProduct)
       rows += (finiteProduct << (group * boothBits))(productWidth - 1, 0)
 
       val correctionExponent = boothProductWidth + group * boothBits

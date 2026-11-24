@@ -13,11 +13,11 @@ class ysyx_26030103_DIVUnit(
   private val pendingQuotientNegative = RegInit(false.B)
   private val pendingRemainderNegative = RegInit(false.B)
   private val pendingTakeRemainder = RegInit(false.B)
-  val dividendMagnitude = ysyx_26030103_DIVAdapterUtils.Magnitude(
+  val dividendMagnitude = ysyx_26030103_MDUArithmetic.Magnitude(
     IO.Request.bits.LHS,
     IO.Request.bits.Signed
   )
-  val divisorMagnitude = ysyx_26030103_DIVAdapterUtils.Magnitude(
+  val divisorMagnitude = ysyx_26030103_MDUArithmetic.Magnitude(
     IO.Request.bits.RHS,
     IO.Request.bits.Signed
   )
@@ -36,15 +36,13 @@ class ysyx_26030103_DIVUnit(
   core.IO.Request.bits.DivisorMagnitude := divisorMagnitude
   IO.Request.ready := core.IO.Request.ready
   core.IO.Response.ready := IO.Response.ready
-  val quotient = ysyx_26030103_DIVAdapterUtils.RestoreSign(
+  val quotient = ysyx_26030103_MDUArithmetic.RestoreSign(
     core.IO.Response.bits.Quotient,
-    pendingQuotientNegative,
-    XLEN
+    pendingQuotientNegative
   )
-  val remainder = ysyx_26030103_DIVAdapterUtils.RestoreSign(
+  val remainder = ysyx_26030103_MDUArithmetic.RestoreSign(
     core.IO.Response.bits.Remainder,
-    pendingRemainderNegative,
-    XLEN
+    pendingRemainderNegative
   )
   IO.Response.valid := pending && core.IO.Response.valid
   IO.Response.bits.Result := ysyx_26030103_DIVAdapterUtils.SelectResult(

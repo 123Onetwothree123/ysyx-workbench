@@ -11,7 +11,6 @@ class ysyx_26030103_MULBoothEncoder(
   private val windowWidth = ysyx_26030103_MULBoothConfig.WindowWidth(Radix) //窗口宽度等于BoothBits+1
   private val digitWidth = boothBits + 1 //有符号数字的内部宽度
   private val productWidth = ysyx_26030103_MULBoothConfig.PartialProductWidth(Radix, OperandWidth) //部分积宽度
-  private val multiplicandWidth = ysyx_26030103_MULBoothConfig.MultiplicandWidth(Radix, OperandWidth) //被乘数扩展宽度
   val windowExtended = Cat(0.U(1.W), IO.Window) //在窗口最高位补0，防止到时候搞个加1溢出
   val roundedWindow = windowExtended + 1.U((windowWidth + 1).W) //计算window+1
   val rawMagnitude = (roundedWindow >> 1)(digitWidth - 1, 0) //计算floor((window+1)/2)
@@ -21,9 +20,7 @@ class ysyx_26030103_MULBoothEncoder(
     radixValue - rawMagnitude, //负数字的绝对值等于2^B-raw
     rawMagnitude //窗口最高位为0时直接使用raw
   )
-  val multiplicandWide =
-    if (productWidth == multiplicandWidth) IO.Multiplicand
-    else Cat(0.U((productWidth - multiplicandWidth).W), IO.Multiplicand) //零扩展被乘数
+  val multiplicandWide = IO.Multiplicand
   var positiveProduct: UInt = 0.U(productWidth.W) //正幅值部分积累加器
   // 幅值恒小于 2^BoothBits（负分支最大为 RadixValue-RawMagnitude，
   // 正分支 RawMagnitude < 2^(BoothBits-1)），因此第 BoothBits 位恒为 0，

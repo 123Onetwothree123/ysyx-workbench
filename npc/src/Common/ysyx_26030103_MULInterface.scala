@@ -48,22 +48,11 @@ class ysyx_26030103_MULCoreInterface(val Width: Int = 32) extends Bundle {
 }
 //MUL适配层辅助函数。
 object ysyx_26030103_MULAdapterUtils {
-  def Magnitude(Value: UInt, Signed: Bool): UInt = {
-    val Width = Value.getWidth
-    val Negated = (~Value + 1.U(Width.W))(Width - 1, 0)
-    Mux(Signed && Value(Width - 1), Negated, Value)
-  }
   def ResultNegative(LHS: UInt, RHS: UInt, SignedMode: UInt): Bool = {
     val Width = LHS.getWidth
     val LHSNegative = ysyx_26030103_MULSignedMode.LHSSigned(SignedMode) && LHS(Width - 1)
     val RHSNegative = ysyx_26030103_MULSignedMode.RHSSigned(SignedMode) && RHS(Width - 1)
     LHSNegative ^ RHSNegative
-  }
-  // 保持输入的 2*XLEN 位宽：MULH 仍需从完整乘积中选择高半部。
-  def RestoreSign(Product: UInt, Negative: Bool): UInt = {
-    val Width = Product.getWidth
-    val Negated = (~Product + 1.U(Width.W))(Width - 1, 0)
-    Mux(Negative, Negated, Product)
   }
   def SelectResult(Product: UInt, TakeHigh: Bool, Width: Int): UInt = {
     Mux(TakeHigh, Product(2 * Width - 1, Width), Product(Width - 1, 0))

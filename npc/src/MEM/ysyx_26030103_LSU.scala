@@ -243,15 +243,24 @@ class ysyx_26030103_LSU(
     extended >= region.Base.U(compareWidth.W) &&
     extended < region.EndExclusive.U(compareWidth.W)
   }
+  // 返回 (PMA 命中, cacheable 子集命中)，均以 MemoryValid 为前提。
+  private[mem] def classifyPMA(
+      address: UInt,
+      memoryValid: Bool
+  ): (Bool, Bool) = {
+    val mapped = memoryValid &&
+      DCachePMARegions.map(addressInRegion(address, _))
+        .reduceOption(_ || _).getOrElse(false.B)
+    val cacheable = memoryValid &&
+      DCachePMARegions.filter(_.Cacheable)
+        .map(addressInRegion(address, _))
+        .reduceOption(_ || _).getOrElse(false.B)
+    (mapped, cacheable)
+  }
   val StagePMAAddress = addressOf(stageInputBits.ALUResult)
-  val stageMapped = stageInputBits.MemoryValid &&
-    DCachePMARegions.map(addressInRegion(StagePMAAddress, _))
-      .reduceOption(_ || _).getOrElse(false.B)
-  val StageCacheable = stageInputBits.MemoryValid &&
-    DCachePMARegions.filter(_.Cacheable)
-      .map(addressInRegion(StagePMAAddress, _))
-      .reduceOption(_ || _).getOrElse(false.B)
-  val StageMMIO = stageMapped && !StageCacheable
+  val (stageMapped, stageCacheable) =
+    classifyPMA(StagePMAAddress, stageInputBits.MemoryValid)
+  val StageMMIO = stageMapped && !stageCacheable
   val stageNaturalMisaligned = addressIsMisaligned(
     StagePMAAddress, stageInputBits.WidthSelect)
   // 关闭支持时沿用 cause 4/6；MMIO 按策略选择 access fault 或交给软件。
@@ -454,9 +463,6 @@ class ysyx_26030103_LSU(
   val MisalignedSegmentIndex = RegInit(0.U(SegmentIndexWidth.W))
   val MisalignedWordRegisters = RegInit(
     VecInit(Seq.fill(maxSegments)(0.U((ChunkBytes * 8).W))))
-  // 8B 粒度在 32 位总线上需要两拍。
-  val MisalignedBeat = RegInit(0.U(1.W))
-  val MisalignedLowWordRegister = RegInit(0.U(32.W))
   // 额外页的翻译结果。VIPT/PIPT 都由 LSUMMU 在 memActive 期间补发。
   val xlatePaReg = RegInit(0.U(AddressWidth.W))
   val xlateVaReg = RegInit(0.U(XLEN.W))
@@ -601,14 +607,9 @@ class ysyx_26030103_LSU(
   val IncomingPage1VirtualAddress =
     Cat(IncomingVirtualAddress(AddressWidth - 1, 12) + 1.U, 0.U(12.W))
   val IncomingPMAAddress = addressOf(io.in.bits.ALUResult)
-  val IncomingMapped = io.in.bits.MemoryValid &&
-    DCachePMARegions.map(addressInRegion(IncomingPMAAddress, _))
-      .reduceOption(_ || _).getOrElse(false.B)
-  val IncomingCacheable = io.in.bits.MemoryValid &&
-    DCachePMARegions.filter(_.Cacheable)
-      .map(addressInRegion(IncomingPMAAddress, _))
-      .reduceOption(_ || _).getOrElse(false.B)
-  val IncomingMMIO = IncomingMapped && !IncomingCacheable
+  val (incomingMapped, incomingCacheable) =
+    classifyPMA(IncomingPMAAddress, io.in.bits.MemoryValid)
+  val IncomingMMIO = incomingMapped && !incomingCacheable
   val incomingNaturalMisaligned = addressIsMisaligned(
     IncomingPMAAddress, io.in.bits.WidthSelect)
   val IncomingCause46 = io.in.bits.MemoryValid &&

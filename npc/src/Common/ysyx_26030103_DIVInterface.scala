@@ -42,11 +42,6 @@ class ysyx_26030103_DIVCoreInterface(val Width: Int = 32) extends Bundle {
 }
 //DIV适配层辅助函数。
 object ysyx_26030103_DIVAdapterUtils {
-  def Magnitude(Value: UInt, Signed: Bool): UInt = {
-    val Width = Value.getWidth
-    val Negated = (~Value + 1.U(Width.W))(Width - 1, 0)
-    Mux(Signed && Value(Width - 1), Negated, Value)
-  }
   def QuotientNegative(LHS: UInt, RHS: UInt, Signed: Bool): Bool = {
     val Width = LHS.getWidth
     Signed && RHS =/= 0.U && (LHS(Width - 1) ^ RHS(Width - 1))
@@ -54,10 +49,6 @@ object ysyx_26030103_DIVAdapterUtils {
   def RemainderNegative(LHS: UInt, Signed: Bool): Bool = {
     val Width = LHS.getWidth
     Signed && LHS(Width - 1)
-  }
-  def RestoreSign(Value: UInt, Negative: Bool, Width: Int): UInt = {
-    val Negated = (~Value + 1.U(Width.W))(Width - 1, 0)
-    Mux(Negative, Negated, Value(Width - 1, 0))
   }
   def SelectResult(Quotient: UInt, Remainder: UInt, TakeRemainder: Bool): UInt = {
     Mux(TakeRemainder, Remainder, Quotient)

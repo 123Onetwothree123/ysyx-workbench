@@ -100,11 +100,8 @@ class ysyx_26030103_DIVSRTCore(
     val positiveNextRemainder = (trialRemainder - positiveScaledDivisor)(remainderWidth - 1, 0).asSInt //正试探余数减法
     val negativeNextRemainder = (trialRemainder + positiveScaledDivisor)(remainderWidth - 1, 0).asSInt //负试探余数加法
     val nextRemainderDigit = Mux(trialNegative, negativeNextRemainder, positiveNextRemainder) //下一轮部分余数
-    val quotientDigitForAccumulatorBits = if (quotientDigitWidth >= quotientWidth) {
-      quotientDigitBits(quotientWidth - 1, 0)
-    } else {
-      Cat(Fill(quotientWidth - quotientDigitWidth, quotientDigitBits(quotientDigitWidth - 1)), quotientDigitBits)
-    } //累加器宽度适配
+    val quotientDigitForAccumulatorBits =
+      Cat(Fill(quotientWidth - quotientDigitWidth, quotientDigitBits(quotientDigitWidth - 1)), quotientDigitBits) //累加器宽度适配
     val quotientDigitForAccumulator = quotientDigitForAccumulatorBits.asSInt //扩展商数字
     val shiftedQuotient = (selectedQuotient << digitBits)(quotientWidth - 1, 0).asSInt //商累加器乘基数
     val nextQuotientDigit = (shiftedQuotient +& quotientDigitForAccumulator)(quotientWidth - 1, 0).asSInt //更新冗余商

@@ -26,4 +26,8 @@ object ysyx_26030103_AXI5Lane {
   def SelectWord(data: UInt, address: UInt, wide: Boolean): UInt =
     if (wide) Mux(address(2), data(63, 32), data(31, 0))
     else data(31, 0)
+
+  def SelectStrobe(strobe: UInt, address: UInt, wide: Boolean): UInt =
+    if (wide) Mux(address(2), strobe(7, 4), strobe(3, 0))
+    else strobe(3, 0)
 }
