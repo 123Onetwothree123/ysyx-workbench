@@ -3,6 +3,7 @@ package ysyx_26030103.cache
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.common.ysyx_26030103_LoadFormat
 
 /** 单请求直映射 DCache 的公共流水线，读通道回填，写通道由 LSU 写缓冲负责。
   *
@@ -393,42 +394,15 @@ private[cache] trait ysyx_26030103_DCacheCore {
       address: UInt,
       width: UInt,
       signed: Bool
-  ): UInt = {
-    val word = wordLow(31, 0)
-    val rawWide = Cat(wordHigh(31, 0), word)
-    val byteData = MuxLookup(address(1, 0), word(7, 0))(
-      Seq(
-        1.U -> word(15, 8),
-        2.U -> word(23, 16),
-        3.U -> word(31, 24)
-      )
-    )
-    val halfData = Mux(address(1), word(31, 16), word(15, 0))
-    def extend(value: UInt, bits: Int): UInt =
-      if (DataWidth == bits) value
-      else Mux(
-        signed,
-        Cat(Fill(DataWidth - bits, value(bits - 1)), value),
-        Cat(0.U((DataWidth - bits).W), value)
-      )
-    val byteResult = extend(byteData, 8)
-    val halfResult = extend(halfData, 16)
-    val wordResult = extend(word, 32)
-    if (DataWidth == 32) {
-      MuxLookup(width, wordResult)(
-        Seq(0.U -> byteResult, 1.U -> halfResult, 2.U -> wordResult)
-      )
-    } else {
-      MuxLookup(width, wordResult)(
-        Seq(
-          0.U -> byteResult,
-          1.U -> halfResult,
-          2.U -> wordResult,
-          3.U -> rawWide
-        )
-      )
-    }
-  }
+  ): UInt = ysyx_26030103_LoadFormat.FormatLoad(
+    wordLow,
+    wordHigh,
+    address,
+    width,
+    signed,
+    DataWidth,
+    WideLoad = DataWidth == 64
+  )
   def storeMaskWord(strobe: UInt): UInt = Cat(
     Mux(strobe(3), "hff".U(8.W), 0.U(8.W)),
     Mux(strobe(2), "hff".U(8.W), 0.U(8.W)),

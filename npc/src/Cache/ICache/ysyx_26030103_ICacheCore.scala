@@ -28,6 +28,8 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
 
   // 存储适配钩子。storageInit 在无 when 的上文中建立存储器/寄存器，
   // 避免 RegInit/Mem 首次创建落在条件块内。
+  protected def readDataWords(blockIndex: UInt, wordOffset: UInt): UInt =
+    throw new UnsupportedOperationException("当前存储适配不支持组合读")
   protected def writeDataWord(blockIndex: UInt, wordOffset: UInt, word: UInt): Unit
   protected def storageInit(): Unit = ()
   protected def storageHitResponding: Bool

@@ -4,7 +4,8 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
-import ysyx_26030103_AXI5WriteData.{LaneWord, merge32}
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.LaneWord
+import ysyx_26030103_AXI5WriteData.{merge32}
 
 // 简化 PLIC：只支持单拍 AXI 访问，source 由上层以电平输入；
 // claim 读清对应 pending，complete 写清同一 source 的 claim 状态。

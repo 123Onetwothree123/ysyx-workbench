@@ -17,13 +17,4 @@ private[infra] object ysyx_26030103_AXI5WriteData {
       Mux(StrobeBits(0), DataWord(7, 0), OldWord(7, 0))
     )
   }
-
-  def LaneWord(data: UInt, address: UInt, wide: Boolean): UInt =
-    if (wide)
-      Mux(
-        address(2),
-        Cat(data(31, 0), 0.U(32.W)),
-        Cat(0.U(32.W), data(31, 0))
-      )
-    else data(31, 0)
 }

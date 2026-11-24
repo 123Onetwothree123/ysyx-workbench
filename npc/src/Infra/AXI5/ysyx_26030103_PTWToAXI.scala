@@ -1,5 +1,8 @@
 package ysyx_26030103.infra
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.{
+  LaneStrobe, LaneWord, SelectWord
+}
 
 import chisel3._
 import chisel3.util._
@@ -19,19 +22,6 @@ class ysyx_26030103_PTWToAXI(
     AXIReadSlots <= ysyx_26030103_AXIReadID.PTWSlots,
     "PTWToAXI AXI 读槽位数必须在 1..13（ID 3..15）")
   private val busWide = DataWidth == 64
-  private def busWord(data: UInt, busAddress: UInt): UInt =
-    if (busWide)
-      Mux(busAddress(2), Cat(data(31, 0), 0.U(32.W)),
-        Cat(0.U(32.W), data(31, 0)))
-    else data(31, 0)
-  private def busStrobe(strb: UInt, busAddress: UInt): UInt =
-    if (busWide)
-      Mux(busAddress(2), Cat(strb(3, 0), 0.U(4.W)),
-        Cat(0.U(4.W), strb(3, 0)))
-    else strb(3, 0)
-  private def busSelectWord(data: UInt, busAddress: UInt): UInt =
-    if (busWide) Mux(busAddress(2), data(63, 32), data(31, 0))
-    else data(31, 0)
   val io = IO(new Bundle {
     val request = Flipped(Decoupled(new ysyx_26030103_PTEBusRequest(AddressWidth)))
     val response = Decoupled(new ysyx_26030103_PTEBusResponse)
@@ -163,7 +153,7 @@ class ysyx_26030103_PTWToAXI(
     // readQueue 握手块中写入，这里只保存数据与错误状态。
     readSlot(ridSlot).done := true.B
     readSlot(ridSlot).data :=
-      busSelectWord(io.AXI.R.RDATA, readResponseAddress)
+      SelectWord(io.AXI.R.RDATA, readResponseAddress, busWide)
     readSlot(ridSlot).fault := io.AXI.R.RRESP =/= 0.U
   }
 
@@ -189,8 +179,10 @@ class ysyx_26030103_PTWToAXI(
   io.AXIWrite.AW.AWQOS := 0.U
   io.AXIWrite.W.WVALID :=
     writeState === writeRequest && writeQueue.io.deq.valid && !wDone
-  io.AXIWrite.W.WDATA := busWord(writeHead.data, writeHead.address)
-  io.AXIWrite.W.WSTRB := busStrobe(writeHead.strb, writeHead.address)
+  io.AXIWrite.W.WDATA :=
+    LaneWord(writeHead.data, writeHead.address, busWide)
+  io.AXIWrite.W.WSTRB :=
+    LaneStrobe(writeHead.strb, writeHead.address, busWide)
   io.AXIWrite.W.WLAST := true.B
   io.AXIWrite.B.BREADY := writeState === writeWait
 

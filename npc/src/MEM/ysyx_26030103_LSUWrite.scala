@@ -2,6 +2,9 @@ package ysyx_26030103.mem
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.{
+  LaneStrobe, LaneWord
+}
 
 private[mem] trait LSUWrite {
   this: ysyx_26030103_LSU =>
@@ -42,18 +45,18 @@ private[mem] trait LSUWrite {
         Mux(wbHeadMisaligned,
           Mux(wbSegBusWide, wbSegData,
             Mux(wbSegTwoBeat && wbBeat === 1.U, wbSegHighData,
-              busWord(wbSegData(31, 0), wbHeadSegPaddr))),
+              LaneWord(wbSegData(31, 0), wbHeadSegPaddr, busWide))),
           Mux(wbHeadBusWide, Cat(wbHeadDataHi, wbHeadData),
             Mux(wbHeadTwoBeat && wbBeat === 1.U, wbHeadDataHi,
-              busWord(wbHeadData, wbHeadEffectiveAddress))))
+              LaneWord(wbHeadData, wbHeadEffectiveAddress, busWide))))
       io.DataBus.W.WSTRB :=
         Mux(wbHeadMisaligned,
           Mux(wbSegBusWide, wbSegStrobe,
             Mux(wbSegTwoBeat && wbBeat === 1.U, wbSegHighStrobe,
-              busStrobe(wbSegStrobe(3, 0), wbHeadSegPaddr))),
+              LaneStrobe(wbSegStrobe(3, 0), wbHeadSegPaddr, busWide))),
           Mux(wbHeadBusWide, "hff".U,
             Mux(wbHeadTwoBeat && wbBeat === 1.U, "hf".U,
-              busStrobe(wbHeadStrobe, wbHeadEffectiveAddress))))
+              LaneStrobe(wbHeadStrobe, wbHeadEffectiveAddress, busWide))))
       io.DataBus.W.WLAST :=
         Mux(wbHeadMisaligned, !wbSegTwoBeat || wbBeat === 1.U,
           !wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U)

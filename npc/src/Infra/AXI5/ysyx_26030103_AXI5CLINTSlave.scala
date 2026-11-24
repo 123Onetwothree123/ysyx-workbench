@@ -2,7 +2,8 @@ package ysyx_26030103.infra
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
-import ysyx_26030103_AXI5WriteData.{LaneWord, merge32}
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.LaneWord
+import ysyx_26030103_AXI5WriteData.{merge32}
 class ysyx_26030103_CLINTIO(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,

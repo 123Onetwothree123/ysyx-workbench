@@ -287,8 +287,6 @@ class ysyx_26030103_EXU(
     !io.in.valid && !PendingMDU && !FPPending && !olderPipelineBusy &&
       CSRUnit.io.IRQPending && !io.MemTrapCommit
 
-  val BlockPendingMDUForMEM =
-    olderPipelineBusy && CSRUnit.io.IRQPending
   // IRQ 可在指令边界结束当前输入：消耗该 M 输入但不启动 MDU 请求；有更老 MDU 任务时保持输入到队列排空。
   val MDUInputBlockedByIRQ =
     IsMDUInstruction && CSRUnit.io.IRQPending && !io.MemTrapCommit
@@ -321,7 +319,7 @@ class ysyx_26030103_EXU(
   )
   io.out.valid := Mux(
     PendingMDU,
-    MDUResponseValid && !io.MemTrapCommit && !BlockPendingMDUForMEM,
+    MDUResponseValid && !io.MemTrapCommit && !BlockIRQForPipeline,
     Mux(FPPending, FPResponseValid && !io.MemTrapCommit,
       io.in.valid && !IsMDUInstruction && !IsFPUInstruction && !PendingMDU &&
         !FPPending && !blockForOlder)

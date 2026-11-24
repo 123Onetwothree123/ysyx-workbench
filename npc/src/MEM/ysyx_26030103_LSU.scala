@@ -2,6 +2,7 @@ package ysyx_26030103.mem
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.SelectWord
 import _root_.ysyx_26030103.infra._
 import _root_.ysyx_26030103.cache._
 import _root_.ysyx_26030103.config._
@@ -496,7 +497,7 @@ class ysyx_26030103_LSU(
     (MisalignedBasePhysicalAddress & ~"hfff".U(AddressWidth.W)) | MisalignedSegmentVirtualAddress(11, 0)
   )
   val directWord =
-    busSelectWord(io.DataBus.R.RDATA, activeInstruction.ALUResult)
+    SelectWord(io.DataBus.R.RDATA, activeInstruction.ALUResult, busWide)
   val directLoadData =
     if (!wideMem)
       formatLoad(directWord, 0.U(32.W),

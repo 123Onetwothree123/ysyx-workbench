@@ -2,6 +2,7 @@ package ysyx_26030103.mem
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.SelectWord
 
 private[mem] trait LSURead {
   this: ysyx_26030103_LSU =>
@@ -242,8 +243,12 @@ private[mem] trait LSURead {
           if (ChunkLog2 == 3 && busWide) io.DataBus.R.RDATA
           else if (ChunkLog2 == 3) {
             Mux(beatOne, Cat(io.DataBus.R.RDATA, MisalignedLowWordRegister),
-              busSelectWord(io.DataBus.R.RDATA, MisalignedSegmentPhysicalAddress))
-          } else busSelectWord(io.DataBus.R.RDATA, MisalignedSegmentPhysicalAddress)
+              SelectWord(io.DataBus.R.RDATA, MisalignedSegmentPhysicalAddress,
+                busWide))
+          } else {
+            SelectWord(io.DataBus.R.RDATA, MisalignedSegmentPhysicalAddress,
+              busWide)
+          }
         when(responseBad) {
           MisalignedLoadFault(io.DataBus.R.RRESP)
         }.elsewhen(SegmentTwoBeat.B && !beatOne) {

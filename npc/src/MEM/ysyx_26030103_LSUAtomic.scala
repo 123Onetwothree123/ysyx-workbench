@@ -2,6 +2,9 @@ package ysyx_26030103.mem
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.{
+  LaneStrobe, LaneWord, SelectWord
+}
 import _root_.ysyx_26030103.common._
 
 private[mem] trait LSUAtomic {
@@ -127,7 +130,8 @@ private[mem] trait LSUAtomic {
         }.otherwise {
           when(io.DataBus.R.RLAST) {
             val wordData =
-              atomicSignExtend32(busSelectWord(io.DataBus.R.RDATA, atomicAddressReg))
+              atomicSignExtend32(
+                SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide))
             val fault = accessFaultReg || responseBad
             when(fault) {
               transactionComplete := true.B
@@ -163,7 +167,7 @@ private[mem] trait LSUAtomic {
       } else {
         when(io.DataBus.R.RLAST) {
           val wordData =
-            busSelectWord(io.DataBus.R.RDATA, atomicAddressReg)
+            SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide)
           val fault = accessFaultReg || responseBad
           when(fault) {
             transactionComplete := true.B
@@ -212,11 +216,11 @@ private[mem] trait LSUAtomic {
     io.DataBus.W.WDATA :=
       Mux(atomicWideBus, Cat(atomicHigh, atomicNewData(31, 0)),
         Mux(atomicTwoBeat && atomicWBeat, atomicHigh,
-          busWord(atomicNewData(31, 0), atomicAddressReg)))
+          LaneWord(atomicNewData(31, 0), atomicAddressReg, busWide)))
     io.DataBus.W.WSTRB :=
       Mux(atomicWideBus, "hff".U,
         Mux(atomicTwoBeat && atomicWBeat, "hf".U,
-          busStrobe("hf".U, atomicAddressReg)))
+          LaneStrobe("hf".U, atomicAddressReg, busWide)))
     io.DataBus.W.WLAST :=
       !atomicWide || atomicWideBus || atomicWBeat
     val AtomicAWFire =

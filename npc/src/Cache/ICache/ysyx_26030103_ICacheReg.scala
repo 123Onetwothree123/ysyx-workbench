@@ -39,6 +39,8 @@ class ysyx_26030103_ICacheReg(
     Reg(Vec(if (Enable) NumberBlocks else 1, Vec(wordsPerBlock, UInt(32.W))))
 
   override protected def storageInit(): Unit = { val _ = data }
+  override protected def readDataWords(blockIndex: UInt, wordOffset: UInt): UInt =
+    data(blockIndex)(wordOffset)
   protected def writeDataWord(
       blockIndex: UInt,
       wordOffset: UInt,

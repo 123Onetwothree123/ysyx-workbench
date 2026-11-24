@@ -32,7 +32,7 @@ private[exu] trait EXUMDUQueue { this: ysyx_26030103_EXU =>
       MDUUnit.io.Request.bits.MDUOp := MDURequestOp
 
       val MDUResponseReady = PendingMDU && io.out.ready &&
-        !io.MemTrapCommit && !BlockPendingMDUForMEM
+        !io.MemTrapCommit && !BlockIRQForPipeline
       MDUUnit.io.Response.ready := MDUResponseReady
       MDUResponseValid := MDUUnit.io.Response.valid
       MDUResponseResult := MDUUnit.io.Response.bits.Result

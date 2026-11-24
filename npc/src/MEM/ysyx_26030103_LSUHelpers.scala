@@ -2,23 +2,10 @@ package ysyx_26030103.mem
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_LoadFormat
 
 private[mem] trait LSUHelpers {
   this: ysyx_26030103_LSU =>
-
-  private[mem] def busWord(data: UInt, address: UInt): UInt =
-    if (busWide)
-      Mux(address(2), Cat(data(31, 0), 0.U(32.W)),
-        Cat(0.U(32.W), data(31, 0)))
-    else data(31, 0)
-  private[mem] def busStrobe(strobe: UInt, address: UInt): UInt =
-    if (busWide)
-      Mux(address(2), Cat(strobe(3, 0), 0.U(4.W)),
-        Cat(0.U(4.W), strobe(3, 0)))
-    else strobe(3, 0)
-  private[mem] def busSelectWord(data: UInt, address: UInt): UInt =
-    if (busWide) Mux(address(2), data(63, 32), data(31, 0))
-    else data(31, 0)
 
   private[mem] def addressOf(value: UInt): UInt = value(AddressWidth - 1, 0)
 
@@ -177,33 +164,20 @@ private[mem] trait LSUHelpers {
     (data, mask)
   }
 
-  // LB/LH/LW 按 Signed 扩展，LBU/LHU/LWU 零扩展，LD 直接返回 64 位。
+  // LB/LH/LW 按 Signed 扩展到 XLEN，LBU/LHU/LWU 零扩展；LD/FLD 直接拼 64 位。
   private[mem] def formatLoad(
       wordLow: UInt,
       wordHigh: UInt,
       address: UInt,
       width: UInt,
       signed: Bool
-  ): UInt = {
-    val word = wordLow(31, 0)
-    val rawWide = Cat(wordHigh(31, 0), word)
-    val byteData = MuxLookup(address(1, 0), word(7, 0))(
-      Seq(1.U -> word(15, 8), 2.U -> word(23, 16), 3.U -> word(31, 24))
-    )
-    val halfData = Mux(address(1), word(31, 16), word(15, 0))
-    def extend(value: UInt, bits: Int): UInt =
-      if (XLEN == bits) {
-        value
-      } else {
-        Mux(signed, Cat(Fill(XLEN - bits, value(bits - 1)), value),
-          Cat(0.U((XLEN - bits).W), value))
-      }
-    val byteResult = extend(byteData, 8)
-    val halfResult = extend(halfData, 16)
-    val wordResult = extend(word, 32)
-    MuxLookup(width, wordResult)(
-      Seq(0.U -> byteResult, 1.U -> halfResult, 2.U -> wordResult,
-        3.U -> rawWide)
-    )
-  }
+  ): UInt = ysyx_26030103_LoadFormat.FormatLoad(
+    wordLow,
+    wordHigh,
+    address,
+    width,
+    signed,
+    XLEN,
+    WideLoad = true
+  )
 }
