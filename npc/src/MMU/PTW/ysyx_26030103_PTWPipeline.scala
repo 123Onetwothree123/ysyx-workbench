@@ -346,9 +346,7 @@ class ysyx_26030103_PTWPipeline(
   s1Out.valid := false.B
   s1Out.bits := 0.U.asTypeOf(new ResolveJob)
 
-  io.bus.request.valid := false.B
   io.bus.request.bits := 0.U.asTypeOf(new ysyx_26030103_PTEBusRequest(addressWidth))
-  busQ.io.deq.ready := false.B
 
   // 从任务队列填充空闲槽位。每拍最多分配一个任务；任务在真正发请求前
   // 已完整保存在槽位里，flush 后仍能用旧 epoch 收完在途事务并安全丢弃。

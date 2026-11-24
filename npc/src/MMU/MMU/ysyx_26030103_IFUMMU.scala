@@ -100,7 +100,6 @@ class ysyx_26030103_IFUMMU(
         }
       }
       is(xwait) {
-        io.response.ready := true.B
         when(io.response.valid) {
           // 响应只带原始 VA(tval)，不校验的话 redirect/flush 后迟到的旧 walk
           // 会把旧 PA 当成当前 PC 的翻译结果。
@@ -140,7 +139,6 @@ class ysyx_26030103_IFUMMU(
         faultReg := false.B
       }
       is(discard) {
-        io.response.ready := true.B
         when(io.response.valid) { state := idle }
       }
     }

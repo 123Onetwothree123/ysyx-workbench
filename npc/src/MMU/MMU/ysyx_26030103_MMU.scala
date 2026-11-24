@@ -233,8 +233,6 @@ class ysyx_26030103_MMU(
     contextValid(i) && contextState(i) === contextLookup
   })
   for (port <- 0 until lookupPorts) {
-    lookupValid(port) := false.B
-    lookupIndex(port) := 0.U
     lookupRequest(port)   := 0.U.asTypeOf(new ysyx_26030103_MMURequest(xlen, addressWidth))
   }
   lookupValid(0) := lookupCandidates.reduce(_ || _)
@@ -261,22 +259,6 @@ class ysyx_26030103_MMU(
       TLB.io.lookup(port).mxr       := lookupRequest(port).mxr
     }
     TLB.io.flush := io.flush
-    TLB.io.fillValid := false.B
-    TLB.io.fillVirtualAddress := 0.U
-    TLB.io.FillASID  := 0.U
-    TLB.io.FillPTE   := 0.U
-    TLB.io.fillLevel := 0.U
-    TLB.io.fillNapot := false.B
-    TLB.io.fillExtra.foreach { ports =>
-      for (port <- ports) {
-        port.valid := false.B
-        port.vaddr := 0.U
-        port.ASID  := 0.U
-        port.PTE   := 0.U
-        port.level := 0.U
-        port.napot := false.B
-      }
-    }
   }
   def connectFill(TLB: ysyx_26030103_TLB, port: Int, valid: Bool): Unit = {
     val virtualAddress = PTWResponsePayloadVec(port).fillVirtualAddress

@@ -197,12 +197,6 @@ class ysyx_26030103_AXI5WidthBridge(
   io.in.B.BVALID := false.B
   io.in.B.BID := 0.U
   io.in.B.BRESP := OKAY
-  io.in.AR.ARREADY := false.B
-  io.in.R.RVALID := false.B
-  io.in.R.RID := 0.U
-  io.in.R.RDATA := 0.U
-  io.in.R.RRESP := OKAY
-  io.in.R.RLAST := false.B
 
   io.out.AW.AWVALID := false.B
   io.out.AW.AWID := 0.U
@@ -218,16 +212,6 @@ class ysyx_26030103_AXI5WidthBridge(
   io.out.W.WSTRB := 0.U
   io.out.W.WLAST := false.B
   io.out.B.BREADY := false.B
-  io.out.AR.ARVALID := false.B
-  io.out.AR.ARID := 0.U
-  io.out.AR.ARADDR := 0.U
-  io.out.AR.ARLEN := 0.U
-  io.out.AR.ARSIZE := 2.U
-  io.out.AR.ARBURST := 0.U
-  io.out.AR.ARPROT := 0.U
-  io.out.AR.ARCACHE := 0.U
-  io.out.AR.ARQOS := 0.U
-  io.out.R.RREADY := false.B
 
   connectWrite()
 

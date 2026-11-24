@@ -109,11 +109,6 @@ class ysyx_26030103_AXI5Arbiter(
   io.ifu.B.BRESP := 0.U
   io.ifu.B.BVALID := false.B
   io.ifu.AR.ARREADY := false.B
-  io.ifu.R.RID := 0.U
-  io.ifu.R.RDATA := 0.U
-  io.ifu.R.RRESP := 0.U
-  io.ifu.R.RLAST := false.B
-  io.ifu.R.RVALID := false.B
 
   io.LSU.AW.AWREADY := false.B
   io.LSU.W.WREADY := false.B
@@ -121,18 +116,12 @@ class ysyx_26030103_AXI5Arbiter(
   io.LSU.B.BRESP := 0.U
   io.LSU.B.BVALID := false.B
   io.LSU.AR.ARREADY := false.B
-  io.LSU.R.RID := 0.U
-  io.LSU.R.RDATA := 0.U
-  io.LSU.R.RRESP := 0.U
-  io.LSU.R.RLAST := false.B
-  io.LSU.R.RVALID := false.B
 
   io.DMA.AW.AWREADY := false.B
   io.DMA.W.WREADY := false.B
-  io.DMA.B.BID := 0.U
-  io.DMA.B.BRESP := 0.U
-  io.DMA.B.BVALID := false.B
   io.DMA.AR.ARREADY := false.B
+  // R 通道在 DMAReadLocalError 的两个 when 分支中赋值；Chisel 的
+  // initialization check 不把两个 when 视为穷尽，因此保留默认值。
   io.DMA.R.RID := 0.U
   io.DMA.R.RDATA := 0.U
   io.DMA.R.RRESP := 0.U

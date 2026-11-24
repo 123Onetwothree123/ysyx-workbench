@@ -188,7 +188,6 @@ class ysyx_26030103_LSUMMU(
       when(io.request.fire) { state := xwait }
     }
     when(state === xwait) {
-      io.response.ready := true.B
       when(io.response.valid) {
         // 同 IFU：只接受 tval 与当前请求 VA 一致的响应，迟到旧响应必须丢弃。
         when(io.response.bits.tval =/= MessageReg.ALUResult) {
@@ -238,7 +237,6 @@ class ysyx_26030103_LSUMMU(
       when(io.request.fire) { state := extraWait }
     }
     when(state === extraWait) {
-      io.response.ready := true.B
       when(io.response.valid) {
         when(io.response.bits.tval =/= msgPage1Va) {
           // 丢弃迟到响应。
@@ -343,7 +341,6 @@ class ysyx_26030103_LSUMMU(
       when(io.request.fire) { state := xwait }
     }
     when(state === xwait) {
-      io.response.ready := true.B
       when(io.response.valid) {
         when(io.response.bits.tval =/= MessageReg.ALUResult) {
           // 丢弃迟到的旧翻译响应；当前请求继续等待自己的响应。
@@ -385,7 +382,6 @@ class ysyx_26030103_LSUMMU(
       when(io.request.fire) { state := extraWait }
     }
     when(state === extraWait) {
-      io.response.ready := true.B
       when(io.response.valid) {
         when(io.response.bits.tval =/= msgPage1Va) {
           // 丢弃迟到的旧翻译响应。

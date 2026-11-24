@@ -68,7 +68,6 @@ class ysyx_26030103_AXI5Xbar(
   io.PLIC.AR.ARPROT := 0.U
   io.PLIC.AR.ARCACHE := 0.U
   io.PLIC.AR.ARQOS := 0.U
-  io.PLIC.R.RREADY := false.B
   io.PLIC.AW.AWVALID := false.B
   io.PLIC.AW.AWID := 0.U
   io.PLIC.AW.AWADDR := 0.U
@@ -82,7 +81,6 @@ class ysyx_26030103_AXI5Xbar(
   io.PLIC.W.WDATA := 0.U
   io.PLIC.W.WSTRB := 0.U
   io.PLIC.W.WLAST := false.B
-  io.PLIC.B.BREADY := false.B
   require(PMARegions.nonEmpty, "AXI Xbar物理地址图不能为空")
   require(
     PMARegions.forall(r => BigInt(r.EndExclusive) <= (BigInt(1) << AddressWidth)),
@@ -149,14 +147,6 @@ class ysyx_26030103_AXI5Xbar(
   io.in.AR.ARREADY := InARReady
 
   // 默认值
-  io.in.B.BID := 0.U
-  io.in.B.BVALID := false.B
-  io.in.B.BRESP := OKAY
-  io.in.R.RID := 0.U
-  io.in.R.RVALID := false.B
-  io.in.R.RDATA := 0.U
-  io.in.R.RRESP := OKAY
-  io.in.R.RLAST := false.B
   io.SoCBus.AW.AWVALID := false.B
   io.SoCBus.AW.AWID := 0.U
   io.SoCBus.AW.AWADDR := 0.U
@@ -170,7 +160,6 @@ class ysyx_26030103_AXI5Xbar(
   io.SoCBus.W.WDATA := 0.U
   io.SoCBus.W.WSTRB := 0.U
   io.SoCBus.W.WLAST := false.B
-  io.SoCBus.B.BREADY := false.B
   io.SoCBus.AR.ARVALID := false.B
   io.SoCBus.AR.ARID := 0.U
   io.SoCBus.AR.ARADDR := 0.U
@@ -180,7 +169,6 @@ class ysyx_26030103_AXI5Xbar(
   io.SoCBus.AR.ARPROT := 0.U
   io.SoCBus.AR.ARCACHE := 0.U
   io.SoCBus.AR.ARQOS := 0.U
-  io.SoCBus.R.RREADY := false.B
   io.CLINT.AW.AWVALID := false.B
   io.CLINT.AW.AWID := 0.U
   io.CLINT.AW.AWADDR := 0.U
@@ -194,7 +182,6 @@ class ysyx_26030103_AXI5Xbar(
   io.CLINT.W.WDATA := 0.U
   io.CLINT.W.WSTRB := 0.U
   io.CLINT.W.WLAST := false.B
-  io.CLINT.B.BREADY := false.B
   io.CLINT.AR.ARVALID := false.B
   io.CLINT.AR.ARID := 0.U
   io.CLINT.AR.ARADDR := 0.U
@@ -204,7 +191,6 @@ class ysyx_26030103_AXI5Xbar(
   io.CLINT.AR.ARPROT := 0.U
   io.CLINT.AR.ARCACHE := 0.U
   io.CLINT.AR.ARQOS := 0.U
-  io.CLINT.R.RREADY := false.B
   val InAWFire = io.in.AW.AWVALID && InAWReady
   val inWFire = io.in.W.WVALID && inWReady
   val InARFire = io.in.AR.ARVALID && InARReady

@@ -1,0 +1,133 @@
+[NPC config] hash=4e89dc70c8f21a8b
+现在指定了镜像文件
+文件加载了: /home/abc/act-results/keepbusy/rvt64/bin/isa__rv64ui__lui.S.bin, size = 4168 bytes, padding = 0 bytes
+收到仿真 halt 请求
+HIT GOOD TRAP at pc = 0x0000000080000182, cycles = 554, instructions = 97, ipc = 0.1751
+数字集成电路计算机体系结构性能计数器
+退休指令: 97
+IFU交付指令响应(含后续可能冲刷的指令): 123
+EXU输出握手: 99
+LSU完成读操作(含故障完成): 0
+LSU完成写操作(含故障完成): 0
+ALU指令: 71
+MDU请求: 0
+MDU完成: 0
+  MUL: 0
+  MULH: 0
+  MULHSU: 0
+  MULHU: 0
+  DIV: 0
+  DIVU: 0
+  REM: 0
+  REMU: 0
+访存指令: 0
+CSR指令: 15
+分支/跳转指令: 10
+  其中 jal指令: 1
+  其中 jalr指令: 0
+  其中 条件分支: 9
+已分类EXU操作合计: 96
+  注: 该口径不含halt/fence/异常等未分类操作，不应与推测IFU取指强求相等
+LSU完成操作合计: 0
+
+指令类别占比(分母为已分类EXU操作，不是推测取指数):
+ALU指令占比: 74.0%
+MDU指令占比: 0.0%
+访存指令占比: 0.0%
+CSR指令占比: 15.6%
+分支/跳转指令占比: 10.4%
+
+IFU状态观测(各项可重叠，不可相加):
+响应有效但下游未接受: 0 周期, 占比 0.0%
+ICache refill AR/R状态合计: 396 周期, 占比 71.5%
+  ICache refill处于AR请求状态(含握手拍): 22 周期, 占比 4.0%
+  ICache refill处于R响应状态(含传输拍): 374 周期, 占比 67.5%
+控制流重定向事件: 7 次
+IFU空闲(无取指请求): 394 周期, 占比 71.1%
+
+EXU流水状态(各项可重叠):
+EXU下游/顺序等待(已排除MDU计算等待): 0 周期, 占比 0.0%
+EXU空转无输入(上游供给不足): 455 周期, 占比 82.1%
+EX/MEM等待槽占用(5级拆分买到的访存重叠): 0 周期, 占比 0.0%
+
+IDU数据冒险阻塞分析:
+RAW阻塞合计: 0 周期, 占比 0.0%
+  load-use(等LSU数据,转发无法消除): 0 周期, 占比 0.0%
+  非load的未就绪依赖(主要含MDU/隐藏写者): 0 周期, 占比 0.0%
+
+异常/中断提交: 1 次
+
+分支预测:
+  BTB命中/缺失: 0 / 128
+  JAL-BTB命中: 0
+  RAS命中: 0
+  分支/跳转误预测: 4
+  条件分支 taken/not-taken: 3 / 6
+  RAS缺失: 0
+  重定向 branch/fence.i/trap/mret: 4 / 0 / 2 / 1
+
+MMU/TLB:
+  ITLB命中/缺失: 0 / 0
+  DTLB命中/缺失: 0 / 0
+  TLB回填/冲刷: 0 / 1
+  PTW walk/活跃周期/page fault: 0 / 0 / 0
+  超级页/ASID命中: 0 / 0
+
+FPU:
+  请求/完成: 0 / 0
+  忙碌/等待周期: 0 / 0
+  DIV/SQRT、FMA、fflags异常: 0 / 0 / 0
+
+AXI:
+  AR/AW/R/W/B: 88 / 0 / 88 / 0 / 0
+  stall/error: 0 / 0
+
+指令细分:
+  load/store/AMO: 0 / 0 / 0
+  fence/RVC/system: 0 / 198 / 4
+  非法指令: 1
+  流水线冲刷周期: 7
+  WFI 指令(按NOP执行): 0
+
+缓存细节:
+  ICache/DCache实际回填: 22 / 0
+  非缓存/MMIO完成访问: 0
+  ICache/DCache行填充: 22 / 0
+  DCache写直达/store行更新: 0
+
+中断:
+  timer/external: 0 / 0
+  实际进入中断: 0
+  PLIC claim/complete: 0 / 0
+  pending周期: 0
+
+写缓冲:
+  无空位/排空: 0 / 0
+  平均占用: 0.00 项
+
+CSR 读写: 76 / 70
+CSR 非法: 1
+MDU 活跃周期: mul=0 div=0
+MDU 除法实际迭代位数/提前结束: 0 / 0
+队列/气泡:
+  EXU输入槽占用率: 17.9%
+  EXU输出/退休槽占用率: 17.9%
+  EXU输入气泡占比: 82.1%
+
+LSU内存事务FSM占用(请求/响应/写缓冲等待，非端到端指令延迟):
+
+LSU状态占用分解(非纯AXI stall，B等待可后台重叠):
+  LSU读请求状态(含DCache hit内部握手): 0 周期, 占总周期 0.0%
+  LSU读响应状态(含DCache内部等待): 0 周期, 占总周期 0.0%
+  写缓冲无空位: 0 周期, 占总周期 0.0%
+  写响应在途(可后台重叠): 0 周期, 占总周期 0.0%
+
+ICache 性能:
+  命中: 107 次
+  缺失: 21 次
+  命中率: 83.6%
+  refill平均服务周期: 18.9
+  AMAT估算(hit基线=1): 4.1 周期
+DCache 性能:
+  load命中: 0 次
+  可缓存load缺失: 0 次
