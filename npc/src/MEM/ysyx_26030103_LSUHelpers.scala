@@ -38,18 +38,6 @@ private[mem] trait LSUHelpers {
       )
     )
 
-  // 访问是否完全落在同一个 4B 字内。
-  private[mem] def accessWithinWord(address: UInt, width: UInt): Bool =
-    Mux(
-      width === "b00".U,
-      true.B,
-      Mux(
-        width === "b01".U,
-        address(1, 0) =/= 3.U,
-        address(1, 0) === 0.U
-      )
-    )
-
   // 访问字节数：1/2/4/8。
   private[mem] def accessByteSize(width: UInt): UInt = 1.U << width
 

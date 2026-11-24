@@ -468,12 +468,8 @@ class ysyx_26030103_LSU(
   // 每条指令只保留自己期间的翻译结果。
   when(startMem) { xlateValidReg := false.B }
   val activeVa = addressOf(activeInstruction.VAddress)
-  val activeByteSize = accessByteSize(activeInstruction.WidthSelect)
   val activeSegCount = accessGranuleCount(
     activeVa, activeInstruction.WidthSelect, ChunkLog2)
-  val activeCrossPage =
-    (activeVa + activeByteSize - 1.U)(AddressWidth - 1, 12) =/=
-      activeVa(AddressWidth - 1, 12)
   val activePage1Va =
     Cat(activeVa(AddressWidth - 1, 12) + 1.U, 0.U(12.W))
   val MisalignedSegmentVirtualAddress = Cat(activeVa(AddressWidth - 1, ChunkLog2),
@@ -499,8 +495,6 @@ class ysyx_26030103_LSU(
     MisalignedPage1PhysicalAddress | MisalignedSegmentVirtualAddress(11, 0),
     (MisalignedBasePhysicalAddress & ~"hfff".U(AddressWidth.W)) | MisalignedSegmentVirtualAddress(11, 0)
   )
-  val MisalignedLoadActive =
-    state === stateMisLoadRequest || state === stateMisLoadResponse
   val directWord =
     busSelectWord(io.DataBus.R.RDATA, activeInstruction.ALUResult)
   val directLoadData =
@@ -765,8 +759,6 @@ class ysyx_26030103_LSU(
     if (WBufDepth == 1) wbSegCount(0) else wbSegCount(wbHead)
   val wbHeadCrossPage =
     if (WBufDepth == 1) wbCrossPage(0) else wbCrossPage(wbHead)
-  val wbHeadPage1Va =
-    if (WBufDepth == 1) wbPage1Va(0) else wbPage1Va(wbHead)
   val wbHeadPage1Pa =
     if (WBufDepth == 1) wbPage1Pa(0) else wbPage1Pa(wbHead)
   val wbHeadPage1Valid =
@@ -804,13 +796,9 @@ class ysyx_26030103_LSU(
     ChunkLog2
   )
   val dcSegData =
-    if (dcDataWidth >= ChunkBytes * 8)
-      Cat(0.U((dcDataWidth - ChunkBytes * 8).W), wbHeadSegPayload._1)
-    else wbHeadSegPayload._1(dcDataWidth - 1, 0)
+    Cat(0.U((dcDataWidth - ChunkBytes * 8).W), wbHeadSegPayload._1)
   val dcSegStrobe =
-    if (dcDataWidth / 8 >= ChunkBytes)
-      Cat(0.U((dcDataWidth / 8 - ChunkBytes).W), wbHeadSegPayload._2)
-    else wbHeadSegPayload._2(dcDataWidth / 8 - 1, 0)
+    Cat(0.U((dcDataWidth / 8 - ChunkBytes).W), wbHeadSegPayload._2)
   val wbLastSegment = wbSegIndex === wbHeadSegCount - 1.U
   // 非对齐 store 只有最后一段的 B 成功才出队。
   val wbPop = wbBMatchFire && (!wbHeadMisaligned || wbLastSegment)

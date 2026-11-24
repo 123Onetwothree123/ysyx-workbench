@@ -4,6 +4,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
+import ysyx_26030103_AXI5WriteData.{LaneWord, merge32}
 
 // 简化 PLIC：只支持单拍 AXI 访问，source 由上层以电平输入；
 // claim 读清对应 pending，complete 写清同一 source 的 claim 状态。
@@ -56,18 +57,6 @@ class ysyx_26030103_PLIC(
   ExternalIRQ := enabledPending.reduce(_ || _)
 
   def addressOf(offset: BigInt): UInt = (base + offset).U(AddressWidth.W)
-  // AXI 字节写：只覆盖 WSTRB 选中的字节，其余字节保留寄存器原值。
-  def merge32(old: UInt, data: UInt, strb: UInt): UInt = {
-    val oldWord = old.pad(32)
-    val dataWord = data.pad(32)
-    val strbBits = strb.pad(4)
-    Cat(
-      Mux(strbBits(3), dataWord(31, 24), oldWord(31, 24)),
-      Mux(strbBits(2), dataWord(23, 16), oldWord(23, 16)),
-      Mux(strbBits(1), dataWord(15, 8), oldWord(15, 8)),
-      Mux(strbBits(0), dataWord(7, 0), oldWord(7, 0))
-    )
-  }
   // 兼容两套 enable 布局：
   //   - QEMU/RISC-V 标准：hart0 M 上下文 0x2000，S 上下文 0x2080；
   //   - 早期简化 PLIC：0x2000 起的连续 enable word。
@@ -134,11 +123,6 @@ class ysyx_26030103_PLIC(
   val rData = RegInit(0.U(DataWidth.W))
   val rResponse = RegInit(OKAY)
   private val busWide = DataWidth == 64
-  private def laneData(data: UInt, address: UInt): UInt =
-    if (busWide)
-      Mux(address(2), Cat(data(31, 0), 0.U(32.W)),
-        Cat(0.U(32.W), data(31, 0)))
-    else data(31, 0)
   val wWord =
     if (busWide) Mux(AWAddress(2), wData(63, 32), wData(31, 0))
     else wData(31, 0)
@@ -261,7 +245,7 @@ class ysyx_26030103_PLIC(
       rWord := 0.U
       rResponse := SLVERR
     }
-    rData := laneData(rWord, io.AR.ARADDR)
+    rData := LaneWord(rWord, io.AR.ARADDR, busWide)
   }
   // claimed 的唯一更新点：complete 先清，claim 再置。两笔事件的目标在
   // 正常协议下互斥（已 claimed 的 source 不会被再次 claim），但即使发生

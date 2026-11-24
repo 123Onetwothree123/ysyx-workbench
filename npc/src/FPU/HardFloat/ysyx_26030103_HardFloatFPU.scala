@@ -9,7 +9,4 @@ class ysyx_26030103_HardFloatFPU(Config: ysyx_26030103_NPCConfig)
     with ysyx_26030103_HardFloatFPUArith
     with ysyx_26030103_HardFloatFPUResult
     with ysyx_26030103_HardFloatFPUResponse {
-  // 未使用的 compare 结果显式消费，避免 lint 误报。
-  dontTouch(cmpS.io.gt)
-  dontTouch(cmpD.io.gt)
 }

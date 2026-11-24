@@ -6,21 +6,33 @@ import chisel3.util._
 private[infra] trait AXI5XbarResponse {
   this: ysyx_26030103_AXI5Xbar =>
 
+  private def ReadResponseExpected(
+      downstream: ysyx_26030103_AXI5IO,
+      target: UInt,
+      RequestFire: Bool,
+      RequestID: UInt
+  ): Bool =
+    (readSlotState(downstream.R.RID) === readSlotResponse &&
+      readTargetReg(downstream.R.RID) === target) ||
+      (RequestFire && RequestID === downstream.R.RID)
+
+  private def EnqueueReadResponse(downstream: ysyx_26030103_AXI5IO): Unit = {
+    rQueue.io.enq.valid := true.B
+    rQueue.io.enq.bits.ID := downstream.R.RID
+    rQueue.io.enq.bits.data := downstream.R.RDATA
+    rQueue.io.enq.bits.response := downstream.R.RRESP
+    rQueue.io.enq.bits.last := downstream.R.RLAST
+  }
+
   def responseBody(): Unit = {
     val rBufferPop = rQueue.io.deq.fire
     val rBufferAvailable = rQueue.io.enq.ready || rBufferPop
     val SOCResponseExpected =
-      (readSlotState(io.SoCBus.R.RID) === readSlotResponse &&
-        readTargetReg(io.SoCBus.R.RID) === targetSoCBus) ||
-        (SOCRequestFire && SOCRequestID === io.SoCBus.R.RID)
+      ReadResponseExpected(io.SoCBus, targetSoCBus, SOCRequestFire, SOCRequestID)
     val CLINTResponseExpected =
-      (readSlotState(io.CLINT.R.RID) === readSlotResponse &&
-        readTargetReg(io.CLINT.R.RID) === TargetCLINT) ||
-        (CLINTRequestFire && CLINTRequestID === io.CLINT.R.RID)
+      ReadResponseExpected(io.CLINT, TargetCLINT, CLINTRequestFire, CLINTRequestID)
     val PLICResponseExpected =
-      (readSlotState(io.PLIC.R.RID) === readSlotResponse &&
-        readTargetReg(io.PLIC.R.RID) === TargetPLIC) ||
-        (PLICRequestFire && PLICRequestID === io.PLIC.R.RID)
+      ReadResponseExpected(io.PLIC, TargetPLIC, PLICRequestFire, PLICRequestID)
     val SOCResponseValid = io.SoCBus.R.RVALID && SOCResponseExpected
     val CLINTResponseValid = io.CLINT.R.RVALID && CLINTResponseExpected
     val PLICResponseValid = io.PLIC.R.RVALID && PLICResponseExpected
@@ -47,23 +59,11 @@ private[infra] trait AXI5XbarResponse {
     val captureLocal = rBufferAvailable && selectLocal
 
     when(captureSoC) {
-      rQueue.io.enq.valid := true.B
-      rQueue.io.enq.bits.ID := io.SoCBus.R.RID
-      rQueue.io.enq.bits.data := io.SoCBus.R.RDATA
-      rQueue.io.enq.bits.response := io.SoCBus.R.RRESP
-      rQueue.io.enq.bits.last := io.SoCBus.R.RLAST
+      EnqueueReadResponse(io.SoCBus)
     }.elsewhen(CaptureCLINT) {
-      rQueue.io.enq.valid := true.B
-      rQueue.io.enq.bits.ID := io.CLINT.R.RID
-      rQueue.io.enq.bits.data := io.CLINT.R.RDATA
-      rQueue.io.enq.bits.response := io.CLINT.R.RRESP
-      rQueue.io.enq.bits.last := io.CLINT.R.RLAST
+      EnqueueReadResponse(io.CLINT)
     }.elsewhen(CapturePLIC) {
-      rQueue.io.enq.valid := true.B
-      rQueue.io.enq.bits.ID := io.PLIC.R.RID
-      rQueue.io.enq.bits.data := io.PLIC.R.RDATA
-      rQueue.io.enq.bits.response := io.PLIC.R.RRESP
-      rQueue.io.enq.bits.last := io.PLIC.R.RLAST
+      EnqueueReadResponse(io.PLIC)
     }.elsewhen(captureLocal) {
       rQueue.io.enq.valid := true.B
       rQueue.io.enq.bits.ID := LocalResponseID

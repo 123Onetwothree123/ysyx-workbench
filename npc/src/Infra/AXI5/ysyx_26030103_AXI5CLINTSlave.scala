@@ -2,6 +2,7 @@ package ysyx_26030103.infra
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
+import ysyx_26030103_AXI5WriteData.{LaneWord, merge32}
 class ysyx_26030103_CLINTIO(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
@@ -28,27 +29,10 @@ class ysyx_26030103_AXI5CLINTSlave(
   val mtimeHighAddress = "h0200bffc".U(addressWidth.W)
   val mtimecmpLowAddress = "h02004000".U(addressWidth.W)
   val mtimecmpHighAddress = "h02004004".U(addressWidth.W)
-  // AXI 字节写：只覆盖 WSTRB 选中的字节，其余字节保留寄存器原值。
-  def merge32(old: UInt, data: UInt, strb: UInt): UInt = {
-    val oldWord = old.pad(32)
-    val dataWord = data.pad(32)
-    val strbBits = strb.pad(4)
-    Cat(
-      Mux(strbBits(3), dataWord(31, 24), oldWord(31, 24)),
-      Mux(strbBits(2), dataWord(23, 16), oldWord(23, 16)),
-      Mux(strbBits(1), dataWord(15, 8), oldWord(15, 8)),
-      Mux(strbBits(0), dataWord(7, 0), oldWord(7, 0))
-    )
-  }
   private val busWide = DataWidth == 64
   private val busWideBit = busWide.B
   private val busNarrowBit = (!busWide).B
   private val busLaneBits = if (busWide) 3 else 2
-  private def laneWord(data: UInt, address: UInt): UInt =
-    if (busWide)
-      Mux(address(2), Cat(data(31, 0), 0.U(32.W)),
-        Cat(0.U(32.W), data(31, 0)))
-    else data(31, 0)
   val mtime = Module(new ysyx_26030103_mtime)
   val mtimecmp = RegInit("hffffffffffffffff".U(64.W))
   io.TimerIRQ := mtime.io.value >= mtimecmp
@@ -212,7 +196,7 @@ class ysyx_26030103_AXI5CLINTSlave(
           Mux(address === mtimecmpHighAddress, mtimecmp(63, 32), 0.U))))
   def readBeatData(address: UInt, size: UInt): UInt = {
     val word = readData(address)
-    val lane = laneWord(word, address)
+    val lane = LaneWord(word, address, busWide)
     if (busWide)
       Mux(size === 3.U,
         Cat(readData(address + 4.U), word),

@@ -85,8 +85,8 @@ trait ysyx_26030103_HardFloatFPUResult {
   val mmDResult = Mux(op === ysyx_26030103_FPUOp.FMin, minD._1, maxD._1)
   val mmDFlags = Mux(op === ysyx_26030103_FPUOp.FMin, minD._2, maxD._2)
 
-  val classS = classifyRecFN(expS, sigS, recFNFromFN(expS, sigS, aS))
-  val classD = classifyRecFN(expD, sigD, recFNFromFN(expD, sigD, aD))
+  val classS = classifyRecFN(expS, sigS, aRecS)
+  val classD = classifyRecFN(expD, sigD, aRecD)
 
   val intFromS32 = toInt32S.io.out
   val intFromS64 = toInt64S.io.out
