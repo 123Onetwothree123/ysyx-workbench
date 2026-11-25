@@ -9,3 +9,6 @@ ARCH ?= $(XLEN_AM_ARCH)
 export ARCH
 
 include $(AM_HOME)/Makefile
+
+.PHONY: test
+test: run

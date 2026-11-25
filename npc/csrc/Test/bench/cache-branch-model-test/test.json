@@ -3,7 +3,6 @@
   "tier": "performance",
   "command": [
     "make",
-    "ARCH=${ARCH}",
     "test"
   ],
   "timeout": 3600,

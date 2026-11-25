@@ -2,12 +2,16 @@
   "name": "cpp.rv64.rv64-mmu-test",
   "tier": "performance",
   "command": [
-    "make"
+    "make",
+    "run"
   ],
   "timeout": 3600,
   "tags": [
     "rv64",
     "rv64-mmu-test"
   ],
-  "enabled": true
+  "enabled": true,
+  "archs": [
+    "riscv64-npc"
+  ]
 }

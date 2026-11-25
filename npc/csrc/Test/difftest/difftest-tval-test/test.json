@@ -3,12 +3,15 @@
   "tier": "performance",
   "command": [
     "make",
-    "run"
+    "run-diff"
   ],
   "timeout": 3600,
   "tags": [
     "difftest",
     "difftest-tval-test"
   ],
-  "enabled": true
+  "enabled": true,
+  "archs": [
+    "riscv64-npc"
+  ]
 }

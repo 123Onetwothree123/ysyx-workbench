@@ -2,7 +2,8 @@
   "name": "cpp.rtl.fullsoc-fp-debug-test",
   "tier": "performance",
   "command": [
-    "make"
+    "make",
+    "probe"
   ],
   "timeout": 3600,
   "tags": [

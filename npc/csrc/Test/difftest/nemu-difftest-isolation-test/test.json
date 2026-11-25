@@ -2,12 +2,16 @@
   "name": "cpp.difftest.nemu-difftest-isolation-test",
   "tier": "performance",
   "command": [
-    "make"
+    "make",
+    "check"
   ],
   "timeout": 3600,
   "tags": [
     "difftest",
     "nemu-difftest-isolation-test"
+  ],
+  "archs": [
+    "riscv32e-npc"
   ],
   "enabled": true
 }

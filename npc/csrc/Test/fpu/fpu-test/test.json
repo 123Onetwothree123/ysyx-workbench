@@ -2,7 +2,8 @@
   "name": "cpp.fpu.fpu-test",
   "tier": "performance",
   "command": [
-    "make"
+    "make",
+    "test"
   ],
   "timeout": 3600,
   "tags": [

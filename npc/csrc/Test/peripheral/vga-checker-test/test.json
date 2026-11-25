@@ -10,5 +10,8 @@
     "peripheral",
     "vga-checker-test"
   ],
-  "enabled": true
+  "enabled": true,
+  "archs": [
+    "riscv32e-npc"
+  ]
 }

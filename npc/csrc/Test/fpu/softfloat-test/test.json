@@ -2,7 +2,9 @@
   "name": "cpp.fpu.softfloat-test",
   "tier": "performance",
   "command": [
-    "make"
+    "make",
+    "ARCH=${ARCH}",
+    "run"
   ],
   "timeout": 3600,
   "tags": [

@@ -9,6 +9,12 @@ BIN ?= $(NPC_HOME)/build/ysyx_26030103_npc
 REF_SO ?= $(NPC_HOME)/../nemu/build/riscv64-nemu-interpreter-so
 HOST_CXX ?= g++
 LEGACY_SHIM := build/legacy-no-tval.so
+TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+ROOT_DIR := $(abspath $(TEST_DIR)/../../../../..)
+NEMU_DIR := $(ROOT_DIR)/nemu
+REF_OBJ_DIR := $(TEST_DIR)/build/nemu-ref-obj
+NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '*.c' -o -name '*.h' \) -print)
+REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
 
 .PHONY: all run run-diff run-legacy clean
 all: main.bin
@@ -23,9 +29,12 @@ main.bin: main.elf
 run: main.bin
 	$(BIN) main.bin --batch
 
-run-diff: main.bin
+run-diff: main.bin $(REF_SO)
 	@test -f "$(REF_SO)" || { echo "REF 不存在: $(REF_SO)"; exit 1; }
 	$(BIN) main.bin --diff "$(REF_SO)" --batch
+
+$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
+	$(REF_BUILDER) riscv64 $@ $(REF_OBJ_DIR) share
 
 $(LEGACY_SHIM): legacy_no_tval.cpp
 	mkdir -p $(@D)
@@ -34,7 +43,7 @@ $(LEGACY_SHIM): legacy_no_tval.cpp
 
 # 旧 REF 缺少 difftest_trap 时必须先告警，并在第一个非零 tval 的 trap
 # 上明确失败（退出码非 0，且不出现 GOOD TRAP）。
-run-legacy: main.bin $(LEGACY_SHIM)
+run-legacy: main.bin $(LEGACY_SHIM) $(REF_SO)
 	@test -f "$(REF_SO)" || { echo "REF 不存在: $(REF_SO)"; exit 1; }
 	@set +e; \
 	  DIFFTEST_REAL_REF="$(REF_SO)" $(BIN) main.bin \

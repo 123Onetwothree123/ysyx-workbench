@@ -23,6 +23,10 @@ include $(AM_HOME)/Makefile
 .DEFAULT_GOAL := image
 all: image
 
+.PHONY: test
+test: image
+	$(MAKE) --no-print-directory run
+
 # 交叉检查：ARCH 必须来自 Kconfig 的 CONFIG_XLEN（或调用者显式覆盖）。
 .PHONY: all xlen-check
 xlen-check:

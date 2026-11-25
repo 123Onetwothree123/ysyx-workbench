@@ -4,6 +4,7 @@
 #   make run32    用 RV32IMAF 镜像运行 direct-NPC
 #   make run-diff64/run-diff32 预留 NEMU F/D DiffTest；需要 REF 已支持 F/D 状态 ABI。
 NPC_HOME := ../../../..
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
 CROSS64 ?= riscv64-unknown-elf-
 CROSS32 ?= riscv32-unknown-elf-
 BIN ?= $(NPC_HOME)/build/ysyx_26030103_npc
@@ -19,8 +20,11 @@ CFLAGS32 := $(CFLAGS_COMMON) -march=rv32imaf -mabi=ilp32f
 LDFLAGS := -nostdlib -nostartfiles -Wl,--no-relax -Wl,--build-id=none \
 	-T linker.ld
 
-.PHONY: all run64 run32 run-diff64 run-diff32 clean
+.PHONY: all run64 run32 run-diff64 run-diff32 test clean
 all: rv64.bin rv32.bin
+
+# 按当前 XLEN 选择对应位宽的镜像运行。
+test: $(if $(filter 64,$(XLEN_IS_64)),run64,run32)
 
 main64.o: main.S
 	$(CROSS64)gcc $(CFLAGS64) -c -o $@ $<

@@ -8,46 +8,46 @@ namespace shim = npc_test::ref_shim;
 extern "C" {
 
 std::size_t difftest_state_size() {
-  return shim::GetOptional<std::size_t (*)()>("difftest_state_size")();
+  return shim::Get<std::size_t (*)()>("difftest_state_size")();
 }
 
 std::size_t difftest_csr_state_size() {
-  return shim::GetOptional<std::size_t (*)()>("difftest_csr_state_size")();
+  return shim::Get<std::size_t (*)()>("difftest_csr_state_size")();
 }
 
 bool difftest_memory_range_supported(std::uint32_t addr, std::size_t n) {
-  return shim::GetOptional<bool (*)(std::uint32_t, std::size_t)>(
+  return shim::Get<bool (*)(std::uint32_t, std::size_t)>(
       "difftest_memory_range_supported")(addr, n);
 }
 
 void difftest_memcpy(std::uint32_t addr, void *buf, std::size_t n,
                      bool direction) {
-  shim::GetOptional<void (*)(std::uint32_t, void *, std::size_t, bool)>(
+  shim::Get<void (*)(std::uint32_t, void *, std::size_t, bool)>(
       "difftest_memcpy")(addr, buf, n, direction);
 }
 
 void difftest_regcpy(void *dut, bool direction) {
-  shim::GetOptional<void (*)(void *, bool)>("difftest_regcpy")(dut, direction);
+  shim::Get<void (*)(void *, bool)>("difftest_regcpy")(dut, direction);
 }
 
 void difftest_csrcpy(void *dut, bool direction) {
-  shim::GetOptional<void (*)(void *, bool)>("difftest_csrcpy")(dut, direction);
+  shim::Get<void (*)(void *, bool)>("difftest_csrcpy")(dut, direction);
 }
 
 void difftest_exec(std::uint64_t n) {
-  shim::GetOptional<void (*)(std::uint64_t)>("difftest_exec")(n);
+  shim::Get<void (*)(std::uint64_t)>("difftest_exec")(n);
 }
 
 void difftest_raise_intr(std::uint64_t no) {
-  shim::GetOptional<void (*)(std::uint64_t)>("difftest_raise_intr")(no);
+  shim::Get<void (*)(std::uint64_t)>("difftest_raise_intr")(no);
 }
 
 void difftest_init(int port) {
-  shim::GetOptional<void (*)(int)>("difftest_init")(port);
+  shim::Get<void (*)(int)>("difftest_init")(port);
 }
 
 void difftest_set_platform(int ysyxsoc) {
-  shim::GetOptional<void (*)(int)>("difftest_set_platform")(ysyxsoc);
+  shim::Get<void (*)(int)>("difftest_set_platform")(ysyxsoc);
 }
 
 } // extern "C"

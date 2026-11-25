@@ -10,5 +10,8 @@
     "peripheral",
     "timer-preempt-test"
   ],
-  "enabled": true
+  "enabled": true,
+  "archs": [
+    "riscv32e-npc"
+  ]
 }

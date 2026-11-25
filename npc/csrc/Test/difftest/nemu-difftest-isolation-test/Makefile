@@ -19,7 +19,7 @@ SRCS = main.cpp
 
 # 本测试固定构建 RV32 NEMU REF；RV64 DiffTest 请用 xlen-dual-test。
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
-ifeq ($(XLEN_IS_64),1)
+ifeq ($(XLEN_IS_64),64)
 $(error nemu-difftest-isolation-test 固定 RV32 REF；RV64 DiffTest 请用 xlen-dual-test)
 endif
 

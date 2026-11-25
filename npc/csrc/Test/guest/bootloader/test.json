@@ -10,5 +10,8 @@
     "guest",
     "bootloader"
   ],
-  "enabled": true
+  "enabled": true,
+  "archs": [
+    "riscv32e-npc"
+  ]
 }

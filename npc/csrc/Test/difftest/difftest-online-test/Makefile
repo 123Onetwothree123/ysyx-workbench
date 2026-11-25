@@ -21,7 +21,7 @@ SRCS = main.cpp
 # 而不是用 RV32 guest 去跑 RV64 NPC。RV64 DiffTest 见 xlen-dual-test。
 # XLEN 从 Kconfig 读取。
 include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
-ifeq ($(XLEN_IS_64),1)
+ifeq ($(XLEN_IS_64),64)
 $(error difftest-online-test 固定 RV32 REF/guest；RV64 DiffTest 请用 xlen-dual-test)
 endif
 

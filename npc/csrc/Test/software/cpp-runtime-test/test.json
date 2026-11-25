@@ -3,7 +3,8 @@
   "tier": "functional",
   "command": [
     "make",
-    "ARCH=${ARCH}"
+    "ARCH=${ARCH}",
+    "test"
   ],
   "timeout": 900,
   "tags": [

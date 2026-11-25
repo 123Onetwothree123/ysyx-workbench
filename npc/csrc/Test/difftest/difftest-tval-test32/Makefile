@@ -6,6 +6,12 @@ CC := $(CROSS)gcc
 OBJCOPY := $(CROSS)objcopy
 BIN ?= $(NPC_HOME)/build/ysyx_26030103_npc
 REF_SO ?= $(NPC_HOME)/../nemu/build/riscv32-nemu-interpreter-so
+TEST_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+ROOT_DIR := $(abspath $(TEST_DIR)/../../../../..)
+NEMU_DIR := $(ROOT_DIR)/nemu
+REF_OBJ_DIR := $(TEST_DIR)/build/nemu-ref-obj
+NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '*.c' -o -name '*.h' \) -print)
+REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
 
 .PHONY: all run run-diff clean
 all: main.bin
@@ -20,9 +26,12 @@ main.bin: main.elf
 run: main.bin
 	$(BIN) main.bin --batch
 
-run-diff: main.bin
+run-diff: main.bin $(REF_SO)
 	@test -f "$(REF_SO)" || { echo "REF 不存在: $(REF_SO)"; exit 1; }
 	$(BIN) main.bin --diff "$(REF_SO)" --batch
+
+$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
+	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_DIR) share
 
 clean:
 	rm -f main.elf main.bin

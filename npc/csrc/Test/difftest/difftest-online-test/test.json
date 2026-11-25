@@ -2,12 +2,16 @@
   "name": "cpp.difftest.difftest-online-test",
   "tier": "performance",
   "command": [
-    "make"
+    "make",
+    "difftest"
   ],
   "timeout": 3600,
   "tags": [
     "difftest",
     "difftest-online-test"
+  ],
+  "archs": [
+    "riscv32e-npc"
   ],
   "enabled": true
 }

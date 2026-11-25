@@ -3,12 +3,16 @@
   "tier": "performance",
   "command": [
     "make",
-    "ARCH=${ARCH}"
+    "ARCH=${ARCH}",
+    "run"
   ],
   "timeout": 3600,
   "tags": [
     "pipeline",
     "fencei-prefetch"
   ],
-  "enabled": true
+  "enabled": true,
+  "archs": [
+    "riscv32e-npc"
+  ]
 }

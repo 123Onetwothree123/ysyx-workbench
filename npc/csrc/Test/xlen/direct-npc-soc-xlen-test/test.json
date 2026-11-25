@@ -4,7 +4,8 @@
   "command": [
     "make",
     "ARCH=${ARCH}",
-    "test"
+    "test",
+    "test-internal"
   ],
   "timeout": 3600,
   "tags": [

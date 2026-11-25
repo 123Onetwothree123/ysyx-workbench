@@ -10,5 +10,8 @@
     "guest",
     "smc"
   ],
-  "enabled": true
+  "enabled": true,
+  "archs": [
+    "riscv32e-npc"
+  ]
 }
