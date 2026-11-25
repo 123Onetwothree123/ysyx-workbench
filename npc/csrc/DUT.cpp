@@ -122,14 +122,6 @@ template <typename Top>
 npc::XWord DebugTrapTarget(const Top &top) { return DebugWord(top, top.debug_trap_target, top.debug_trap_target_hi); }
 template <typename Top>
 npc::XWord DebugTrapPCHalt(const Top &top) { return DebugWord(top, top.trap_pc, top.trap_pc_hi); }
-template <typename Top>
-npc::XWord DebugCSRMtvec(const Top &top) { return DebugWord(top, top.debug_csr_mtvec, top.debug_csr_mtvec_hi); }
-template <typename Top>
-npc::XWord DebugCSRMepc(const Top &top) { return DebugWord(top, top.debug_csr_mepc, top.debug_csr_mepc_hi); }
-template <typename Top>
-npc::XWord DebugTrapMtvec(const Top &top) { return DebugWord(top, top.debug_trap_mtvec, top.debug_trap_mtvec_hi); }
-template <typename Top>
-npc::XWord DebugTrapMepc(const Top &top) { return DebugWord(top, top.debug_trap_mepc, top.debug_trap_mepc_hi); }
 }
 static_assert(npc::NvBoardUpdateInterval > 0,
               "NVBoard刷新周期必须是正整数");

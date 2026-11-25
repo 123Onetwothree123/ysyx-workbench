@@ -25,11 +25,9 @@ struct Wide
 Num make(const uint32_t words[4]); // words[0]是最低32位
 Num make_u64(uint64_t x);
 
-void zero(Num &r);
 void from_words(Num &r, const uint32_t words[4]);
 void from_u64(Num &r, uint64_t x);
 uint64_t to_u64(const Num &a);
-uint32_t to_u32(const Num &a);
 
 bool is_zero(const Num &a);
 bool equal(const Num &a, const Num &b);
@@ -52,7 +50,6 @@ bool mod_inverse(Num &r, const Num &a, const Num &m);
 bool is_probably_prime(const Num &n, int rounds);
 void lcg_next(Num &state, Num &out);
 uint32_t hash(const Num &a);
-uint32_t hash_wide(const Wide &a);
 
 } // namespace bn
 

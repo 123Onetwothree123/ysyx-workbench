@@ -186,14 +186,6 @@ Num make_u64(uint64_t x)
     return r;
 }
 
-void zero(Num &r)
-{
-    for (int i = 0; i < LIMBS; ++i)
-    {
-        r.v[i] = 0;
-    }
-}
-
 void from_words(Num &r, const uint32_t words[4])
 {
     for (int i = 0; i < 4; ++i)
@@ -220,11 +212,6 @@ uint64_t to_u64(const Num &a)
         r = (r << 16) | a.v[i];
     }
     return r;
-}
-
-uint32_t to_u32(const Num &a)
-{
-    return a.v[0] | (a.v[1] << 16);
 }
 
 bool is_zero(const Num &a)
@@ -563,16 +550,6 @@ uint32_t hash(const Num &a)
 {
     uint32_t h = 2166136261u;
     for (int i = 0; i < LIMBS; ++i)
-    {
-        h = (h ^ a.v[i]) * 16777619u;
-    }
-    return h;
-}
-
-uint32_t hash_wide(const Wide &a)
-{
-    uint32_t h = 2166136261u;
-    for (int i = 0; i < WIDE_LIMBS; ++i)
     {
         h = (h ^ a.v[i]) * 16777619u;
     }
