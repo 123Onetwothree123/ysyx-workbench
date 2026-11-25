@@ -55,9 +55,9 @@ test_run_dir/
 # 性能记录需要纳入版本管理
 !NPCSimResult/
 !NPCSimResult/**/*
-!log/
-!log/**/*
 !*.csv
+
+/log/
 
 # Yosys/iSTA result netlists are reproducible and are not versioned
 /yosys-sta-result/**/*.v

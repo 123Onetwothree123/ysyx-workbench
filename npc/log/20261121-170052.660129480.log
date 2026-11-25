@@ -1,7 +1,0 @@
-[NPC config] hash=f1884471db2f366a
-现在指定了镜像文件
-文件加载了: /home/abc/act-results/npc-soc-64-64a-priv-b/bin/PMPU_cfg_XWR_unlocked-00.image, size = 318432 bytes, padding = 0 bytes
-Access Fault [RESP=0] at PC=0x0000000080009040, cycle=36504594
-  这什么AXI响应码，我也不认识
-Access Fault [RESP=0] at PC=0x0000000080009040, cycle=37310325
-  这什么AXI响应码，我也不认识

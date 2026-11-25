@@ -739,7 +739,7 @@ menu "调试、追踪与性能"
 
   config PERF_SAVE
     bool "启用性能数据自动存档（CSV文件）"
-    default y
+    default n
     depends on PERF_DIC_ARCH_COUNTER
     help
       仿真结束后把本次性能数据写入单独的 CSV 文件。

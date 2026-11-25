@@ -1,9 +1,0 @@
-[NPC config] hash=f517fa9146a704f0
-用法: ./build/ysyx_26030103 [选项] [镜像文件]
-  -e, --elf FILE          加载 ELF 符号
-  -d, --diff FILE         指定 DiffTest REF .so
-  -r, --result-dir DIR    性能结果目录
-      --restore FILE      恢复 Verilator 检查点
-      --vga-check         开启 VGA 时序检查
-  -b, --batch             批处理模式
-  -h, --help              显示帮助
