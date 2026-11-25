@@ -61,7 +61,6 @@ public:
         std::lock_guard lock{mutex_};
         queue_.clear();
     }
-    [[nodiscard]] auto WorkerCount() const -> std::size_t { return workers_.size(); }
     static auto HardwareConcurrency() -> std::size_t
     {
         return std::max<std::size_t>(1, std::thread::hardware_concurrency());

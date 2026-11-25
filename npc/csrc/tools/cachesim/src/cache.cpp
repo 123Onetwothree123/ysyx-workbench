@@ -74,7 +74,7 @@ auto CacheSim::fa_access(Addr tag) -> bool
     return false;
 }
 
-auto CacheSim::access(Addr addr) -> AccessResult
+auto CacheSim::access(Addr addr) -> void
 {
     ++tick_;
     ++stats_.total;
@@ -83,8 +83,6 @@ auto CacheSim::access(Addr addr) -> AccessResult
     const unsigned index = (num_sets_ > 1)
         ? static_cast<unsigned>(tag & static_cast<Addr>(num_sets_ - 1))
         : 0;
-
-    AccessResult result;
 
     bool first_seen = !seen_tags_.contains(tag);
     if (first_seen)
@@ -98,17 +96,13 @@ auto CacheSim::access(Addr addr) -> AccessResult
 
     if (hit_way != set.end()) {
         hit_way->access_time = tick_;
-        result.type = MissType::Hit;
         ++stats_.hits;
     } else {
         if (first_seen) {
-            result.type = MissType::Compulsory;
             ++stats_.miss_compulsory;
         } else if (!fa_hit) {
-            result.type = MissType::Capacity;
             ++stats_.miss_capacity;
         } else {
-            result.type = MissType::Conflict;
             ++stats_.miss_conflict;
         }
         unsigned victim = find_victim(set);
@@ -117,6 +111,4 @@ auto CacheSim::access(Addr addr) -> AccessResult
         set[victim].access_time = tick_;
         set[victim].insert_time = tick_;
     }
-
-    return result;
 }

@@ -10,7 +10,6 @@ BUILD_DIR := $(TEST_DIR)/build
 RTL_DIR := $(BUILD_DIR)/rtl
 BIN_DIR := $(BUILD_DIR)/bin
 
-MILL ?= mill
 VERILATOR ?= verilator
 CROSS ?= riscv64-unknown-elf-
 CC_RV32 := $(CROSS)gcc

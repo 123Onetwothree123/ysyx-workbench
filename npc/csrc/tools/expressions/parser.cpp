@@ -30,23 +30,11 @@ parser::parser(std::vector<token> InputTokens)
         tokens.push_back(token::MakeEnd(0));
     }
 }
-bool parser::IsAtEnd() const noexcept
-{
-    return Current().IsEndOfInput();
-}
 const token &parser::Current() const
 {
     if (position < tokens.size())
     {
         return tokens[position];
-    }
-    return tokens.back();
-}
-const token &parser::Peek(std::size_t offset) const
-{
-    if (position + offset < tokens.size())
-    {
-        return tokens[position + offset];
     }
     return tokens.back();
 }
@@ -62,10 +50,6 @@ const token &parser::Advance() noexcept
 int parser::GetCurrentPrecedence() const noexcept
 {
     return Current().GetPrecedence();
-}
-bool parser::IsCurrentRightAssociative() const noexcept
-{
-    return Current().IsRightAssociative();
 }
 std::expected<std::unique_ptr<ASTNode>, std::string> parser::parse()
 {

@@ -365,8 +365,6 @@ void NPCSimResult::Save(
         csv_header.push_back(field.name);
         csv_row.push_back(field.value());
     }
-    if (csv_header.size() != csv_row.size())
-        throw std::logic_error{"性能 CSV 表头与数据列数不一致"};
 
     auto csv_file{
 #ifdef VRISCV32E_NPC

@@ -87,17 +87,6 @@ void SDBCommandRegistry::RegisterCommand(std::unique_ptr<SDBCommand> command)
 {
     Commands.push_back(std::move(command));
 }
-void SDBCommandRegistry::AddHistory(std::string_view line)
-{
-    if (!line.empty())
-    {
-        History.emplace_back(line);
-    }
-}
-const std::vector<std::string> &SDBCommandRegistry::GetHistory() const noexcept
-{
-    return History;
-}
 const SDBCommand *SDBCommandRegistry::FindCommand(std::string_view name) const
 {
     const auto CommandIt{std::ranges::find_if(Commands, [name](const std::unique_ptr<SDBCommand> &Command)

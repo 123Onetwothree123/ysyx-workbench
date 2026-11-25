@@ -39,7 +39,6 @@ SDBExitReason SDB::MainLoop(DUT &dut, bool batch_mode)
         }
         auto cmd{std::string{line}};
         free(line);
-        Commands.AddHistory(cmd);
         const auto commandResult{Commands.Execute(cmd)};
         if (Verilated::gotFinish())
         {

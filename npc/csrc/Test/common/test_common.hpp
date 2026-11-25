@@ -43,50 +43,6 @@ void wait_until(DUT &dut, Predicate predicate, const std::string &message,
   throw std::runtime_error(message);
 }
 
-template <class DUT> class TestDriver {
-public:
-  explicit TestDriver(DUT &dut) : dut(dut) {}
-
-  void Reset(int cycles = 2) {
-    dut.reset = 1;
-    for (int i = 0; i < cycles; ++i) {
-      Tick();
-    }
-    dut.reset = 0;
-    dut.eval();
-  }
-
-  void Tick(int cycles = 1) {
-    for (int i = 0; i < cycles; ++i) {
-      tick(dut);
-      ++cycles_;
-    }
-  }
-
-  template <class Predicate>
-  void WaitUntil(Predicate predicate, std::string_view message, int limit = 1000) {
-    for (int i = 0; i < limit; ++i) {
-      dut.eval();
-      if (predicate()) {
-        return;
-      }
-      Tick();
-    }
-    throw std::runtime_error(std::string(message));
-  }
-
-  void Expect(bool condition, std::string_view message) const {
-    check(condition, std::string(message));
-  }
-
-  [[nodiscard]] std::size_t Cycles() const { return cycles_; }
-  [[nodiscard]] DUT &Get() { return dut; }
-
-private:
-  DUT &dut;
-  std::size_t cycles_{0};
-};
-
 template <class Body> int run_test(const char *name, Body body) {
   try {
     body();

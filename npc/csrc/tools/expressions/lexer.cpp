@@ -33,10 +33,6 @@ token lexer::next()
     }
     return ScanOperator();
 }
-std::string lexer::GetError() const noexcept
-{
-    return error;
-}
 std::expected<token, std::string> lexer::scan()
 {
     if (HasError())

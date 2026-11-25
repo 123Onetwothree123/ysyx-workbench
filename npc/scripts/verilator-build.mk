@@ -87,7 +87,6 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/sdb/TablePrinter.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommandUtils.ixx \
   $(NPC_CSRC_DIR)/trace/RecordInstruction.ixx \
-  $(NPC_CSRC_DIR)/trace/ELFFunctionSymbol.ixx \
   $(NPC_CSRC_DIR)/trace/FtraceEvent.ixx \
   $(NPC_CSRC_DIR)/trace/FtraceFrame.ixx \
   $(NPC_CSRC_DIR)/trace/ReadelfFunction.ixx \

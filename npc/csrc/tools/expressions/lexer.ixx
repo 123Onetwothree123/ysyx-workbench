@@ -22,7 +22,6 @@ public:
     lexer() = default;
     ~lexer() = default;
     [[nodiscard]] bool HasError() const noexcept;        // 是否有错误
-    [[nodiscard]] std::string GetError() const noexcept; // 获取错误信息
     // 构造函数，本来是直接写的，然后让ai也检查过了，然后建议改成explicit，可以避免意外用string构造Lexer
     explicit lexer(std::string_view input);
     [[nodiscard]] std::expected<token, std::string> scan();                 // 扫描单个token，如果成功返回token，错了就是失败的字符串

@@ -5,7 +5,7 @@ import types;
 export class CacheSim {
 public:
     explicit CacheSim(const CacheConfig& cfg);
-    auto access(Addr addr) -> AccessResult;
+    auto access(Addr addr) -> void;
     [[nodiscard]] auto config() const -> const CacheConfig& { return config_; }
     [[nodiscard]] auto stats() const -> const SimStats& { return stats_; }
 

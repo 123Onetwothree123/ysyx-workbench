@@ -74,10 +74,5 @@ SDBCommandResult ftraceCommand::execute(SDBCommandContext &context, std::string_
     }
     out.Info("用法：ftrace on | off | status | now | history | history on | history off | reset");
     }
-    else
-    {
-        static_cast<void>(args);
-        out.Warn("FTRACE没有开启，请使用 make CONFIG_FTRACE=y");
-    }
     return SDBCommandResult::Continue;
 }

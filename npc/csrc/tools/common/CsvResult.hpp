@@ -95,7 +95,7 @@ public:
         committed_ = true;
         return path_;
     }
-    [[nodiscard]] auto Path() const -> const std::filesystem::path& { return path_; }
+
 private:
     std::filesystem::path path_;
     std::filesystem::path temp_;

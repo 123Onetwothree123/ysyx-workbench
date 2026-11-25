@@ -61,24 +61,4 @@ object ysyx_26030103_TestCommon {
       DCacheIndexBits = DCacheIndexBits,
       configure = configure
     )
-
-  /** 断言 body 抛出 IllegalArgumentException，并返回该异常。 */
-  def expectIllegal(body: => Any): IllegalArgumentException = {
-    try {
-      body
-      throw new AssertionError(
-        "expected IllegalArgumentException, but no exception was thrown")
-    } catch {
-      case e: IllegalArgumentException => e
-    }
-  }
-
-  /** 断言异常消息包含 fragment。 */
-  def expectMessage(fragment: String)(body: => Any): IllegalArgumentException = {
-    val error = expectIllegal(body)
-    val message = Option(error.getMessage).getOrElse("")
-    assert(message.contains(fragment),
-      s"expected exception message containing '$fragment', got '$message'")
-    error
-  }
 }

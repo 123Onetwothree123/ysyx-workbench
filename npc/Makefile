@@ -639,7 +639,6 @@ rootfs-clean:
 	$(ROOTFS_ENV) "$(ROOTFS_BUILD_SCRIPT)" --clean
 
 # npc 独立仿真路径的复位 PC：0x80000000 + Kconfig 的 CACHE_PADDING。
-NPC_RESET_PC := $(shell printf '0x%x' $$((0x80000000 + $(or $(CONFIG_CACHE_PADDING),0))))
 
 # Keep the effective hardware knobs in one stable, human-readable record.
 # The hash of this exact string identifies configurations even when two builds
@@ -948,8 +947,6 @@ TRACE_DEPTH_VAL := $(call remove_quote,$(CONFIG_TRACE_DEPTH))
 ifneq ($(TRACE_DEPTH_VAL),0)
 VERILATOR_TRACE += --trace-depth $(TRACE_DEPTH_VAL)
 endif
-endif
-ifneq ($(CONFIG_TRACE_FILE),)
 endif
 ifeq ($(CONFIG_PROF_CFUNCS),y)
 VERILATOR_PROF = --prof-cfuncs

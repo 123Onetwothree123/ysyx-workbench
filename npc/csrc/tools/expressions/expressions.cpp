@@ -24,15 +24,3 @@ std::expected<std::uint64_t, std::string> expressions::evaluate(std::string_view
         return std::unexpected(std::string{e.what()});
     }
 }
-bool expressions::validate(std::string_view expression)
-{
-    lexer lex{expression};
-    auto tokensResult{lex.ScanAll()};
-    if (!tokensResult)
-    {
-        return false;
-    }
-    parser p{std::move(*tokensResult)};
-    auto astResult{p.parse()};
-    return static_cast<bool>(astResult);
-}
