@@ -1,3 +1,0 @@
-`ifndef layers_ViptFetchPmpHarness_Verification
-  `define layers_ViptFetchPmpHarness_Verification
-`endif

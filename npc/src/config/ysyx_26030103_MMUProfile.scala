@@ -139,7 +139,7 @@ case class ysyx_26030103_MMUProfile(
     PMPEnabled: Boolean = false,
     PMPEntries: Int = KconfigDefaults.MMUPMPEntries,
     // PMP 粒度 G：pmpaddr 低 G-2 位读回为 0，NAPOT 最小区域为 2^G 字节
-    PMPGranularity: Int = 6,
+    PMPGranularityLog2: Int = 6,
     CSREnabled: Set[Int] =
       ysyx_26030103_MMUProfile.DefaultCSRAddresses
 ) {
@@ -240,8 +240,8 @@ case class ysyx_26030103_MMUProfile(
   require(Set("illegal", "zero").contains(CSRMissingMode), "CSR_MISSING_MODE 必须是 illegal/zero")
   require(PMPEntries >= 0 && PMPEntries <= 16, "PMP_ENTRIES 必须在 0..16")
   require(!PMPEnabled || PMPEntries > 0, "HAS_PMP=y 时 PMP_ENTRIES 必须 > 0")
-  require(PMPGranularity >= 2 && PMPGranularity <= 30,
-    s"PMP_GRANULARITY_LOG2=$PMPGranularity 必须在 2..30")
+  require(PMPGranularityLog2 >= 2 && PMPGranularityLog2 <= 30,
+    s"PMP_GRANULARITY_LOG2=$PMPGranularityLog2 必须在 2..30")
   // PMP 不再依赖 MMU：无 MMU 时直接检查 IFU 物理取指地址和 LSU 的 VA==PA
   // 访存地址；有 MMU 时仍检查翻译后的物理地址。
 
@@ -263,13 +263,13 @@ case class ysyx_26030103_MMUProfile(
     // HAS_U=n 时 U 级 CSR 一并从实现集合裁剪；HAS_S=n 时裁剪 S 级 CSR。
     // envcfg 中 menvcfg/menvcfgh/senvcfg 属于 S 模式扩展，M-only 时不暴露；
     // mstatush 是 RV32 的 M 级寄存器，不受 HAS_S 影响。
-    val envcfgAddressRequiresS =
+    val EnvcfgAddressRequiresS =
       address == 0x30a || address == 0x31a || address == 0x10a
     !highHalfCounter &&
-      (!envcfgAddressRequiresS || hasS) &&
+      (!EnvcfgAddressRequiresS || hasS) &&
       ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
       (CSREnabled.contains(address) ||
-        ysyx_26030103_MMUProfile.envcfgCSRAddresses(xlen).contains(address) ||
+        ysyx_26030103_MMUProfile.EnvcfgFamilyCSRAddresses(xlen).contains(address) ||
         ysyx_26030103_MMUProfile.IdentityCSRAddresses.contains(address) ||
         (PMPEnabled &&
           // RV64 只有 pmpcfg0/pmpcfg2，0x3a1/0x3a3 是 RV32 专用编码。
@@ -406,8 +406,6 @@ case class ysyx_26030103_MMUProfile(
     else if (standardSv39) 8
     else if (standardSv48) 9
     else 0
-  final val standardSatpMode: Boolean =
-    satpMode == 1 || satpMode == 8 || satpMode == 9
 
   def describe: String = {
     val aliasScanDetail =
@@ -453,7 +451,7 @@ object ysyx_26030103_MMUProfile {
     * mstatush(0x310)/menvcfgh(0x31a) 只在 RV32 存在。
     * csrSupported 会再按地址编码裁剪 U/S 特权级。
     */
-  def envcfgCSRAddresses(xlen: Int): Set[Int] =
+  def EnvcfgFamilyCSRAddresses(xlen: Int): Set[Int] =
     if (xlen == 32) Set(0x30a, 0x310, 0x31a, 0x10a) else Set(0x30a, 0x10a)
 
   // 配置生成器未显式给出 CSR 集合时的标准实现集合。
@@ -669,10 +667,10 @@ object ysyx_26030103_MMUProfile {
       CSRMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
       PMPEnabled = envBool(env, "HAS_PMP", false),
       PMPEntries = envInt(env, "PMP_ENTRIES", KconfigDefaults.MMUPMPEntries),
-      PMPGranularity =
-        envInt(env, "PMP_GRANULARITY_LOG2", KconfigDefaults.MMUPMPGranularity),
+      PMPGranularityLog2 =
+        envInt(env, "PMP_GRANULARITY_LOG2", KconfigDefaults.MMUPMPGranularityLog2),
       CSREnabled = envAddressSet(env, "CSR_ENABLED", DefaultCSRAddresses) ++
-        IdentityCSRAddresses ++ envcfgCSRAddresses(xlen)
+        IdentityCSRAddresses ++ EnvcfgFamilyCSRAddresses(xlen)
     )
   }
 }

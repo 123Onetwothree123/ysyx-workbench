@@ -122,9 +122,9 @@ class ysyx_26030103_CSR(
     val MinstretRetireCommit = Input(Bool())
     // EXU 把该提交拍到 WBU 的写 minstret 标记，退休时据此过滤自增。
     val MinstretWriteCommit = Output(Bool())
-    val IsCSRrw = Input(Bool())
-    val IsCSRrs = Input(Bool())
-    val IsCSRrc = Input(Bool())
+    val IsCSRRW = Input(Bool())
+    val IsCSRRS = Input(Bool())
+    val IsCSRRC = Input(Bool())
     val IsEcall = Input(Bool())
     val IsEbreak = Input(Bool())
     val IsMret = Input(Bool())
@@ -258,13 +258,13 @@ class ysyx_26030103_CSR(
   // PBMTE/FIOM 等），按规范作为 WARL 只读零 CSR 暴露：读返回 0，
   // 写被忽略且不产生非法指令。menvcfg(0x30a)/senvcfg(0x10a) 随 HAS_S
   // 存在；mstatush(0x310)/menvcfgh(0x31a) 只有 RV32 存在。
-  private val envcfgFamilyAddresses: Seq[Int] =
+  private val EnvcfgFamilyAddresses: Seq[Int] =
     _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
-      .envcfgCSRAddresses(XLEN).toSeq
+      .EnvcfgFamilyCSRAddresses(XLEN).toSeq
   private val envcfgAddresses: Seq[Int] =
-    envcfgFamilyAddresses.filter(a => profile.csrSupported(a))
+    EnvcfgFamilyAddresses.filter(a => profile.csrSupported(a))
   private val EnabledCSRAddresses = (
-    profile.CSREnabled.toSeq.filterNot(envcfgFamilyAddresses.contains) ++
+    profile.CSREnabled.toSeq.filterNot(EnvcfgFamilyAddresses.contains) ++
       // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
         .IdentityCSRAddresses.toSeq ++
@@ -319,12 +319,12 @@ class ysyx_26030103_CSR(
       satpWriteMaskValue.U(XLEN.W), mstatusMask) else mstatusMask
   }
 
-  val csrrwWriteEnable = io.Enable && io.IsCSRrw
-  val csrrsWriteEnable = io.Enable && io.IsCSRrs && io.rs1 =/= 0.U
-  val csrrcWriteEnable = io.Enable && io.IsCSRrc && io.rs1 =/= 0.U
+  val csrrwWriteEnable = io.Enable && io.IsCSRRW
+  val csrrsWriteEnable = io.Enable && io.IsCSRRS && io.rs1 =/= 0.U
+  val csrrcWriteEnable = io.Enable && io.IsCSRRC && io.rs1 =/= 0.U
   def CSRWriteData(old: UInt): UInt = {
-    val raw = Mux(io.IsCSRrw, io.Rs1Data,
-      Mux(io.IsCSRrs, old | io.Rs1Data, old & ~io.Rs1Data))
+    val raw = Mux(io.IsCSRRW, io.Rs1Data,
+      Mux(io.IsCSRRS, old | io.Rs1Data, old & ~io.Rs1Data))
     val mask = CSRWriteMask
     (old & ~mask) | (raw & mask)
   }
@@ -1172,9 +1172,9 @@ class ysyx_26030103_CSR(
       8 * (index % PMPEntriesPerConfig) + 4,
       8 * (index % PMPEntriesPerConfig) + 3)
     val lowZeroMask =
-      ((BigInt(1) << (profile.PMPGranularity - 2)) - 1).U(XLEN.W)
+      ((BigInt(1) << (profile.PMPGranularityLog2 - 2)) - 1).U(XLEN.W)
     val napotTail =
-      ((BigInt(1) << math.max(profile.PMPGranularity - 3, 0)) - 1).U(XLEN.W)
+      ((BigInt(1) << math.max(profile.PMPGranularityLog2 - 3, 0)) - 1).U(XLEN.W)
     Mux(entryConfig === 3.U,
       pmpaddrReg(index) | napotTail, pmpaddrReg(index) & ~lowZeroMask)
   }

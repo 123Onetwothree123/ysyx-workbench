@@ -37,15 +37,15 @@ class ysyx_26030103_PTWResponse(
   val fault = Bool()
   val cause = UInt(32.W)
   val tval = UInt(XLEN.W)
-  val fillValid = Bool()
+  val FillValid = Bool()
   val FillPTE = UInt(PTEWidth.W)
-  val fillVirtualAddress = UInt(XLEN.W)
+  val FillVirtualAddress = UInt(XLEN.W)
   val FillASID = UInt(16.W)
   // 0=基础页，k=第 k 级超级页；TLB 用 pageBits + k*indexBits 推导 shift。
   // 3 位统一编码支持最多 8 级页表，不再把 CUSTOM 限制在 4 级。
-  val fillLevel = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
+  val FillLevel = UInt(ysyx_26030103_MMUProfile.LevelBits.W)
   // 64KiB Svnapot 页
-  val fillNapot = Bool()
+  val FillNapot = Bool()
 }
 
 // PTW 内部响应荷载；`ID`/`fillLevel` 由独立寄存器在输出级拼接。
@@ -63,9 +63,9 @@ private[mmu] class ysyx_26030103_PTWResponsePayload(
   val fault = Bool()
   val cause = UInt(32.W)
   val tval = UInt(XLEN.W)
-  val fillValid = Bool()
+  val FillValid = Bool()
   val FillPTE = UInt(PTEWidth.W)
-  val fillVirtualAddress = UInt(XLEN.W)
+  val FillVirtualAddress = UInt(XLEN.W)
   val FillASID = UInt(16.W)
 }
 
@@ -442,19 +442,19 @@ class ysyx_26030103_PTW(
       Mux(state === reqHigh, PTEAddressReg + 4.U, PTEAddressReg)))
   io.bus.request.bits.write := state === writeState
   io.bus.request.bits.data := Mux(state === writeState, writeDataReg(31, 0), 0.U)
-  io.bus.request.bits.strb := Mux(state === writeState, "hf".U(4.W), 0.U)
+  io.bus.request.bits.strobe := Mux(state === writeState, "hf".U(4.W), 0.U)
   io.bus.response.ready := state === waitState || state === waitHigh || state === waitWrite
   io.response.valid := state === done && !io.flush && !discard
   io.response.bits.paddr := responseReg.paddr
   io.response.bits.fault := responseReg.fault
   io.response.bits.cause := responseReg.cause
   io.response.bits.tval := responseReg.tval
-  io.response.bits.fillValid := responseReg.fillValid
+  io.response.bits.FillValid := responseReg.FillValid
   io.response.bits.FillPTE := responseReg.FillPTE
-  io.response.bits.fillVirtualAddress := responseReg.fillVirtualAddress
+  io.response.bits.FillVirtualAddress := responseReg.FillVirtualAddress
   io.response.bits.FillASID := responseReg.FillASID
-  io.response.bits.fillLevel := fillLevelReg
-  io.response.bits.fillNapot := fillNapotReg
+  io.response.bits.FillLevel := fillLevelReg
+  io.response.bits.FillNapot := fillNapotReg
   io.response.bits.ID := IDReg
 
   def setFault(cause: UInt = pageFaultCause): Unit = {
@@ -462,9 +462,9 @@ class ysyx_26030103_PTW(
     responseReg.fault := true.B
     responseReg.cause := cause
     responseReg.tval := virtualAddressReg
-    responseReg.fillValid := false.B
+    responseReg.FillValid := false.B
     responseReg.FillPTE := 0.U
-    responseReg.fillVirtualAddress := 0.U
+    responseReg.FillVirtualAddress := 0.U
     responseReg.FillASID := 0.U
     fillLevelReg := 0.U
     fillNapotReg := false.B
@@ -477,11 +477,11 @@ class ysyx_26030103_PTW(
     responseReg.cause := pageFaultCause
     responseReg.tval := virtualAddressReg
     responseReg.FillPTE := PTE
-    responseReg.fillVirtualAddress := virtualAddressReg
+    responseReg.FillVirtualAddress := virtualAddressReg
     responseReg.FillASID := satpASID(satpReg)
     fillLevelReg := fillLevelOf(levelReg)
     fillNapotReg := napot
-    responseReg.fillValid := !fault &&
+    responseReg.FillValid := !fault &&
       (napot || fillSuperpage.B || levelReg === (levels - 1).U)
     state := done
   }
@@ -632,11 +632,11 @@ class ysyx_26030103_PTW(
             accessFaultCause, pageFaultCause)
           responseReg.tval := virtualAddressReg
           responseReg.FillPTE := written
-          responseReg.fillVirtualAddress := virtualAddressReg
+          responseReg.FillVirtualAddress := virtualAddressReg
           responseReg.FillASID := satpASID(satpReg)
           fillLevelReg := fillLevelOf(levelReg)
           fillNapotReg := false.B
-          responseReg.fillValid := !leafFaultOf(written) &&
+          responseReg.FillValid := !leafFaultOf(written) &&
             !io.bus.response.bits.fault &&
             (fillSuperpage.B || levelReg === (levels - 1).U)
           state := done

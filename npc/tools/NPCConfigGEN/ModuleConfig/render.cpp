@@ -340,7 +340,7 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("MMUPLICPriorityBits", "PLIC_PRIORITY_BITS", 3);
     emitInt("MMUPLICMaxPriority", "PLIC_MAX_PRIORITY", 7);
     emitInt("MMUPMPEntries", "PMP_ENTRIES", 16);
-    emitInt("MMUPMPGranularity", "PMP_GRANULARITY_LOG2", 6);
+    emitInt("MMUPMPGranularityLog2", "PMP_GRANULARITY_LOG2", 6);
     const long long pageSize = asInt(values, "MMU_PAGE_SIZE_BYTES", 4096);
     long long pageBits = 0;
     while ((1LL << pageBits) < pageSize) ++pageBits;

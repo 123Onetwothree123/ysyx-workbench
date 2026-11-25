@@ -57,7 +57,7 @@ abstract class ysyx_26030103_HardFloatFPUBase(
   protected val cD = dInput(cRaw)
   protected val fmtS = request.fmt === ysyx_26030103_FPUFmt.S
   protected val fmtD = request.fmt === ysyx_26030103_FPUFmt.D
-  protected val SourceFmtD = request.SourceFmt === ysyx_26030103_FPUFmt.D
+  protected val SourceFmtDouble = request.SourceFmt === ysyx_26030103_FPUFmt.D
   protected val intWord = request.intWord
   protected val rm = request.rm
   protected val op = request.op

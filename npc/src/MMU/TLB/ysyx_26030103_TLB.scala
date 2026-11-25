@@ -12,7 +12,7 @@ class ysyx_26030103_TLBWrite(
   require(XLEN == 32 || XLEN == 64, s"TLBWrite XLEN 非法: $XLEN")
   require(PTEWidth == 32 || PTEWidth == 64, s"TLBWrite PTEWidth 非法: $PTEWidth")
   val valid = Bool()
-  val vaddr = UInt(XLEN.W)
+  val VirtualAddress = UInt(XLEN.W)
   val ASID = UInt(16.W)
   val PTE = UInt(PTEWidth.W)
   // fillLevel 使用统一 3 位编码，支持最多 8 级页表。
@@ -116,14 +116,14 @@ class ysyx_26030103_TLB(
     // 端口 0 始终存在；lookupPorts=2 时端口 1 用于 unified TLB 的第二个上下文。
     val lookup = Input(Vec(lookupPorts, new Lookup))
     val result = Output(Vec(lookupPorts, new Result))
-    val fillValid = Input(Bool())
-    val fillVirtualAddress = Input(UInt(XLEN.W))
+    val FillValid = Input(Bool())
+    val FillVirtualAddress = Input(UInt(XLEN.W))
     val FillASID = Input(UInt(16.W))
     val FillPTE = Input(UInt(PTEWidth.W))
-    val fillLevel = Input(UInt(ysyx_26030103_MMUProfile.LevelBits.W))
-    val fillNapot = Input(Bool())
+    val FillLevel = Input(UInt(ysyx_26030103_MMUProfile.LevelBits.W))
+    val FillNapot = Input(Bool())
     // 第 2..refillPorts 个写回端口；端口 0 保持上面的兼容接口。
-    val fillExtra = if (refillPorts > 1)
+    val FillExtra = if (refillPorts > 1)
       Some(Input(Vec(refillPorts - 1,
         new ysyx_26030103_TLBWrite(XLEN, PTEWidth)))) else None
     val flush = Input(Bool())
@@ -465,11 +465,11 @@ class ysyx_26030103_TLB(
     }
   }
 
-  doFill(io.fillValid, io.fillVirtualAddress, io.FillASID, io.FillPTE,
-    io.fillLevel, io.fillNapot)
-  io.fillExtra.foreach { extra =>
+  doFill(io.FillValid, io.FillVirtualAddress, io.FillASID, io.FillPTE,
+    io.FillLevel, io.FillNapot)
+  io.FillExtra.foreach { extra =>
     for (port <- extra) {
-      doFill(port.valid, port.vaddr, port.ASID, port.PTE, port.level, port.napot)
+      doFill(port.valid, port.VirtualAddress, port.ASID, port.PTE, port.level, port.napot)
     }
   }
 

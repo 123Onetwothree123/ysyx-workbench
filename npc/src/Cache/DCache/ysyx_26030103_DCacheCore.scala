@@ -193,7 +193,6 @@ private[cache] trait ysyx_26030103_DCacheCore {
     CacheableMask,
     PMARegions
   )
-  io.RequestCacheable := cacheable
   // DMA snoop 与 CPU 请求同拍时，失效必须优先于命中：否则本拍会锁存
   // DMA 之前的旧数据，而该 B 恰好在本拍完成后对软件可见。
   private val DMARequestLineHit = DMASnoopActive.B && io.DMASnoopValid &&

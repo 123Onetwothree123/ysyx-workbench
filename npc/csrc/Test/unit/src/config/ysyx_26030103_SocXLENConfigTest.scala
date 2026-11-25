@@ -24,7 +24,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
       val config = ysyx_26030103_NPCConfig(
         XLEN = cpuXlen,
         AddressWidth = cpuAddressWidth(cpuXlen),
-        SocXLENFollowCpu = false,
+        SOCXLENFollowCPU = false,
         SocXLEN = socXlen
       )
       withClue(s"CPU XLEN=$cpuXlen, SoC XLEN=$socXlen: ") {
@@ -40,7 +40,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
       val config = ysyx_26030103_NPCConfig(
         XLEN = cpuXlen,
         AddressWidth = cpuAddressWidth(cpuXlen),
-        SocXLENFollowCpu = true,
+        SOCXLENFollowCPU = true,
         SocXLEN = if (cpuXlen == 32) 64 else 32
       )
       config.EffectiveSocXLEN should be(cpuXlen)
@@ -51,7 +51,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
   it should "默认不跟随 CPU，SoC_XLEN 使用 Kconfig 默认值" in {
     // XLEN=64 时 Kconfig 的 SOC_XLEN 默认 64；FOLLOW_CPU 仍为 n。
     val config = ysyx_26030103_NPCConfig()
-    config.SocXLENFollowCpu should be(false)
+    config.SOCXLENFollowCPU should be(false)
     config.SocXLEN should be(
       _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults.NpcSocXlen)
     config.EffectiveSocXLEN should be(config.SocXLEN)
@@ -61,7 +61,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
     val config32 = ysyx_26030103_NPCConfig(
       XLEN = 32,
       AddressWidth = 32,
-      SocXLENFollowCpu = false,
+      SOCXLENFollowCPU = false,
       SocXLEN = 32
     )
     config32.EffectiveSocXLEN should be(32)
@@ -71,7 +71,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
   it should "拒绝 FOLLOW_CPU=n 时 32/64 之外的 SOC_XLEN" in {
     for (bad <- Seq(0, 33, 48, 63, 128)) {
       val error = intercept[IllegalArgumentException] {
-        ysyx_26030103_NPCConfig(SocXLENFollowCpu = false, SocXLEN = bad)
+        ysyx_26030103_NPCConfig(SOCXLENFollowCPU = false, SocXLEN = bad)
       }
       withClue(s"SOC_XLEN=$bad: ") {
         error.getMessage should include("SOC_XLEN")
@@ -90,7 +90,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
       AddressWidth = 64,
       ResetAddress = HighBase,
       PMARegions = HighRegions,
-      SocXLENFollowCpu = false,
+      SOCXLENFollowCPU = false,
       SocXLEN = 64
     )
     Soc64.EffectiveSocXLEN should be(64)
@@ -102,7 +102,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
         AddressWidth = 64,
         ResetAddress = HighBase,
         PMARegions = HighRegions,
-        SocXLENFollowCpu = false,
+        SOCXLENFollowCPU = false,
         SocXLEN = 32
       )
     }
@@ -114,7 +114,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
     val fixed = ysyx_26030103_NPCConfig(
       XLEN = 64,
       AddressWidth = 64,
-      SocXLENFollowCpu = false,
+      SOCXLENFollowCPU = false,
       SocXLEN = 32
     )
     fixed.Describe should include("soc_xlen=32")
@@ -122,7 +122,7 @@ class ysyx_26030103_SocXLENConfigTest extends AnyFlatSpec with Matchers {
     val followed = ysyx_26030103_NPCConfig(
       XLEN = 64,
       AddressWidth = 64,
-      SocXLENFollowCpu = true
+      SOCXLENFollowCPU = true
     )
     followed.Describe should include("soc_xlen=64(follow)")
   }

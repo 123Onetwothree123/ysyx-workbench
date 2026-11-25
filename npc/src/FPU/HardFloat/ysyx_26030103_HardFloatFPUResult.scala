@@ -203,8 +203,8 @@ trait ysyx_26030103_HardFloatFPUResult {
       fastFlags := 0.U(ysyx_26030103_FPUFlags.Width.W)
     }
     is(ysyx_26030103_FPUOp.FCvtFPToFP) {
-      val toDouble = fmtD && !SourceFmtD
-      val toSingle = fmtS && SourceFmtD
+      val toDouble = fmtD && !SourceFmtDouble
+      val toSingle = fmtS && SourceFmtDouble
       fastResult := Mux(toDouble, boxD(cvtToD),
         Mux(toSingle, boxF32(cvtToS), 0.U(FLEN.W)))
       fastFlags := Mux(toDouble, cvtStoD.io.exceptionFlags,

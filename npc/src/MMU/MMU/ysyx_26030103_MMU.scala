@@ -261,25 +261,25 @@ class ysyx_26030103_MMU(
     TLB.io.flush := io.flush
   }
   def connectFill(TLB: ysyx_26030103_TLB, port: Int, valid: Bool): Unit = {
-    val virtualAddress = PTWResponsePayloadVec(port).fillVirtualAddress
+    val virtualAddress = PTWResponsePayloadVec(port).FillVirtualAddress
     val ASID  = PTWResponsePayloadVec(port).FillASID
     val PTE   = PTWResponsePayloadVec(port).FillPTE
-    val level = PTWResponsePayloadVec(port).fillLevel
-    val napot = PTWResponsePayloadVec(port).fillNapot
+    val level = PTWResponsePayloadVec(port).FillLevel
+    val napot = PTWResponsePayloadVec(port).FillNapot
     if (port == 0) {
-      TLB.io.fillValid := valid
-      TLB.io.fillVirtualAddress := virtualAddress
+      TLB.io.FillValid := valid
+      TLB.io.FillVirtualAddress := virtualAddress
       TLB.io.FillASID  := ASID
       TLB.io.FillPTE   := PTE
-      TLB.io.fillLevel := level
-      TLB.io.fillNapot := napot
+      TLB.io.FillLevel := level
+      TLB.io.FillNapot := napot
     } else {
-      TLB.io.fillExtra.get(port - 1).valid := valid
-      TLB.io.fillExtra.get(port - 1).vaddr := virtualAddress
-      TLB.io.fillExtra.get(port - 1).ASID  := ASID
-      TLB.io.fillExtra.get(port - 1).PTE   := PTE
-      TLB.io.fillExtra.get(port - 1).level := level
-      TLB.io.fillExtra.get(port - 1).napot := napot
+      TLB.io.FillExtra.get(port - 1).valid := valid
+      TLB.io.FillExtra.get(port - 1).VirtualAddress := virtualAddress
+      TLB.io.FillExtra.get(port - 1).ASID  := ASID
+      TLB.io.FillExtra.get(port - 1).PTE   := PTE
+      TLB.io.FillExtra.get(port - 1).level := level
+      TLB.io.FillExtra.get(port - 1).napot := napot
     }
   }
 
@@ -630,18 +630,18 @@ class ysyx_26030103_MMU(
   if (split) {
     itlbOpt.foreach { TLB =>
       for (port <- 0 until profile.refillPorts) {
-        connectFill(TLB, port, PTWContextValidVec(port) && PTWResponsePayloadVec(port).fillValid && fillFetch(port))
+        connectFill(TLB, port, PTWContextValidVec(port) && PTWResponsePayloadVec(port).FillValid && fillFetch(port))
       }
     }
     dtlbOpt.foreach { TLB =>
       for (port <- 0 until profile.refillPorts) {
-        connectFill(TLB, port, PTWContextValidVec(port) && PTWResponsePayloadVec(port).fillValid && !fillFetch(port))
+        connectFill(TLB, port, PTWContextValidVec(port) && PTWResponsePayloadVec(port).FillValid && !fillFetch(port))
       }
     }
   } else {
     utlbOpt.foreach { TLB =>
       for (port <- 0 until profile.refillPorts) {
-        connectFill(TLB, port, PTWContextValidVec(port) && PTWResponsePayloadVec(port).fillValid)
+        connectFill(TLB, port, PTWContextValidVec(port) && PTWResponsePayloadVec(port).FillValid)
       }
     }
   }
@@ -701,7 +701,7 @@ class ysyx_26030103_MMU(
       profile.TLBEnabled.B && !laneBypass(port) && !LaneTLBHit(port)
   )).reduce(_ || _)
   val perfTLBRefill = VecInit((0 until profile.refillPorts).map(port =>
-    PTWContextValidVec(port) && PTWResponsePayloadVec(port).fillValid
+    PTWContextValidVec(port) && PTWResponsePayloadVec(port).FillValid
   )).reduce(_ || _)
   io.perf_itlb_hit := perfFetchHit
   io.perf_itlb_miss := perfFetchMiss

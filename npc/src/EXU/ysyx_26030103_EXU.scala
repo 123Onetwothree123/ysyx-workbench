@@ -169,7 +169,7 @@ class ysyx_26030103_EXU(
   val ALUUnit = Module(ysyx_26030103_ALU(config))
   val CSRUnit = Module(new ysyx_26030103_CSR(
     config.MMU, XLEN, config.UseA, config.UseC, config.UseF, config.UseD,
-    config.UseM, config.RiscvArchPMU, config.RiscvArchPMUZihpm,
+    config.UseM, config.RISCVArchPMU, config.RiscvArchPMUZihpm,
     config.RiscvArchPMUSscofpmf))
   CSRUnit.io.clock := clock
   CSRUnit.io.reset := reset.asBool
@@ -266,7 +266,7 @@ class ysyx_26030103_EXU(
   // 预测器训练副作用；CSR/异常/IRQ/FPU 等年长 MEM 越过精确边界，branch/jal 只等年长访存
   // （否则故障前会留下不可回滚的 BTB/RAS 状态）。
   val requiresPipelineDrain =
-    inst.IsCSRrw || inst.IsCSRrs || inst.IsCSRrc || inst.IsEcall || inst.IsEbreak ||
+    inst.IsCSRRW || inst.IsCSRRS || inst.IsCSRRC || inst.IsEcall || inst.IsEbreak ||
       inst.IsSimHalt || inst.IsMret ||
       (if (hasS) inst.IsSret || inst.IsSfenceVma else false.B) ||
       (if (useF) inst.IsFPU else false.B) ||
@@ -348,9 +348,9 @@ class ysyx_26030103_EXU(
   // 所以“当前指令”控制必须由 valid 门控，不能让上一个 MRET/CSR 的 bits 与 IRQ 同时生效。
   val ValidInstructionForCSR =
     io.in.valid && !PendingMDU && !FPPending && !instructionTrapValid
-  CSRUnit.io.IsCSRrw := ValidInstructionForCSR && inst.IsCSRrw
-  CSRUnit.io.IsCSRrs := ValidInstructionForCSR && inst.IsCSRrs
-  CSRUnit.io.IsCSRrc := ValidInstructionForCSR && inst.IsCSRrc
+  CSRUnit.io.IsCSRRW := ValidInstructionForCSR && inst.IsCSRRW
+  CSRUnit.io.IsCSRRS := ValidInstructionForCSR && inst.IsCSRRS
+  CSRUnit.io.IsCSRRC := ValidInstructionForCSR && inst.IsCSRRC
   CSRUnit.io.IsEcall := ValidInstructionForCSR && inst.IsEcall
   CSRUnit.io.IsEbreak := ValidInstructionForCSR && inst.IsEbreak
   CSRUnit.io.IsMret := ValidInstructionForCSR && inst.IsMret
@@ -515,7 +515,7 @@ class ysyx_26030103_EXU(
   io.FenceIFlush := instructionCommit && inst.IsFenceI
   // CSR 指令提交视为上下文/地址空间可能切换，保守地清除 LR reservation。
   io.CSRCommit := instructionCommit &&
-    (inst.IsCSRrw || inst.IsCSRrs || inst.IsCSRrc ||
+    (inst.IsCSRRW || inst.IsCSRRS || inst.IsCSRRC ||
       (if (hasS) inst.IsSfenceVma else false.B))
   val localFlush =
     (instructionCommit && redirect) || CSRUnit.io.ExceptionTaken

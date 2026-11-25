@@ -73,10 +73,10 @@ trait ysyx_26030103_FudianFPUResponse {
 
   private val busy = RegInit(false.B)
   private val responseValid = RegInit(false.B)
-  private val activeDivIsD = RegInit(false.B)
+  private val ActiveDivIsDouble = RegInit(false.B)
   private val activeRm = RegInit(ysyx_26030103_FPURm.RNE)
   // 共享模式提升 F->D 会丢 sNaN，需锁存 signaling 信息，回舍时补 NV。
-  private val activeFSNaN = RegInit(false.B)
+  private val ActiveSingleSNaN = RegInit(false.B)
   // FDIV 的 out_valid 先拉高、结果下一拍才稳定，故先等一拍再采样。
   private val divSeenValid = RegInit(false.B)
   private val responseResult = RegInit(0.U(FLEN.W))
@@ -114,7 +114,7 @@ trait ysyx_26030103_FudianFPUResponse {
   private val divOutValid: Bool = if (shared) {
     dDiv.get.io.specialIO.out_valid
   } else if (hasD) {
-    Mux(activeDivIsD, dDiv.get.io.specialIO.out_valid,
+    Mux(ActiveDivIsDouble, dDiv.get.io.specialIO.out_valid,
       sDiv.get.io.specialIO.out_valid)
   } else {
     sDiv.get.io.specialIO.out_valid
@@ -133,7 +133,7 @@ trait ysyx_26030103_FudianFPUResponse {
     val uf = cvtFlags(ysyx_26030103_FPUFlags.UF) || (tiny && nx)
     Cat(
       engineFlags(ysyx_26030103_FPUFlags.NV) ||
-        cvtFlags(ysyx_26030103_FPUFlags.NV) || activeFSNaN,
+        cvtFlags(ysyx_26030103_FPUFlags.NV) || ActiveSingleSNaN,
       engineFlags(ysyx_26030103_FPUFlags.DZ),
       of,
       uf,
@@ -143,16 +143,16 @@ trait ysyx_26030103_FudianFPUResponse {
     0.U(ysyx_26030103_FPUFlags.Width.W)
   }
   private val divOutResult: UInt = if (shared) {
-    Mux(activeDivIsD, dDiv.get.io.result, boxS(divDToS.get.io.result))
+    Mux(ActiveDivIsDouble, dDiv.get.io.result, boxS(divDToS.get.io.result))
   } else if (hasD) {
-    Mux(activeDivIsD, dDiv.get.io.result, boxS(sDiv.get.io.result))
+    Mux(ActiveDivIsDouble, dDiv.get.io.result, boxS(sDiv.get.io.result))
   } else {
     boxS(sDiv.get.io.result)
   }
   private val divOutFlags: UInt = if (shared) {
-    Mux(activeDivIsD, dDiv.get.io.fflags, sharedFFlags)
+    Mux(ActiveDivIsDouble, dDiv.get.io.fflags, sharedFFlags)
   } else if (hasD) {
-    Mux(activeDivIsD, dDiv.get.io.fflags, sDiv.get.io.fflags)
+    Mux(ActiveDivIsDouble, dDiv.get.io.fflags, sDiv.get.io.fflags)
   } else {
     sDiv.get.io.fflags
   }
@@ -165,18 +165,18 @@ trait ysyx_26030103_FudianFPUResponse {
     dDiv.get.io.specialIO.kill := io.flush && busy
   } else {
     sDiv.get.io.specialIO.out_ready :=
-      busy && !activeDivIsD && divSeenValid && divOutValid
-    sDiv.get.io.specialIO.kill := io.flush && busy && !activeDivIsD
+      busy && !ActiveDivIsDouble && divSeenValid && divOutValid
+    sDiv.get.io.specialIO.kill := io.flush && busy && !ActiveDivIsDouble
     if (hasD) {
       dDiv.get.io.specialIO.out_ready :=
-        busy && activeDivIsD && divSeenValid && divOutValid
-      dDiv.get.io.specialIO.kill := io.flush && busy && activeDivIsD
+        busy && ActiveDivIsDouble && divSeenValid && divOutValid
+      dDiv.get.io.specialIO.kill := io.flush && busy && ActiveDivIsDouble
     }
   }
 
   when(requestFire) {
     activeRm := rm
-    activeFSNaN := !fmtD && Mux(
+    ActiveSingleSNaN := !fmtD && Mux(
       isSqrtOp,
       isSNaN32(aS),
       isSNaN32(aS) || isSNaN32(bS)
@@ -184,7 +184,7 @@ trait ysyx_26030103_FudianFPUResponse {
     when(isSlowOp) {
       busy := true.B
       divSeenValid := false.B
-      activeDivIsD := fmtD
+      ActiveDivIsDouble := fmtD
     }.otherwise {
       responseValid := true.B
       responseResult := fastResult

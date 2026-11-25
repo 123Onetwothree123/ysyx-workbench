@@ -102,7 +102,7 @@ object ysyx_26030103_KconfigDefaults {
   val MMUPLICPriorityBits: Int = 3
   val MMUPLICMaxPriority: Int = 7
   val MMUPMPEntries: Int = 16
-  val MMUPMPGranularity: Int = 6
+  val MMUPMPGranularityLog2: Int = 6
   val MMUPageBits: Int = 12
   val MMUTableEntries: Int = 512
   val MMUPTEWidth: Int = 64

@@ -199,9 +199,9 @@ class riscv32e_npc_AXIRAM(
   UART.io.rxValid := io.UARTRxValid
   UART.io.rxData := io.UARTRxData
   UART.io.rdAddress := io.AXI.AR.ARADDR(2, 0)
-  UART.io.RdEnable := UARTARFire
+  UART.io.ReadEnable := UARTARFire
   UART.io.wrAddress := AWAddress(2, 0)
-  UART.io.WrEnable := state === sWriteCommit && !writeConfigError &&
+  UART.io.WriteEnable := state === sWriteCommit && !writeConfigError &&
     WriteAddressIsUART && wStrobe =/= 0.U
   // AXI 字节通道由地址低两位选择；xv6 的 UART 寄存器都是单字节访问。
   UART.io.wrData := (wData >> (AWAddress(1, 0) << 3))(7, 0)

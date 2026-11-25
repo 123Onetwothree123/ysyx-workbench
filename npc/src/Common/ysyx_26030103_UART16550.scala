@@ -18,11 +18,11 @@ class ysyx_26030103_UART16550(
     // 移位器“发送”一个字节的仿真周期，决定 LSR.TEMT 何时恢复。
     val TxShiftCycles: Int = ysyx_26030103_KconfigDefaults.UartTxShiftCycles
 ) extends Module {
-  private val offsetBits = 3
+  private val OffsetBits = 3
 
   require(Depth >= 1, "UART RX FIFO 深度必须 >= 1")
-  require(AddressWidth >= offsetBits,
-    s"UART AddressWidth=$AddressWidth 必须 >= $offsetBits（16550 寄存器偏移位宽）")
+  require(AddressWidth >= OffsetBits,
+    s"UART AddressWidth=$AddressWidth 必须 >= $OffsetBits（16550 寄存器偏移位宽）")
   require(TxHoldCycles >= 1, "UART TxHoldCycles 必须 >= 1")
   require(TxShiftCycles >= TxHoldCycles,
     "UART TxShiftCycles 必须不小于 TxHoldCycles")
@@ -34,10 +34,10 @@ class ysyx_26030103_UART16550(
     val rxReady = Output(Bool())
     // 寄存器读写端口：地址使用 UART 窗口内的字节偏移。
     val rdAddress = Input(UInt(AddressWidth.W))
-    val RdEnable = Input(Bool())
+    val ReadEnable = Input(Bool())
     val rdData = Output(UInt(8.W))
     val wrAddress = Input(UInt(AddressWidth.W))
-    val WrEnable = Input(Bool())
+    val WriteEnable = Input(Bool())
     val wrData = Input(UInt(8.W))
     // THR 写入的 host 可见副本。仅用于仿真器 marker/检查点触发，
     // 不改变 16550 的 TX 行为。
@@ -47,15 +47,15 @@ class ysyx_26030103_UART16550(
     val IRQ = Output(Bool())
   })
 
-  val rdOffset = io.rdAddress(offsetBits - 1, 0)
-  val wrOffset = io.wrAddress(offsetBits - 1, 0)
+  val rdOffset = io.rdAddress(OffsetBits - 1, 0)
+  val wrOffset = io.wrAddress(OffsetBits - 1, 0)
 
   // 16550 的寄存器状态。复位值按常见实现：IER/FCR/LCR 等为 0；
   // 发送侧空闲，因此 LSR 的 THRE/TEMT 复位为 1。
   val ier = RegInit(0.U(4.W))
   val fcr = RegInit(0.U(8.W))
   val lcr = RegInit(0.U(8.W))
-  io.txValid := io.WrEnable && wrOffset === 0.U && !lcr(7)
+  io.txValid := io.WriteEnable && wrOffset === 0.U && !lcr(7)
   io.txData := io.wrData
   val mcr = RegInit(0.U(8.W))
   val scr = RegInit(0.U(8.W))
@@ -90,12 +90,12 @@ class ysyx_26030103_UART16550(
   val rxCount = RegInit(0.U(log2Ceil(Depth + 1).W))
   val overrun = RegInit(false.B)
 
-  val FIFONotEmpty = rxCount =/= 0.U
-  val FIFONotFull = rxCount < Depth.U
-  io.rxReady := FIFONotFull
+  val FIFOHasData = rxCount =/= 0.U
+  val FIFOHasSpace = rxCount < Depth.U
+  io.rxReady := FIFOHasSpace
 
   // RX 数据可用中断保持原来的电平语义。
-  val rdaPending = ier(0) && FIFONotEmpty
+  val rdaPending = ier(0) && FIFOHasData
 
   // rxCount 可以等于 Depth（FIFO 满），需要多一位表示；写指针只取
   // 低 log2Ceil(Depth) 位，避免 Chisel 的动态索引越界警告。
@@ -103,8 +103,8 @@ class ysyx_26030103_UART16550(
     if (Depth == 1) 0.U else value(log2Ceil(Depth) - 1, 0)
 
   val doPop =
-    io.RdEnable && rdOffset === 0.U && !lcr(7) && FIFONotEmpty
-  val doPush = io.rxValid && FIFONotFull
+    io.ReadEnable && rdOffset === 0.U && !lcr(7) && FIFOHasData
+  val doPush = io.rxValid && FIFOHasSpace
 
   when(doPop) {
     // 队首被读走，其余元素前移。若同拍还有注入，新字节放到新的队尾。
@@ -121,12 +121,12 @@ class ysyx_26030103_UART16550(
   }
 
   // FIFO 溢出：保留旧数据，置 LSR.OE，LSR 读后清除。
-  when(io.rxValid && !FIFONotFull) {
+  when(io.rxValid && !FIFOHasSpace) {
     overrun := true.B
   }
 
   // 写寄存器。偏移 0/1 在 DLAB=1 时是波特率除数锁存器，不能当 THR 输出。
-  when(io.WrEnable) {
+  when(io.WriteEnable) {
     when(wrOffset === 0.U) {
       when(lcr(7)) { divisorLow := io.wrData }
         .otherwise {
@@ -172,7 +172,7 @@ class ysyx_26030103_UART16550(
     false.B, // bit3：framing error
     false.B, // bit2：parity error
     overrun, // bit1：overrun
-    FIFONotEmpty // bit0：Data Ready
+    FIFOHasData // bit0：Data Ready
   )
   // IIR：bit0=0 表示有中断；bits[3:1]=010 表示接收数据可用，
   // 001 表示 THRE。RX 数据可用优先级高于 THRE。无中断时 bit0=1，
@@ -203,7 +203,7 @@ class ysyx_26030103_UART16550(
   // THRE pending 更新。写 THR 当拍必须优先清除，不能被同一拍的
   // THRE 上升沿重新置位（否则 THR 已忙却报告 THRE 中断）。
   // RX 数据可用同时挂起时读 IIR 看到的是 010，THRE pending 必须保留。
-  val thrWrite = io.WrEnable && wrOffset === 0.U && !lcr(7)
+  val thrWrite = io.WriteEnable && wrOffset === 0.U && !lcr(7)
   when(threRise && !thrWrite) {
     threPending := true.B
   }
@@ -212,14 +212,14 @@ class ysyx_26030103_UART16550(
   }
   // DLAB 只改变偏移 0/1 的解释，偏移 2 始终是 IIR。
   when(
-    io.RdEnable && rdOffset === 2.U &&
+    io.ReadEnable && rdOffset === 2.U &&
       threPending && !rdaPending
   ) {
     threPending := false.B
   }
 
   // LSR 读清除 overrun。注意 rdData 在时钟沿前仍返回旧值。
-  when(io.RdEnable && rdOffset === 5.U) {
+  when(io.ReadEnable && rdOffset === 5.U) {
     overrun := false.B
   }
 

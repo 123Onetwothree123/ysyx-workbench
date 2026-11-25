@@ -314,7 +314,7 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     val pmuEventBits =
       Wire(Vec(ysyx_26030103_PMUEventID.BusWidth, Bool()))
     pmuEventBits := VecInit(Seq.fill(ysyx_26030103_PMUEventID.BusWidth)(false.B))
-    if (config.RiscvArchPMU) {
+    if (config.RISCVArchPMU) {
       pmuEventBits(ysyx_26030103_PMUEventID.Cycles) := true.B
       pmuEventBits(ysyx_26030103_PMUEventID.Instructions) := exu.io.RetireCommit
       pmuEventBits(ysyx_26030103_PMUEventID.CacheReference) :=

@@ -50,13 +50,13 @@ case class ysyx_26030103_NPCConfig(
     //   SocXLENFollowCpu=false（默认）时使用 SocXLEN；
     //   SocXLENFollowCpu=true 时 EffectiveSocXLEN=XLEN。
     // 32 位 SoC 可以搭配 64 位 CPU（访问窗口仍限制在低 4GiB）；
-    SocXLENFollowCpu: Boolean = false,
+    SOCXLENFollowCPU: Boolean = false,
     SocXLEN: Int = KconfigDefaults.NpcSocXlen,
     // APB 数据宽度：JSON 给出生效值，Scala 不再重复推导。
-    ApbXLENFollowSoc: Boolean = true,
+    APBXLENFollowSOC: Boolean = true,
     ApbXLEN: Int = KconfigDefaults.NpcApbXlen,
     // 内部 AXI 数据宽度：默认随 XLEN，也可固定 32/64。
-    InternalBusWidthFollowCpu: Boolean = true,
+    InternalBusWidthFollowCPU: Boolean = true,
     InternalBusWidth: Int = KconfigDefaults.NpcInternalBusWidth,
     // 缓存
     ICacheEnable: Boolean = true,
@@ -104,10 +104,10 @@ case class ysyx_26030103_NPCConfig(
     // 会根据 Kconfig 对每一项显式赋值。
     SDBEnable: Boolean = true,
     DiffTestEnable: Boolean = true,
-    MTraceEnable: Boolean = true,
-    ITraceEnable: Boolean = true,
-    FTraceEnable: Boolean = true,
-    IRingBufEnable: Boolean = true,
+    MemoryTraceEnable: Boolean = true,
+    InstructionTraceEnable: Boolean = true,
+    FloatTraceEnable: Boolean = true,
+    InstructionRingBufferEnable: Boolean = true,
     DicArchCounterEnable: Boolean = true,
     // 性能计数器细分：仅在DicArchCounterEnable打开时有意义。关闭的组在顶层
     // 输出常量，未被读取的叶模块信号会被综合展平/常量传播优化掉，
@@ -134,7 +134,7 @@ case class ysyx_26030103_NPCConfig(
     PerfDicArchCounterMDUDetail: Boolean = true,
     PerfDicArchCounterQueue: Boolean = true,
     // 架构 PMU：Zicntr 基础计数器始终存在；Zihpm/Sscofpmf 由这里控制。
-    RiscvArchPMU: Boolean = false,
+    RISCVArchPMU: Boolean = false,
     RiscvArchPMUZihpm: Boolean = true,
     RiscvArchPMUSscofpmf: Boolean = true,
     // 单计数器选择：键名如"ifu_fetch"/"mdu_req"（与 typed JSON 一致）。实际
@@ -209,13 +209,13 @@ case class ysyx_26030103_NPCConfig(
     s"XLEN=64 的架构地址路径必须使用 64 位 AddressWidth，收到 $AddressWidth")
   // ysyxSoC 接口位宽独立于 CPU XLEN。FOLLOW_CPU=y 时 SOC_XLEN 只是
   // 保留值，不参与生效值计算；FOLLOW_CPU=n 时才要求它是 32 或 64。
-  require(SocXLENFollowCpu || SocXLEN == 32 || SocXLEN == 64,
+  require(SOCXLENFollowCPU || SocXLEN == 32 || SocXLEN == 64,
     "SOC_XLEN 只允许 32 或 64（SOC_XLEN_FOLLOW_CPU=n 时生效），" +
       s"收到 SOC_XLEN=$SocXLEN")
-  require(ApbXLENFollowSoc || ApbXLEN == 32 || ApbXLEN == 64,
+  require(APBXLENFollowSOC || ApbXLEN == 32 || ApbXLEN == 64,
     "APB_XLEN 只允许 32 或 64（APB_XLEN_FOLLOW_SOC=n 时生效），" +
       s"收到 APB_XLEN=$ApbXLEN")
-  require(InternalBusWidthFollowCpu ||
+  require(InternalBusWidthFollowCPU ||
     InternalBusWidth == 32 || InternalBusWidth == 64,
     "INTERNAL_BUS_WIDTH 只允许 32 或 64" +
       "（INTERNAL_BUS_WIDTH_FOLLOW_CPU=n 时生效），" +
@@ -226,11 +226,11 @@ case class ysyx_26030103_NPCConfig(
     * direct 目标会强制 SOC_XLEN_FOLLOW_CPU=n、SOC_XLEN=32 并在构建前检查；
     * 完整 SoC（SIM_TOP=SOC）不受该投影影响。
     */
-  final val EffectiveSocXLEN: Int = if (SocXLENFollowCpu) XLEN else SocXLEN
+  final val EffectiveSocXLEN: Int = if (SOCXLENFollowCPU) XLEN else SocXLEN
   final val EffectiveApbXLEN: Int =
-    if (ApbXLENFollowSoc) EffectiveSocXLEN else ApbXLEN
+    if (APBXLENFollowSOC) EffectiveSocXLEN else ApbXLEN
   final val EffectiveInternalBusWidth: Int =
-    if (InternalBusWidthFollowCpu) XLEN else InternalBusWidth
+    if (InternalBusWidthFollowCPU) XLEN else InternalBusWidth
   require(EffectiveApbXLEN == 32 || EffectiveApbXLEN == 64,
     s"APB 总线宽度只允许 32 或 64，收到 $EffectiveApbXLEN")
   require(EffectiveInternalBusWidth == 32 || EffectiveInternalBusWidth == 64,
@@ -570,14 +570,14 @@ case class ysyx_26030103_NPCConfig(
   final val EnableDynamicGPRDebug: Boolean = SDBEnable || DiffTestEnable
   final val EnableDynamicFPRDebug: Boolean = DiffTestEnable
   final val EnableRetireTrace: Boolean =
-    SDBEnable || DiffTestEnable || MTraceEnable || ITraceEnable ||
-      FTraceEnable || IRingBufEnable || DicArchCounterEnable
+    SDBEnable || DiffTestEnable || MemoryTraceEnable || InstructionTraceEnable ||
+      FloatTraceEnable || InstructionRingBufferEnable || DicArchCounterEnable
   // 性能统计也从注册后的 trap 事件计数，不能只保留 retire 事件。
   final val EnableTrapTrace: Boolean =
     SDBEnable || DiffTestEnable || DicArchCounterEnable
   final val EnableCSRTrace: Boolean = DiffTestEnable
   final val EnableMemoryTrace: Boolean =
-    SDBEnable || DiffTestEnable || MTraceEnable
+    SDBEnable || DiffTestEnable || MemoryTraceEnable
 
   // 性能计数器分组总开关。
   private val perfDicArchCounterGroupFlags: Map[String, Boolean] = Map(
@@ -738,9 +738,9 @@ case class ysyx_26030103_NPCConfig(
       s"idu_decode=${IDUDecodeMinimizer.Name}, " +
       s"addr_w=$AddressWidth, " +
       s"internal_bus_w=$EffectiveInternalBusWidth" +
-      s"${if (InternalBusWidthFollowCpu) "(follow)" else ""}, " +
-      s"soc_xlen=$EffectiveSocXLEN${if (SocXLENFollowCpu) "(follow)" else ""}, " +
-      s"apb_xlen=$EffectiveApbXLEN${if (ApbXLENFollowSoc) "(follow)" else ""}, " +
+      s"${if (InternalBusWidthFollowCPU) "(follow)" else ""}, " +
+      s"soc_xlen=$EffectiveSocXLEN${if (SOCXLENFollowCPU) "(follow)" else ""}, " +
+      s"apb_xlen=$EffectiveApbXLEN${if (APBXLENFollowSOC) "(follow)" else ""}, " +
       s"MDU=${MDUImpl.Name}, " +
       s"mul=${MULImpl.Name}/${mulParams.Encoding.Name}, " +
       s"mul_width=${mulParams.Width}, " +
@@ -760,7 +760,7 @@ case class ysyx_26030103_NPCConfig(
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
       s"RAS=${1 << RASBits}, observe=${onOff(EnableAnyObservability)}, " +
       s"gpr_debug=${onOff(EnableDynamicGPRDebug)}, dic_arch_counter=${onOff(DicArchCounterEnable)}, " +
-      s"riscv_arch_pmu=${onOff(RiscvArchPMU)}, " +
+      s"riscv_arch_pmu=${onOff(RISCVArchPMU)}, " +
       s"riscv_arch_pmu_zihpm=${onOff(RiscvArchPMUZihpm)}, " +
       s"riscv_arch_pmu_sscofpmf=${onOff(RiscvArchPMUSscofpmf)}, " +
       s"dic_arch_counter_events=${PerfDicArchCounterList}, " +

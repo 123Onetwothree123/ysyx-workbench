@@ -1,3 +1,0 @@
-`ifndef layers_ZeroPredictorGeometryHarness_Verification
-  `define layers_ZeroPredictorGeometryHarness_Verification
-`endif

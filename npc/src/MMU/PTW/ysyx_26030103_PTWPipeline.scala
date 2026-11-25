@@ -382,7 +382,7 @@ class ysyx_26030103_PTWPipeline(
     io.bus.request.bits.write := requestSlot.state === bWriteRequest
     io.bus.request.bits.data := Mux(requestSlot.state === bWriteRequest,
       requestSlot.job.data(31, 0), 0.U)
-    io.bus.request.bits.strb := Mux(requestSlot.state === bWriteRequest, "hf".U(4.W), 0.U)
+    io.bus.request.bits.strobe := Mux(requestSlot.state === bWriteRequest, "hf".U(4.W), 0.U)
   }
   when(io.bus.request.fire) {
     switch(requestSlot.state) {
@@ -535,11 +535,11 @@ class ysyx_26030103_PTWPipeline(
         Mux(resolveBusFault, busFaultCause, cause)
       context(resolveContext).response.tval := virtualAddress
       context(resolveContext).response.FillPTE := PTE
-      context(resolveContext).response.fillVirtualAddress := virtualAddress
+      context(resolveContext).response.FillVirtualAddress := virtualAddress
       context(resolveContext).response.FillASID := satpASID(context(resolveContext).satp)
-      context(resolveContext).response.fillLevel := fillLevelOf(level)
-      context(resolveContext).response.fillNapot := false.B
-      context(resolveContext).response.fillValid := !resolveBusFault &&
+      context(resolveContext).response.FillLevel := fillLevelOf(level)
+      context(resolveContext).response.FillNapot := false.B
+      context(resolveContext).response.FillValid := !resolveBusFault &&
         !leafFaultOf(PTE, privilege, access, sum, mxr) &&
         (fillSuperpage.B || level === (levels - 1).U)
     }.elsewhen(resolveBusFault || rawReservedFault(resolveRaw) ||
@@ -566,11 +566,11 @@ class ysyx_26030103_PTWPipeline(
         context(resolveContext).response.cause := cause
         context(resolveContext).response.tval := virtualAddress
         context(resolveContext).response.FillPTE := PTE
-        context(resolveContext).response.fillVirtualAddress := virtualAddress
+        context(resolveContext).response.FillVirtualAddress := virtualAddress
         context(resolveContext).response.FillASID := satpASID(context(resolveContext).satp)
-        context(resolveContext).response.fillLevel := fillLevelOf(level)
-        context(resolveContext).response.fillNapot := false.B
-        context(resolveContext).response.fillValid := !leafFault &&
+        context(resolveContext).response.FillLevel := fillLevelOf(level)
+        context(resolveContext).response.FillNapot := false.B
+        context(resolveContext).response.FillValid := !leafFault &&
           (fillSuperpage.B || level === (levels - 1).U)
       }
     }.otherwise {

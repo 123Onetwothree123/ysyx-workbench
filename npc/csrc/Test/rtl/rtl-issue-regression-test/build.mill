@@ -30,6 +30,7 @@ object `package` extends ScalaModule {
     workspaceRoot / "../../../../src/Common/ysyx_26030103_AtomicOp.scala",
     workspaceRoot / "../../../../src/Common/ysyx_26030103_EXUMessage.scala",
     workspaceRoot / "../../../../src/Common/ysyx_26030103_IFUMessage.scala",
+    workspaceRoot / "../../../../src/Common/ysyx_26030103_AXI5Lane.scala",
     workspaceRoot / "../../../../src/MMU",
     workspaceRoot / "../../../../src/config/ysyx_26030103_CacheStorage.scala",
     workspaceRoot / "../../../../src/config/ysyx_26030103_CoherenceMode.scala",

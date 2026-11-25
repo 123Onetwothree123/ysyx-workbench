@@ -29,7 +29,7 @@ trait ysyx_26030103_HardFloatFPUResponse {
   val responseFlags = RegInit(0.U(ysyx_26030103_FPUFlags.Width.W))
   val divActive = RegInit(false.B)
   val divAbandoned = RegInit(false.B)
-  val divStartedS = RegInit(false.B)
+  val ActiveDivIsSingle = RegInit(false.B)
 
   // FPU_PIPELINE=N：在响应边界插 N 级 valid/ready，反压沿 ready 回传。
   val responsePipe =
@@ -51,17 +51,17 @@ trait ysyx_26030103_HardFloatFPUResponse {
 
   when(divRequestFire) {
     divActive := true.B
-    divStartedS := fmtS
+    ActiveDivIsSingle := fmtS
     divAbandoned := false.B
   }
 
-  val divOutValid = Mux(divStartedS,
+  val divOutValid = Mux(ActiveDivIsSingle,
     divS.io.outValid_div || divS.io.outValid_sqrt,
     divD.io.outValid_div || divD.io.outValid_sqrt)
-  val divOutResult = Mux(divStartedS,
+  val divOutResult = Mux(ActiveDivIsSingle,
     boxF32(fNFromRecFN(expS, sigS, divS.io.out)),
     boxD(fNFromRecFN(expD, sigD, divD.io.out)))
-  val divOutFlags = Mux(divStartedS, divS.io.exceptionFlags,
+  val divOutFlags = Mux(ActiveDivIsSingle, divS.io.exceptionFlags,
     divD.io.exceptionFlags)
   when(divActive && divOutValid) {
     divActive := false.B

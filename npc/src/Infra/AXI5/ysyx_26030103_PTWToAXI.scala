@@ -182,7 +182,7 @@ class ysyx_26030103_PTWToAXI(
   io.AXIWrite.W.WDATA :=
     LaneWord(writeHead.data, writeHead.address, busWide)
   io.AXIWrite.W.WSTRB :=
-    LaneStrobe(writeHead.strb, writeHead.address, busWide)
+    LaneStrobe(writeHead.strobe, writeHead.address, busWide)
   io.AXIWrite.W.WLAST := true.B
   io.AXIWrite.B.BREADY := writeState === writeWait
 

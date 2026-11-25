@@ -62,8 +62,8 @@ trait ysyx_26030103_FudianFPUResult {
       Mux(fmtD, io.request.bits.rs1, io.request.bits.rs1(31, 0))
     }
 
-  private val mvToFPS = boxS(io.request.bits.rs1(31, 0))
-  private val mvToFPD = io.request.bits.rs1
+  private val MvToFPSingle = boxS(io.request.bits.rs1(31, 0))
+  private val MvToFPDouble = io.request.bits.rs1
 
 
   // 快速运算结果（组合），FDIV/FSQRT 走多周期状态机
@@ -171,7 +171,7 @@ trait ysyx_26030103_FudianFPUResult {
       fastFlags := 0.U
     }
     is(ysyx_26030103_FPUOp.FMvIntToFP) {
-      fastResult := Mux(fmtD, mvToFPD, mvToFPS)
+      fastResult := Mux(fmtD, MvToFPDouble, MvToFPSingle)
       fastFlags := 0.U
     }
     is(ysyx_26030103_FPUOp.FCvtFPToInt) {

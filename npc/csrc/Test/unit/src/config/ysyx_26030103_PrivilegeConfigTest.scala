@@ -85,7 +85,7 @@ class ysyx_26030103_PrivilegeConfigTest extends AnyFlatSpec with Matchers {
       "HAS_PMP" -> "y",
       "PMP_GRANULARITY_LOG2" -> "5"
     ))
-    p.PMPGranularity should be(5)
+    p.PMPGranularityLog2 should be(5)
   }
 
   it should "标准 Sv32/Sv39 几何始终接受超级页" in {

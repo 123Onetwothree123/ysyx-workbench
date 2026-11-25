@@ -18,8 +18,8 @@ private[exu] trait EXUPerf { this: ysyx_26030103_EXU =>
     )
 
     val perfALUEligible = activeCommit &&
-      !activeInst.MemoryValid && !ActiveIsMDU && !activeInst.IsCSRrw &&
-      !activeInst.IsCSRrs && !activeInst.IsCSRrc && !activeInst.IsBranch && !activeInst.IsJal &&
+      !activeInst.MemoryValid && !ActiveIsMDU && !activeInst.IsCSRRW &&
+      !activeInst.IsCSRRS && !activeInst.IsCSRRC && !activeInst.IsBranch && !activeInst.IsJal &&
       !activeInst.IsJalr && !activeInst.IsEcall && !activeInst.IsEbreak &&
       !activeInst.IsMret && !activeInst.IsSimHalt && !activeInst.IsFence &&
       !activeInst.IsFenceI && !activeInst.ExceptionValid
@@ -33,7 +33,7 @@ private[exu] trait EXUPerf { this: ysyx_26030103_EXU =>
           activeInst.MemoryValid,
           2.U,
           Mux(
-            activeInst.IsCSRrw || activeInst.IsCSRrs || activeInst.IsCSRrc,
+            activeInst.IsCSRRW || activeInst.IsCSRRS || activeInst.IsCSRRC,
             3.U,
             Mux(
               activeInst.IsJal,
@@ -51,14 +51,14 @@ private[exu] trait EXUPerf { this: ysyx_26030103_EXU =>
     // 类型电平用于活跃周期统计：PendingMDU 时 io.in.bits 可能已是被反压的年轻指令，
     // 必须和输出数据一样用 activeInst，否则会把 MDU 等待周期错记到年轻 ALU/MEM/CSR/branch。
     val ActiveALUClass =
-      !activeInst.MemoryValid && !ActiveIsMDU && !activeInst.IsCSRrw &&
-        !activeInst.IsCSRrs && !activeInst.IsCSRrc && !activeInst.IsBranch && !activeInst.IsJal &&
+      !activeInst.MemoryValid && !ActiveIsMDU && !activeInst.IsCSRRW &&
+        !activeInst.IsCSRRS && !activeInst.IsCSRRC && !activeInst.IsBranch && !activeInst.IsJal &&
         !activeInst.IsJalr && !activeInst.IsEcall && !activeInst.IsEbreak &&
         !activeInst.IsMret && !activeInst.IsSimHalt && !activeInst.IsFence &&
         !activeInst.IsFenceI && !activeInstructionTrapValid
     io.PerfALUOp := ActiveALUClass
     io.PerfMemOp := activeInst.MemoryValid && !activeInstructionTrapValid
-    io.PerfCSROp := activeInst.IsCSRrw || activeInst.IsCSRrs || activeInst.IsCSRrc
+    io.PerfCSROp := activeInst.IsCSRRW || activeInst.IsCSRRS || activeInst.IsCSRRC
     io.PerfBranchOp := activeInst.IsBranch || activeInst.IsJal || activeInst.IsJalr
     io.PerfJalOp := activeInst.IsJal
     io.PerfJalrOp := activeInst.IsJalr
@@ -78,10 +78,10 @@ private[exu] trait EXUPerf { this: ysyx_26030103_EXU =>
     io.PerfSystemOp := activeInst.IsEcall || activeInst.IsEbreak ||
       activeInst.IsMret || activeInst.IsSret || activeInst.IsSfenceVma
     io.PerfInterruptTaken := CSRUnit.io.IRQCommit
-    io.PerfCSRRead := activeInst.IsCSRrw || activeInst.IsCSRrs ||
-      activeInst.IsCSRrc
-    io.PerfCSRWrite := activeInst.IsCSRrw ||
-      ((activeInst.IsCSRrs || activeInst.IsCSRrc) && activeInst.Rs1 =/= 0.U)
+    io.PerfCSRRead := activeInst.IsCSRRW || activeInst.IsCSRRS ||
+      activeInst.IsCSRRC
+    io.PerfCSRWrite := activeInst.IsCSRRW ||
+      ((activeInst.IsCSRRS || activeInst.IsCSRRC) && activeInst.Rs1 =/= 0.U)
     io.PerfRedirectBranch := instructionCommit && mispredict
     io.PerfRedirectFenceI := instructionCommit &&
       (inst.IsFenceI || (if (hasS) inst.IsSfenceVma else false.B))
@@ -102,7 +102,7 @@ private[exu] trait EXUPerf { this: ysyx_26030103_EXU =>
     io.PerfFPUException := FPResponseFire && FPResponseBits.fflags =/= 0.U
     io.PerfCSRIllegal :=
       CSRUnit.io.TrapCommit && CSRUnit.io.CommittedCause === 2.U &&
-        (activeInst.IsCSRrw || activeInst.IsCSRrs || activeInst.IsCSRrc)
+        (activeInst.IsCSRRW || activeInst.IsCSRRS || activeInst.IsCSRRC)
     io.PerfIRQPending := CSRUnit.io.IRQPending
     io.PerfDivIterations := MDUPerfDivIterations
     io.PerfDivEarlyOut := MDUPerfDivEarlyOut

@@ -15,7 +15,7 @@ class ysyx_26030103_IDU(
   private val XLEN = config.XLEN
   private val useF = config.UseF
   private val useD = config.UseD
-  private val pmuZihpm = config.RiscvArchPMU && config.RiscvArchPMUZihpm
+  private val pmuZihpm = config.RISCVArchPMU && config.RiscvArchPMUZihpm
   private val pmuSscofpmf = pmuZihpm && config.RiscvArchPMUSscofpmf
   private val pmuCounterCount =
     _root_.ysyx_26030103.common.ysyx_26030103_PMUEventID.CounterCount
@@ -459,13 +459,13 @@ class ysyx_26030103_IDU(
     if (useF) Seq(0x001, 0x002, 0x003) else Seq.empty
   // envcfg 系列只作为 WARL 只读零 CSR 暴露，地址存在性与 CSR 模块保持
   // 一致：menvcfg/senvcfg 随 HAS_S，mstatush/menvcfgh 只有 RV32。
-  private val envcfgFamilyAddresses: Seq[Int] =
+  private val EnvcfgFamilyAddresses: Seq[Int] =
     _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
-      .envcfgCSRAddresses(XLEN).toSeq
+      .EnvcfgFamilyCSRAddresses(XLEN).toSeq
   private val envcfgAddresses: Seq[Int] =
-    envcfgFamilyAddresses.filter(a => config.MMU.csrSupported(a))
+    EnvcfgFamilyAddresses.filter(a => config.MMU.csrSupported(a))
   private val CSRAddresses = (
-    config.MMU.CSREnabled.toSeq.filterNot(envcfgFamilyAddresses.contains) ++
+    config.MMU.CSREnabled.toSeq.filterNot(EnvcfgFamilyAddresses.contains) ++
       // identity CSR 始终实现，不依赖 CSR_ENABLED 是否列出。
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
         .IdentityCSRAddresses.toSeq ++
@@ -766,9 +766,9 @@ class ysyx_26030103_IDU(
   io.out.bits.StoreData := storeDataSource
   io.out.bits.IsAtomic := isAtomic
   io.out.bits.AtomicOp := atomicOp
-  io.out.bits.IsCSRrw := isCSRrw
-  io.out.bits.IsCSRrs := isCSRrs
-  io.out.bits.IsCSRrc := isCSRrc
+  io.out.bits.IsCSRRW := isCSRrw
+  io.out.bits.IsCSRRS := isCSRrs
+  io.out.bits.IsCSRRC := isCSRrc
   io.out.bits.IsEcall := isEcall
   io.out.bits.IsEbreak := isEbreak
   io.out.bits.IsSimHalt := isSimHalt

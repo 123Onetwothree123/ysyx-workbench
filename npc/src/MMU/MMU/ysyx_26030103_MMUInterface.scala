@@ -57,7 +57,7 @@ class ysyx_26030103_PTEBusRequest(val AddressWidth: Int = 32) extends Bundle {
   val address = UInt(AddressWidth.W)
   val write = Bool()
   val data = UInt(32.W)
-  val strb = UInt(4.W)
+  val strobe = UInt(4.W)
 }
 
 class ysyx_26030103_PTEBusResponse extends Bundle {

@@ -44,9 +44,9 @@ class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
   val IsAtomic = Bool()
   val AtomicOp = UInt(ysyx_26030103_AtomicOp.Width.W)
 
-  val IsCSRrw = Bool()
-  val IsCSRrs = Bool()
-  val IsCSRrc = Bool()
+  val IsCSRRW = Bool()
+  val IsCSRRS = Bool()
+  val IsCSRRC = Bool()
   val IsEcall = Bool()
   val IsEbreak = Bool()
   // 仿真环境专用的终止请求。它使用 custom-0 空间中的保留编码，和会
