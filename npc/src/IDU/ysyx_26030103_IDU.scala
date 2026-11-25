@@ -457,8 +457,15 @@ class ysyx_26030103_IDU(
   // 是否实现由 RISCV_F 决定，不依赖 MMU profile 的整数 CSR 集合。
   private val FPCSRAddresses =
     if (useF) Seq(0x001, 0x002, 0x003) else Seq.empty
+  // envcfg 系列只作为 WARL 只读零 CSR 暴露，地址存在性与 CSR 模块保持
+  // 一致：menvcfg 随 S 模式，menvcfgh 只有 RV32，senvcfg 随 U 模式。
+  private val envcfgFamilyAddresses: Seq[Int] = Seq(0x30a, 0x31a, 0x10a)
+  private val envcfgAddresses: Seq[Int] =
+    (if (hasS) Seq(0x30a) else Seq.empty) ++
+      (if (XLEN == 32) Seq(0x31a) else Seq.empty) ++
+      (if (hasU) Seq(0x10a) else Seq.empty)
   private val CSRAddresses = (
-    config.MMU.CSREnabled.toSeq ++
+    config.MMU.CSREnabled.toSeq.filterNot(envcfgFamilyAddresses.contains) ++
       // identity CSR 始终实现，不依赖 CSR_ENABLED 是否列出。
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
         .IdentityCSRAddresses.toSeq ++
@@ -471,6 +478,7 @@ class ysyx_26030103_IDU(
   ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a) ||
     FPCSRAddresses.contains(a) || pmuMachineAddresses.contains(a))
     .distinct.sorted ++
+    envcfgAddresses ++
     // 本核不实现调试触发器，但把触发相关 CSR 硬连为只读零而不是
     // 非法指令。软件（如 riscv-tests/breakpoint.S）通过写入后读回
     // 判断能力；非法陷入会让“未实现即跳过”的探测路径误判失败。

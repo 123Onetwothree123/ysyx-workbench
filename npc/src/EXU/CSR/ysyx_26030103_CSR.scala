@@ -212,6 +212,9 @@ class ysyx_26030103_CSR(
   val CSRMinstreth = 0xb82.U(12.W)
   val CSRMisa = 0x301.U(12.W)
   val CSRMtval = 0x343.U(12.W)
+  val CSRMenvcfg = 0x30a.U(12.W)
+  val CSRMenvcfgh = 0x31a.U(12.W)
+  val CSRSenvcfg = 0x10a.U(12.W)
   val CSRMcounteren = 0x306.U(12.W)
   val CSRMcountinhibit = 0x320.U(12.W)
   val CSRScountovf = 0xda0.U(12.W)
@@ -250,8 +253,17 @@ class ysyx_26030103_CSR(
     else Seq(0xc00, 0xc01, 0xc02)
   private val userCounterAddresses =
     baseUserCounterAddresses ++ pmuUserAddresses
+  // envcfg 系列：本实现不支持任何 envcfg 字段（没有 Zicbom/Zicboz/
+  // PBMTE/FIOM 等），按规范作为 WARL 只读零 CSR 暴露：读返回 0，
+  // 写被忽略且不产生非法指令。menvcfg 随 S 模式存在；menvcfgh 只有
+  // RV32 才需要承载高 32 位；senvcfg 随 U 模式存在。
+  private val envcfgFamilyAddresses: Seq[Int] = Seq(0x30a, 0x31a, 0x10a)
+  private val envcfgAddresses: Seq[Int] =
+    (if (hasS) Seq(0x30a) else Seq.empty) ++
+      (if (XLEN == 32) Seq(0x31a) else Seq.empty) ++
+      (if (hasU) Seq(0x10a) else Seq.empty)
   private val EnabledCSRAddresses = (
-    profile.CSREnabled.toSeq ++
+    profile.CSREnabled.toSeq.filterNot(envcfgFamilyAddresses.contains) ++
       // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
       _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
         .IdentityCSRAddresses.toSeq ++
@@ -265,6 +277,7 @@ class ysyx_26030103_CSR(
   ).filter(a => profile.csrSupported(a) || FPCSRAddresses.contains(a) ||
     userCounterAddresses.contains(a) || pmuMachineAddresses.contains(a))
     .distinct.sorted ++
+    envcfgAddresses ++
     // 不实现调试触发器：tselect/tdata*/tcontrol 等地址读回零、写被
     // 忽略，作为合法的只读零 CSR 暴露给软件。
     (0x7a0 to 0x7af)
@@ -1118,6 +1131,10 @@ class ysyx_26030103_CSR(
   addCSR(CSRMtval, mtval, csrOn(0x343))
   addCSR(CSRMcounteren, widen32(mcounteren), csrOn(0x306))
   addCSR(CSRMcountinhibit, widen32(mcountinhibit), csrOn(0x320))
+  // envcfg 系列没有实现任何字段，读值恒为 0；写入不落到任何寄存器。
+  addCSR(CSRMenvcfg, 0.U(XLEN.W), envcfgAddresses.contains(0x30a))
+  addCSR(CSRMenvcfgh, 0.U(XLEN.W), envcfgAddresses.contains(0x31a))
+  addCSR(CSRSenvcfg, 0.U(XLEN.W), envcfgAddresses.contains(0x10a))
   pmuOpt.foreach { pmu =>
     for (index <- 0 until pmuCounterCount) {
       addCSR((0xb03 + index).U(12.W), pmu.io.readData, enabled = true)
