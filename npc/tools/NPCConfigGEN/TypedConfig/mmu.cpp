@@ -170,6 +170,9 @@ void addMMU(TypedFields &root, const Config &values, long long xlen)
              TypedJson::boolean(flatBool(values, "HAS_PMP")));
     addField(mmu, "pmp_entries",
              TypedJson::integer(flatInt(values, "PMP_ENTRIES", 16)));
+    addField(mmu, "pmp_granularity",
+             TypedJson::integer(
+                 flatInt(values, "PMP_GRANULARITY_LOG2", 6)));
     TypedFields tlbKconfig;
     for (const auto &[key, value] : values) {
         const bool rawTLB =

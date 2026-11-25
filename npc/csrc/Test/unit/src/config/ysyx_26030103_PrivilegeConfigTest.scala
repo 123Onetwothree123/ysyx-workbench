@@ -56,15 +56,36 @@ class ysyx_26030103_PrivilegeConfigTest extends AnyFlatSpec with Matchers {
     p.hasU should be(false)
   }
 
-  it should "RV32/RV64 都实现 menvcfg，RV32 另实现 mstatush/menvcfgh" in {
+  it should "RV32/RV64 都实现 menvcfg/senvcfg，RV32 另实现 mstatush/menvcfgh" in {
     val p32 = ysyx_26030103_MMUProfile.fromEnv(env(), xlen = 32)
     p32.csrSupported(0x30a) should be(true)
     p32.csrSupported(0x310) should be(true)
     p32.csrSupported(0x31a) should be(true)
+    p32.csrSupported(0x10a) should be(true)
     val p64 = ysyx_26030103_MMUProfile.fromEnv(env(), xlen = 64)
     p64.csrSupported(0x30a) should be(true)
     p64.csrSupported(0x310) should be(false)
     p64.csrSupported(0x31a) should be(false)
+    p64.csrSupported(0x10a) should be(true)
+  }
+
+  it should "M-only 配置不暴露 envcfg 系列" in {
+    val p = ysyx_26030103_MMUProfile.fromEnv(env(
+      "HAS_S" -> "n",
+      "HAS_U" -> "n"
+    ))
+    p.csrSupported(0x30a) should be(false)
+    p.csrSupported(0x10a) should be(false)
+    p.csrSupported(0x310) should be(true)
+    p.csrSupported(0x31a) should be(false)
+  }
+
+  it should "从 PMP_GRANULARITY_LOG2 读取 PMP 粒度" in {
+    val p = ysyx_26030103_MMUProfile.fromEnv(env(
+      "HAS_PMP" -> "y",
+      "PMP_GRANULARITY_LOG2" -> "5"
+    ))
+    p.PMPGranularity should be(5)
   }
 
   it should "标准 Sv32/Sv39 几何始终接受超级页" in {

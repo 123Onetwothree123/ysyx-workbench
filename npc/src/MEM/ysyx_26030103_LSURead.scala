@@ -9,16 +9,9 @@ private[mem] trait LSURead {
 
   def readRequestBody(): Unit = {
     if (DCacheEnable) {
+      // DCache 使能时所有 load 都由 DCache 受理，LSU 不直接发 AXI 读。
       when(dataCacheRequestActive) {
         when(DCache.io.request.fire) { state := stateReadResponse }
-      }.otherwise {
-        io.DataBus.AR.ARVALID := true.B
-        io.DataBus.AR.ARADDR := addressOf(activeInstruction.ALUResult)
-        io.DataBus.AR.ARLEN :=
-          Mux(readIsWide && !busWideBit, 1.U, 0.U)
-        io.DataBus.AR.ARSIZE :=
-          Mux(readIsWide && busWideBit, 3.U, AXISize)
-        when(io.DataBus.AR.ARREADY) { state := stateReadResponse }
       }
     } else {
       io.DataBus.AR.ARVALID := true.B
@@ -46,34 +39,6 @@ private[mem] trait LSURead {
           transactionComplete := true.B
           transactionFault := DCache.io.response.bits.fault
           state := stateIdle
-        }
-      }.otherwise {
-        io.DataBus.R.RREADY := true.B
-        when(io.DataBus.R.RVALID) {
-          when(io.DataBus.R.RRESP =/= 0.U) {
-            accessFaultReg := true.B
-            accessFaultResponseReg := io.DataBus.R.RRESP
-          }.otherwise {
-            loadDataReg := directLoadData
-          }
-          when(io.DataBus.R.RLAST) {
-            loadForwardValid := true.B
-            loadForwardData := directLoadData
-            loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            transactionComplete := true.B
-            transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            state := stateIdle
-          }.otherwise {
-            // 该请求是单拍AXI读，因此不带RLAST的响应属于协议错误。应继续消费
-            // 此通道，直到违规突发传输排空，而不是提前退休。
-            accessFaultReg := true.B
-            accessFaultResponseReg := Mux(
-              io.DataBus.R.RRESP =/= 0.U,
-              io.DataBus.R.RRESP,
-              2.U
-            )
-            state := stateReadDrain
-          }
         }
       }
     } else {

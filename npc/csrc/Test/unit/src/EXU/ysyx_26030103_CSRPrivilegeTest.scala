@@ -678,9 +678,9 @@ class ysyx_26030103_CSRPrivilegeTest extends AnyFlatSpec with Matchers {
   it should "menvcfg/mstatush/menvcfgh 可写且读回 0" in {
     simulate(new ysyx_26030103_CSRHarness) { dut =>
       setup(dut)
-      Seq(0x30a, 0x310, 0x31a).foreach { addr =>
-        write(dut, addr, BigInt("ffffffff", 16))
-        read(dut, addr) should be(BigInt(0))
+      Seq(0x30a, 0x310, 0x31a, 0x10a).foreach { address =>
+        write(dut, address, BigInt("ffffffff", 16))
+        read(dut, address) should be(BigInt(0))
       }
     }
   }

@@ -215,6 +215,7 @@ class ysyx_26030103_CSR(
   val CSRMenvcfg = 0x30a.U(12.W)
   val CSRMenvcfgh = 0x31a.U(12.W)
   val CSRSenvcfg = 0x10a.U(12.W)
+  val CSRMstatush = 0x310.U(12.W)
   val CSRMcounteren = 0x306.U(12.W)
   val CSRMcountinhibit = 0x320.U(12.W)
   val CSRScountovf = 0xda0.U(12.W)
@@ -255,13 +256,13 @@ class ysyx_26030103_CSR(
     baseUserCounterAddresses ++ pmuUserAddresses
   // envcfg 系列：本实现不支持任何 envcfg 字段（没有 Zicbom/Zicboz/
   // PBMTE/FIOM 等），按规范作为 WARL 只读零 CSR 暴露：读返回 0，
-  // 写被忽略且不产生非法指令。menvcfg 随 S 模式存在；menvcfgh 只有
-  // RV32 才需要承载高 32 位；senvcfg 随 U 模式存在。
-  private val envcfgFamilyAddresses: Seq[Int] = Seq(0x30a, 0x31a, 0x10a)
+  // 写被忽略且不产生非法指令。menvcfg(0x30a)/senvcfg(0x10a) 随 HAS_S
+  // 存在；mstatush(0x310)/menvcfgh(0x31a) 只有 RV32 存在。
+  private val envcfgFamilyAddresses: Seq[Int] =
+    _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+      .envcfgCSRAddresses(XLEN).toSeq
   private val envcfgAddresses: Seq[Int] =
-    (if (hasS) Seq(0x30a) else Seq.empty) ++
-      (if (XLEN == 32) Seq(0x31a) else Seq.empty) ++
-      (if (hasU) Seq(0x10a) else Seq.empty)
+    envcfgFamilyAddresses.filter(a => profile.csrSupported(a))
   private val EnabledCSRAddresses = (
     profile.CSREnabled.toSeq.filterNot(envcfgFamilyAddresses.contains) ++
       // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
@@ -1135,6 +1136,7 @@ class ysyx_26030103_CSR(
   addCSR(CSRMenvcfg, 0.U(XLEN.W), envcfgAddresses.contains(0x30a))
   addCSR(CSRMenvcfgh, 0.U(XLEN.W), envcfgAddresses.contains(0x31a))
   addCSR(CSRSenvcfg, 0.U(XLEN.W), envcfgAddresses.contains(0x10a))
+  addCSR(CSRMstatush, 0.U(XLEN.W), XLEN == 32)
   pmuOpt.foreach { pmu =>
     for (index <- 0 until pmuCounterCount) {
       addCSR((0xb03 + index).U(12.W), pmu.io.readData, enabled = true)

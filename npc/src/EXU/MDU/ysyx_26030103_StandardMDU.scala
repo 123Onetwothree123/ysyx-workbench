@@ -20,8 +20,8 @@ class ysyx_26030103_StandardMDU(
   private val ownerTail = RegInit(0.U(ownerPointerWidth.W))
   private val ownerCount = RegInit(0.U(ownerCountWidth.W))
   private val ownerValid = ownerCount =/= 0.U
-  private val headIsMUL =
-    if (ownerDepth == 1) ownerIsMULQueue(0) else ownerIsMULQueue(ownerHead)
+  // MDUMaxInflight 至少为 2（MUL 在途槽位 + DIV 一项），无需 1 项 FIFO 特判。
+  private val headIsMUL = ownerIsMULQueue(ownerHead)
   val request = io.Request.bits
   val isMULRequest = request.MDUOp <= ysyx_26030103_MDUOp.MULHU
   val isDIVRequest = !isMULRequest
@@ -113,11 +113,7 @@ class ysyx_26030103_StandardMDU(
     ownerCount := 0.U
   }.elsewhen(requestFire || responseFire) {
     when(requestFire) {
-      if (ownerDepth == 1) {
-        ownerIsMULQueue(0) := isMULRequest
-      } else {
-        ownerIsMULQueue(ownerTail) := isMULRequest
-      }
+      ownerIsMULQueue(ownerTail) := isMULRequest
       ownerTail := nextOwnerTail
     }
     when(responseFire) {

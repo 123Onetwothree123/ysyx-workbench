@@ -282,16 +282,49 @@ object ysyx_26030103_JsonConfig {
             case _                     => Some("ISA_" + joined(tail))
           }
         case "fpu"       => Some("FPU_" + joined(tail))
-        case "MDU"       => Some(joined(tail))
+        case "mdu" =>
+          tail.mkString(".") match {
+            case "impl"           => Some("MDU_IMPL")
+            case "mul_impl"       => Some("MUL_IMPL")
+            case "div_impl"       => Some("DIV_IMPL")
+            case "mul_encoding"   => Some("MUL_ENCODING")
+            case "mul_width"      => Some("MUL_WIDTH")
+            case "mul_radix"      => Some("MUL_RADIX")
+            case "mul_iter_bits"  => Some("MUL_ITER_BITS")
+            case "mul_split"      => Some("MUL_SPLIT")
+            case "mul_early_out"  => Some("MUL_EARLY_OUT")
+            case "mul_pipeline"   => Some("MUL_PIPELINE")
+            case "div_radix"      => Some("DIV_RADIX")
+            case "div_iter_bits"  => Some("DIV_ITER_BITS")
+            case "div_early_out"  => Some("DIV_EARLY_OUT")
+            case value if value.startsWith("mul_compressor.") =>
+              Some("MUL_COMPRESSOR_" +
+                joined(value.stripPrefix("mul_compressor.").split('.').toSeq))
+            case value if value.startsWith("mul.shift_add.") =>
+              Some("MUL_" +
+                joined(value.stripPrefix("mul.shift_add.").split('.').toSeq))
+            case value if value.startsWith("mul.compression.compressor.") =>
+              Some("MUL_COMPRESSOR_" + joined(
+                value.stripPrefix("mul.compression.compressor.").split('.').toSeq))
+            case value if value == "mul.compression.pipeline" =>
+              Some("MUL_PIPELINE")
+            case value if value.startsWith("mul.") =>
+              Some("MUL_" + joined(value.stripPrefix("mul.").split('.').toSeq))
+            case value if value.startsWith("div.") =>
+              Some("DIV_" + joined(value.stripPrefix("div.").split('.').toSeq))
+            case value if value.startsWith("rocket.") =>
+              Some("ROCKET_" + joined(value.stripPrefix("rocket.").split('.').toSeq))
+            case _ => Some("MDU_" + joined(tail))
+          }
         case "frontend"  => Some(joined(tail))
-        case "CSR"       => Some("CSR_" + joined(tail))
+        case "csr"       => Some("CSR_" + joined(tail))
         case "interrupt" =>
           tail.mkString(".") match {
             case "timer_path"      => Some("TIMER_PATH")
             case "s_timer_irq"     => Some("HAS_S_TIMER_IRQ")
             case "s_external_irq"  => Some("HAS_S_EXTERNAL_IRQ")
-            case value if value.startsWith("PLIC.") =>
-              Some("PLIC_" + joined(value.stripPrefix("PLIC.").split('.').toSeq))
+            case value if value.startsWith("plic.") =>
+              Some("PLIC_" + joined(value.stripPrefix("plic.").split('.').toSeq))
             case _ => Some("INTERRUPT_" + joined(tail))
           }
         case "debug" =>
@@ -366,14 +399,14 @@ object ysyx_26030103_JsonConfig {
             case "index_bits"      => Some("CACHE_INDEX_BITS")
             case "wbuf_depth"      => Some("WBUF_DEPTH")
             case "dma_coherence"   => Some("DMA_COHERENCE")
-            case value if value == "ICache.enabled" => Some("ICACHE")
-            case value if value.startsWith("ICache.") =>
+            case value if value == "icache.enabled" => Some("ICACHE")
+            case value if value.startsWith("icache.") =>
               Some("ICACHE_" +
-                upper(value.stripPrefix("ICache.").replace('.', '_')))
-            case value if value == "DCache.enabled" => Some("DCACHE")
-            case value if value.startsWith("DCache.") =>
+                upper(value.stripPrefix("icache.").replace('.', '_')))
+            case value if value == "dcache.enabled" => Some("DCACHE")
+            case value if value.startsWith("dcache.") =>
               Some("DCACHE_" +
-                upper(value.stripPrefix("DCache.").replace('.', '_')))
+                upper(value.stripPrefix("dcache.").replace('.', '_')))
             case _ => Some("CACHE_" + joined(tail))
           }
         case "mmu" =>
@@ -381,6 +414,7 @@ object ysyx_26030103_JsonConfig {
             case "utlb_lookup_ports" => Some("UTLB_LOOKUP_PORTS")
             case "pmp_enabled"       => Some("HAS_PMP")
             case "pmp_entries"       => Some("PMP_ENTRIES")
+            case "pmp_granularity"   => Some("PMP_GRANULARITY_LOG2")
             case value if value.startsWith("kconfig.") =>
               Some(joined(value.stripPrefix("kconfig.").split('.').toSeq))
             case _ => Some("MMU_" + joined(tail))

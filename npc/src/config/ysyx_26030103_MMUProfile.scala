@@ -241,7 +241,7 @@ case class ysyx_26030103_MMUProfile(
   require(PMPEntries >= 0 && PMPEntries <= 16, "PMP_ENTRIES 必须在 0..16")
   require(!PMPEnabled || PMPEntries > 0, "HAS_PMP=y 时 PMP_ENTRIES 必须 > 0")
   require(PMPGranularity >= 2 && PMPGranularity <= 30,
-    s"PMP_GRANULARITY=$PMPGranularity 必须在 2..30")
+    s"PMP_GRANULARITY_LOG2=$PMPGranularity 必须在 2..30")
   // PMP 不再依赖 MMU：无 MMU 时直接检查 IFU 物理取指地址和 LSU 的 VA==PA
   // 访存地址；有 MMU 时仍检查翻译后的物理地址。
 
@@ -261,7 +261,12 @@ case class ysyx_26030103_MMUProfile(
       xlen == 64 && (address == 0xb80 || address == 0xb82 ||
         address == 0xc80 || address == 0xc81 || address == 0xc82)
     // HAS_U=n 时 U 级 CSR 一并从实现集合裁剪；HAS_S=n 时裁剪 S 级 CSR。
+    // envcfg 中 menvcfg/menvcfgh/senvcfg 属于 S 模式扩展，M-only 时不暴露；
+    // mstatush 是 RV32 的 M 级寄存器，不受 HAS_S 影响。
+    val envcfgAddressRequiresS =
+      address == 0x30a || address == 0x31a || address == 0x10a
     !highHalfCounter &&
+      (!envcfgAddressRequiresS || hasS) &&
       ((hasU || !uLevel) && (hasS || (!sLevel && !sControl))) &&
       (CSREnabled.contains(address) ||
         ysyx_26030103_MMUProfile.envcfgCSRAddresses(xlen).contains(address) ||
@@ -444,11 +449,12 @@ object ysyx_26030103_MMUProfile {
 
   /** 环境配置 CSR 固定实现为 WARL 0。
     *
-    * menvcfg 始终存在；mstatush/menvcfgh 只在 RV32 存在。软件写这些寄存器
-    * 必须合法，读回 0 即 Svade/无 PBMT 的语义。
+    * menvcfg(0x30a)/senvcfg(0x10a) 属于 S 模式扩展，随 HAS_S 存在；
+    * mstatush(0x310)/menvcfgh(0x31a) 只在 RV32 存在。
+    * csrSupported 会再按地址编码裁剪 U/S 特权级。
     */
   def envcfgCSRAddresses(xlen: Int): Set[Int] =
-    if (xlen == 32) Set(0x30a, 0x310, 0x31a) else Set(0x30a)
+    if (xlen == 32) Set(0x30a, 0x310, 0x31a, 0x10a) else Set(0x30a, 0x10a)
 
   // 配置生成器未显式给出 CSR 集合时的标准实现集合。
   val DefaultCSRAddresses: Set[Int] = Set(
@@ -663,6 +669,8 @@ object ysyx_26030103_MMUProfile {
       CSRMissingMode = envString(env, "CSR_MISSING_MODE", "illegal"),
       PMPEnabled = envBool(env, "HAS_PMP", false),
       PMPEntries = envInt(env, "PMP_ENTRIES", KconfigDefaults.MMUPMPEntries),
+      PMPGranularity =
+        envInt(env, "PMP_GRANULARITY_LOG2", KconfigDefaults.MMUPMPGranularity),
       CSREnabled = envAddressSet(env, "CSR_ENABLED", DefaultCSRAddresses) ++
         IdentityCSRAddresses ++ envcfgCSRAddresses(xlen)
     )

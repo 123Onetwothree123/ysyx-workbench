@@ -334,6 +334,19 @@ std::vector<std::string> validate_config(const Config& values,
     err("MMU_LEVELS=" + std::to_string(levels) +
         " 非法：当前 RTL fillLevel 只支持 1..8 级");
   }
+  if (as_bool(values, "HAS_PMP", false)) {
+    const long long pmp_entries = as_int(values, "PMP_ENTRIES", 16);
+    if (pmp_entries < 1 || pmp_entries > 16) {
+      err("PMP_ENTRIES=" + std::to_string(pmp_entries) +
+          " 非法：必须在 1..16");
+    }
+    const long long pmp_granularity =
+        as_int(values, "PMP_GRANULARITY_LOG2", 6);
+    if (pmp_granularity < 2 || pmp_granularity > 30) {
+      err("PMP_GRANULARITY_LOG2=" + std::to_string(pmp_granularity) +
+          " 非法：必须在 2..30");
+    }
+  }
   const long long pte_size =
       as_int(values, "MMU_PTE_SIZE_BYTES", xlen == 64 ? 8 : 4);
   if (pte_size <= 0 || !is_power_of_two(pte_size)) {

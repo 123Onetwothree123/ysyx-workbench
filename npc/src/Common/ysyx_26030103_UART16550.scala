@@ -18,12 +18,14 @@ class ysyx_26030103_UART16550(
     // 移位器“发送”一个字节的仿真周期，决定 LSR.TEMT 何时恢复。
     val TxShiftCycles: Int = ysyx_26030103_KconfigDefaults.UartTxShiftCycles
 ) extends Module {
-  require(Depth >= 1 && Depth <= 256, "UART RX FIFO 深度必须在 1..256")
+  private val offsetBits = 3
+
+  require(Depth >= 1, "UART RX FIFO 深度必须 >= 1")
+  require(AddressWidth >= offsetBits,
+    s"UART AddressWidth=$AddressWidth 必须 >= $offsetBits（16550 寄存器偏移位宽）")
   require(TxHoldCycles >= 1, "UART TxHoldCycles 必须 >= 1")
   require(TxShiftCycles >= TxHoldCycles,
     "UART TxShiftCycles 必须不小于 TxHoldCycles")
-
-  private val offsetBits = 3
 
   val io = IO(new Bundle {
     // 仿真注入的串行接收字节。

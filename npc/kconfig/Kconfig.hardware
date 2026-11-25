@@ -1100,11 +1100,15 @@ menu "CPU 与平台"
       int "UART 仿真 FIFO 深度"
       default 64
       range 1 1024
+      help
+        RX/FIFO 深度上限由综合资源决定；模型本身接受 Kconfig 允许的 1..1024。
 
     config UART_ADDR_WIDTH
       int "UART 仿真寄存器地址位宽"
       default 5
-      range 1 16
+      range 3 16
+      help
+        16550 寄存器偏移至少需要 3 位；更宽的地址只使用低 3 位。
 
     config UART_TX_HOLD_CYCLES
       int "UART TX 每字节保持周期"
@@ -1211,6 +1215,15 @@ menu "CPU 与平台"
         default 16
         range 1 16
         depends on HAS_PMP
+
+      config PMP_GRANULARITY_LOG2
+        int "PMP 粒度 G（log2 字节）"
+        default 6
+        range 2 30
+        depends on HAS_PMP
+        help
+          pmpaddr 的低 G-2 位读回为 0；NAPOT 最小可寻址区域为 2^G 字节。
+          默认 6 表示 64 字节粒度，与 NEMU 参考模型一致。
 
     endmenu
     menu "CSR 与字段行为"

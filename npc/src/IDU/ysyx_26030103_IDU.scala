@@ -458,12 +458,12 @@ class ysyx_26030103_IDU(
   private val FPCSRAddresses =
     if (useF) Seq(0x001, 0x002, 0x003) else Seq.empty
   // envcfg 系列只作为 WARL 只读零 CSR 暴露，地址存在性与 CSR 模块保持
-  // 一致：menvcfg 随 S 模式，menvcfgh 只有 RV32，senvcfg 随 U 模式。
-  private val envcfgFamilyAddresses: Seq[Int] = Seq(0x30a, 0x31a, 0x10a)
+  // 一致：menvcfg/senvcfg 随 HAS_S，mstatush/menvcfgh 只有 RV32。
+  private val envcfgFamilyAddresses: Seq[Int] =
+    _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+      .envcfgCSRAddresses(XLEN).toSeq
   private val envcfgAddresses: Seq[Int] =
-    (if (hasS) Seq(0x30a) else Seq.empty) ++
-      (if (XLEN == 32) Seq(0x31a) else Seq.empty) ++
-      (if (hasU) Seq(0x10a) else Seq.empty)
+    envcfgFamilyAddresses.filter(a => config.MMU.csrSupported(a))
   private val CSRAddresses = (
     config.MMU.CSREnabled.toSeq.filterNot(envcfgFamilyAddresses.contains) ++
       // identity CSR 始终实现，不依赖 CSR_ENABLED 是否列出。

@@ -381,3 +381,4 @@ class ysyx_26030103_LSUMMUVIPTTest extends AnyFlatSpec with Matchers {
       }
     }
   }
+}
