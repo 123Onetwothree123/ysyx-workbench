@@ -177,15 +177,6 @@ fail_misa_c:        li s0, 1
                     j test_done
 fail_misa_mxl:      li s0, 2
                     j test_done
-                    j test_done
-                    j test_done
-                    j test_done
-                    j test_done
-                    j test_done
-                    j test_done
-                    j test_done
-                    j test_done
-                    j test_done
 fail_trap:          li s0, 12
                     j test_done
 fail_cross_page:    li s0, 13

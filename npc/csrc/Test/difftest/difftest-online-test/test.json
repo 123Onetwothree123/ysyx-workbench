@@ -1,17 +1,39 @@
 {
-  "name": "cpp.difftest.difftest-online-test",
-  "tier": "performance",
-  "command": [
-    "make",
-    "difftest"
-  ],
-  "timeout": 3600,
-  "tags": [
-    "difftest",
-    "difftest-online-test"
-  ],
-  "archs": [
-    "riscv32e-npc"
-  ],
-  "enabled": true
+  "tests": [
+    {
+      "name": "cpp.difftest.difftest-online-test",
+      "tier": "performance",
+      "command": [
+        "make",
+        "difftest"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "difftest-online-test"
+      ],
+      "archs": [
+        "riscv32e-npc"
+      ],
+      "enabled": true
+    },
+    {
+      "name": "cpp.difftest.difftest-online-soc-test",
+      "tier": "performance",
+      "command": [
+        "make",
+        "difftest-soc"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "difftest-online-test",
+        "soc"
+      ],
+      "archs": [
+        "riscv32e-npc"
+      ],
+      "enabled": true
+    }
+  ]
 }

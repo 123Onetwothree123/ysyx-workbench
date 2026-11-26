@@ -120,6 +120,7 @@ int main(const char *)
     if (fails == 0)
     {
         printf("branch-nest: ALL 7 PASS\n");
+        return 0;
     }
-    return 0;
+    halt(1);
 }

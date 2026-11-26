@@ -932,8 +932,15 @@ std::expected<std::uint64_t, std::string> DUT::ReadMemory(std::uint64_t addr, st
         return std::unexpected{std::format("内存读取地址溢出：0x{:x}", addr)};
     }
 
+#ifdef VRISCV32E_NPC
     constexpr std::uint64_t IMAGE_BASE{npc::MBase};
     constexpr std::uint64_t IMAGE_WINDOW_SIZE{npc::MSize};
+#else
+    constexpr std::uint64_t MromBase{npc::SocMBase};
+    constexpr std::uint64_t MromWindowSize{npc::SocMSize};
+    constexpr std::uint64_t FlashBase{npc::SocFlashBase};
+    constexpr std::uint64_t FlashWindowSize{npc::SocFlashSize};
+#endif
     std::uint64_t value{0};
     for (std::size_t index{0}; index < size; ++index)
     {
@@ -947,6 +954,7 @@ std::expected<std::uint64_t, std::string> DUT::ReadMemory(std::uint64_t addr, st
                 byte = written->second;
             }
         }
+#ifdef VRISCV32E_NPC
         if (!byte && current >= IMAGE_BASE)
         {
             const auto offset{static_cast<std::size_t>(current - IMAGE_BASE)};
@@ -957,6 +965,27 @@ std::expected<std::uint64_t, std::string> DUT::ReadMemory(std::uint64_t addr, st
                 byte = offset < flash.size() ? flash[offset] : std::uint8_t{0};
             }
         }
+#else
+        // SoC 调试视图分别覆盖 MROM 与 Flash 窗口；不猜测 PSRAM/SDRAM。
+        if (!byte && current >= MromBase)
+        {
+            const auto offset{static_cast<std::size_t>(current - MromBase)};
+            if (offset < static_cast<std::size_t>(MromWindowSize))
+            {
+                const auto &mrom{context.Mrom()};
+                byte = offset < mrom.size() ? mrom[offset] : std::uint8_t{0};
+            }
+        }
+        if (!byte && current >= FlashBase)
+        {
+            const auto offset{static_cast<std::size_t>(current - FlashBase)};
+            if (offset < static_cast<std::size_t>(FlashWindowSize))
+            {
+                const auto &flash{context.Flash()};
+                byte = offset < flash.size() ? flash[offset] : std::uint8_t{0};
+            }
+        }
+#endif
         if (!byte)
         {
             return std::unexpected{std::format("地址 0x{:x} 没有可验证的实时 RAM 数据；" "调试器只能读取初始镜像或已退休 store 的 shadow", current)};

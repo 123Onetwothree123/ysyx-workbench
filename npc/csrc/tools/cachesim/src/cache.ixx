@@ -19,7 +19,6 @@ private:
 
     CacheConfig                     config_;
     unsigned                        offset_bits_ = 0;
-    unsigned                        index_bits_  = 0;
     unsigned                        num_sets_    = 0;
     unsigned                        ways_        = 0;
     std::vector<Block>              sets_flat_;

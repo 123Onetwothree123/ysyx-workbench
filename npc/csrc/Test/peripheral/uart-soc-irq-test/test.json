@@ -1,6 +1,6 @@
 {
   "name": "cpp.peripheral.uart-soc-irq-test",
-  "tier": "performance",
+  "tier": "functional",
   "command": [
     "make",
     "test"

@@ -2,7 +2,8 @@
   "name": "cpp.soc.ChipLinkMemTest",
   "tier": "performance",
   "command": [
-    "make"
+    "make",
+    "run"
   ],
   "timeout": 3600,
   "tags": [

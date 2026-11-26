@@ -20,6 +20,14 @@ menu "编译器与构建选项"
     default "icpx" if CC_ICPX
     default "g++"
 
+  config CC_COMPILE_COMMANDS
+    bool "生成 compile_commands.json"
+    depends on CC_CLANG
+    default n
+    help
+      构建时生成 compile_commands.json，供 clang-tidy、clangd 等
+      LLVM 工具使用。仅 Clang 编译器可用。
+
   choice
     prompt "C++标准库"
     default STDLIB_LIBSTDCXX

@@ -18,7 +18,6 @@ using bn::Wide;
 const uint32_t W_M31[4] = {0x7FFFFFFFu, 0u, 0u, 0u};
 const uint32_t W_M61[4] = {0xFFFFFFFFu, 0x1FFFFFFFu, 0u, 0u};
 const uint32_t W_M89[4] = {0xFFFFFFFFu, 0xFFFFFFFFu, 0x01FFFFFFu, 0u};
-const uint32_t W_M107[4] = {0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0x000007FFu};
 
 Num constant(const uint32_t words[4])
 {

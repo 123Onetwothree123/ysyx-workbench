@@ -1,4 +1,3 @@
-module;
 #include "common/CliOptions.hpp"
 #include <cstdio>
 

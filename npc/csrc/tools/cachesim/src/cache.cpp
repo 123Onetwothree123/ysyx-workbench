@@ -6,7 +6,6 @@ CacheSim::CacheSim(const CacheConfig& cfg)
 {
     offset_bits_ = log2_ceil(cfg.block_size);
     num_sets_    = cfg.num_blocks / cfg.ways;
-    index_bits_  = log2_ceil(num_sets_);
     ways_        = cfg.ways;
 
     // 实际 cache 为连续内存 + mdspan 二维视图。

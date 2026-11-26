@@ -61,22 +61,22 @@ test run: all
 	for binary in $(BINS); do \
 	  "$$binary" || status=1; \
 	done; \
-	cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	cd $(TEST_DIR) && MILL_WORKSPACE_ROOT=$(TEST_DIR) $(MILL) --no-server runMain \
 	  ysyx_26030103.test.PLICConfigContractTest || status=1; \
 	exit $$status
 
 $(STAMP): $(SCALA_SRCS)
 	@mkdir -p $(RTL_DIR)
-	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	@cd $(TEST_DIR) && MILL_WORKSPACE_ROOT=$(TEST_DIR) $(MILL) --no-server runMain \
 	  ysyx_26030103.test.PLICClaimCompleteHarnessElaborate \
 	  --target-dir $(RTL_DIR)
-	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	@cd $(TEST_DIR) && MILL_WORKSPACE_ROOT=$(TEST_DIR) $(MILL) --no-server runMain \
 	  ysyx_26030103.test.WidthBridgeLockHarnessElaborate \
 	  --target-dir $(RTL_DIR)
-	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	@cd $(TEST_DIR) && MILL_WORKSPACE_ROOT=$(TEST_DIR) $(MILL) --no-server runMain \
 	  ysyx_26030103.test.XbarPLICPmaHarnessElaborate \
 	  --target-dir $(RTL_DIR)
-	@cd $(TEST_DIR) && $(MILL) --no-server runMain \
+	@cd $(TEST_DIR) && MILL_WORKSPACE_ROOT=$(TEST_DIR) $(MILL) --no-server runMain \
 	  ysyx_26030103.test.ArbiterLockHarnessElaborate \
 	  --target-dir $(RTL_DIR)
 	@touch $@

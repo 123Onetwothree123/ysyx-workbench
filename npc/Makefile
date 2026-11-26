@@ -657,6 +657,16 @@ verilog: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON)
 help:
 	mill -i runMain ysyx_26030103_Elaborate --help
 
+.PHONY: compile-commands
+compile-commands: $(SIM_GUARD)
+	@if [ "$(CONFIG_CC_COMPILE_COMMANDS)" != "y" ]; then \
+		echo "错误：请先在 menuconfig 中启用 CONFIG_CC_COMPILE_COMMANDS=y" >&2; \
+		exit 2; \
+	fi
+	@mkdir -p $(BUILD_DIR)
+	intercept-build --cdb $(BUILD_DIR)/compile_commands.json \
+		$(MAKE) --no-print-directory git_commit= $(BIN_NPC)
+
 reformat:
 	mill -i __.reformat
 
@@ -676,7 +686,9 @@ CACHESIM_DIR  := $(CSRC_DIR)/tools/cachesim
 CACHESIM_BIN  := $(CACHESIM_DIR)/build/cachesim
 
 $(CACHESIM_BIN):
-	@cmake -B $(CACHESIM_DIR)/build -S $(CACHESIM_DIR) && cmake --build $(CACHESIM_DIR)/build
+	@cmake -B $(CACHESIM_DIR)/build -S $(CACHESIM_DIR) \
+		$(if $(filter y,$(CONFIG_CC_COMPILE_COMMANDS)),-DCONFIG_CC_COMPILE_COMMANDS=y) \
+		&& cmake --build $(CACHESIM_DIR)/build
 
 .PHONY: cachesim
 cachesim: $(SIM_GUARD) $(CACHESIM_BIN)

@@ -22,6 +22,10 @@ if(EXISTS "${AUTO_CONF}")
     include(${PRJ_DIR}/scripts/read_config.cmake)
 endif()
 
+if(CONFIG_CC_COMPILE_COMMANDS STREQUAL "y")
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
+
 # 目标 XLEN: 默认取自本工具 Kconfig 的 CONFIG_XLEN；显式 -DCONFIG_XLEN=32/64
 # (例如父 Makefile 传入) 优先，用于同一个源码树构建两种位宽。
 if(NOT DEFINED CONFIG_XLEN OR CONFIG_XLEN STREQUAL "")
@@ -65,18 +69,10 @@ endif()
 set(CXX_FLAGS -std=c++26)
 set(LD_FLAGS)
 
-macro(flag_list_out lst_out)
-    set(${lst_out})
-endmacro()
-
 macro(add_cxx flag)
     list(APPEND CXX_FLAGS ${flag})
 endmacro()
 macro(add_ld flag)
-    list(APPEND LD_FLAGS ${flag})
-endmacro()
-macro(add_both flag)
-    list(APPEND CXX_FLAGS ${flag})
     list(APPEND LD_FLAGS ${flag})
 endmacro()
 
@@ -224,12 +220,24 @@ if(IXX_SRCS)
 
         if(IS_CLANG)
             set(MOD_PCM ${IXX_PCM_DIR}/${IXX_NAME}.pcm)
+            set(PCM_DEPS ${STD_PCM})
+            if(IXX_NAME STREQUAL "DCache")
+                list(APPEND PCM_DEPS ${IXX_PCM_DIR}/DCacheConfig.pcm ${IXX_PCM_DIR}/AccessRecord.pcm)
+            elseif(IXX_NAME STREQUAL "DCachesType")
+                list(APPEND PCM_DEPS ${IXX_PCM_DIR}/DCache.pcm ${IXX_PCM_DIR}/DCacheConfig.pcm)
+            elseif(IXX_NAME STREQUAL "DTraceReader")
+                list(APPEND PCM_DEPS ${IXX_PCM_DIR}/AccessRecord.pcm)
+            elseif(IXX_NAME STREQUAL "Run")
+                list(APPEND PCM_DEPS ${IXX_PCM_DIR}/DCachesType.pcm ${IXX_PCM_DIR}/DCache.pcm ${IXX_PCM_DIR}/AccessRecord.pcm ${IXX_PCM_DIR}/stats.pcm)
+            elseif(IXX_NAME STREQUAL "dse")
+                list(APPEND PCM_DEPS ${IXX_PCM_DIR}/AccessRecord.pcm ${IXX_PCM_DIR}/stats.pcm)
+            endif()
             add_custom_command(
                 OUTPUT ${MOD_PCM}
                 COMMAND ${CMAKE_CXX_COMPILER} ${CXX_FLAGS}
                     -fprebuilt-module-path=${PCM_DIR} -Wno-reserved-module-identifier
                     -x c++-module --precompile ${IXX_SRC} -o ${MOD_PCM}
-                DEPENDS ${IXX_SRC} ${STD_PCM}
+                DEPENDS ${IXX_SRC} ${PCM_DEPS}
                 COMMENT "预编译模块 ${IXX_NAME}"
             )
             add_custom_command(

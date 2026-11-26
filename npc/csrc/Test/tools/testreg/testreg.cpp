@@ -323,7 +323,7 @@ std::string Sanitize(std::string s) {
     return s;
 }
 
-enum class Result { Pass, Fail, Hang, Skip };
+enum class Result { Pass, Fail, Hang };
 
 Result RunOnce(const TestCase &t, const std::string &arch, const fs::path &logDir);
 
@@ -331,7 +331,7 @@ Result Run(const TestCase &t, const std::string &arch, const fs::path &logDir) {
     Result last = Result::Fail;
     for (int attempt = 0; attempt <= t.retry; ++attempt) {
         last = RunOnce(t, arch, logDir);
-        if (last == Result::Pass || last == Result::Skip) return last;
+        if (last == Result::Pass) return last;
         if (attempt < t.retry) {
             std::println(std::cerr, "重试 {}/{}: {}", attempt + 1, t.retry, t.name);
         }
@@ -340,10 +340,6 @@ Result Run(const TestCase &t, const std::string &arch, const fs::path &logDir) {
 }
 
 Result RunOnce(const TestCase &t, const std::string &arch, const fs::path &logDir) {
-    if (!arch.empty() && !t.archs.empty() &&
-        std::find(t.archs.begin(), t.archs.end(), arch) == t.archs.end()) {
-        return Result::Skip;
-    }
     fs::create_directories(logDir);
     const auto logPath = logDir / (Sanitize(t.name) + ".log");
     std::vector<std::string> argvStr = t.command;
@@ -583,15 +579,9 @@ int main(int argc, char **argv) {
         }
     }
     const fs::path logDir = testDir / "build" / "test-logs";
-    int pass = 0, fail = 0, hang = 0, skip = 0;
+    int pass = 0, fail = 0, hang = 0;
     for (const auto &t : tests) {
         if (!Match(t, tier, tag, nameFilter, arch, allTiers)) continue;
-        if (!arch.empty() && !t.archs.empty() &&
-            std::find(t.archs.begin(), t.archs.end(), arch) == t.archs.end()) {
-            std::println("SKIP {} (ARCH={} 不支持)", t.name, arch);
-            ++skip;
-            continue;
-        }
         TestCase tc = t;
         if (retryOverride >= 0) tc.retry = retryOverride;
         if (timeoutScale > 1) tc.timeout *= timeoutScale;
@@ -600,11 +590,10 @@ int main(int argc, char **argv) {
             case Result::Pass: std::println("PASS {}", t.name); ++pass; break;
             case Result::Fail: std::println("FAIL {}", t.name); ++fail; break;
             case Result::Hang: std::println("HANG {} (>{}s)", t.name, t.timeout); ++hang; break;
-            case Result::Skip: std::println("SKIP {}", t.name); ++skip; break;
         }
         std::fflush(nullptr);
     }
     std::println("----------------------------------------");
-    std::println("total={} pass={} fail={} hang={} skip={}", pass + fail + hang + skip, pass, fail, hang, skip);
+    std::println("total={} pass={} fail={} hang={}", pass + fail + hang, pass, fail, hang);
     return (fail + hang) == 0 ? 0 : 1;
 }

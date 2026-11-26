@@ -1,17 +1,39 @@
 {
-  "name": "cpp.difftest.difftest-tval-test",
-  "tier": "performance",
-  "command": [
-    "make",
-    "run-diff"
-  ],
-  "timeout": 3600,
-  "tags": [
-    "difftest",
-    "difftest-tval-test"
-  ],
-  "enabled": true,
-  "archs": [
-    "riscv64-npc"
+  "tests": [
+    {
+      "name": "cpp.difftest.difftest-tval-test",
+      "tier": "performance",
+      "command": [
+        "make",
+        "run-diff"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "difftest-tval-test"
+      ],
+      "enabled": true,
+      "archs": [
+        "riscv64-npc"
+      ]
+    },
+    {
+      "name": "cpp.difftest.difftest-tval-legacy-test",
+      "tier": "performance",
+      "command": [
+        "make",
+        "run-legacy"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "difftest-tval-test",
+        "legacy"
+      ],
+      "enabled": true,
+      "archs": [
+        "riscv64-npc"
+      ]
+    }
   ]
 }

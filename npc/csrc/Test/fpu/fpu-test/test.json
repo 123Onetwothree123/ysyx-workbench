@@ -1,6 +1,6 @@
 {
   "name": "cpp.fpu.fpu-test",
-  "tier": "performance",
+  "tier": "functional",
   "command": [
     "make",
     "test"

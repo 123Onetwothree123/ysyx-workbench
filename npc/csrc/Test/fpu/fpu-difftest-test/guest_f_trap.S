@@ -140,10 +140,6 @@ site1:
     fmv.w.x ft1, t0
     fadd.s ft2, ft0, ft1
     fmv.x.w a0, ft2
-#if __riscv_xlen == 64
-    slli a0, a0, 32
-    srli a0, a0, 32
-#endif
     li t1, 0x40800000          # 4.0f
     bne a0, t1, fail12
 #endif
@@ -239,10 +235,6 @@ trap_check_mstatus:
     bne t0, t1, trap_fail_f8
 #else
     fmv.x.w t0, fs0
-#if __riscv_xlen == 64
-    slli t0, t0, 32
-    srli t0, t0, 32
-#endif
     la t1, f8_expected
     lw t1, 0(t1)
     bne t0, t1, trap_fail_f8
@@ -271,10 +263,6 @@ trap_check_mstatus:
     fmv.w.x ft1, t0
     fadd.s ft2, ft0, ft1
     fmv.x.w t0, ft2
-#if __riscv_xlen == 64
-    slli t0, t0, 32
-    srli t0, t0, 32
-#endif
     li t1, 0x40800000
     bne t0, t1, trap_fail_handler_fp
 #endif

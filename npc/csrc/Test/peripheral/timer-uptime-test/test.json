@@ -1,6 +1,6 @@
 {
   "name": "cpp.peripheral.timer-uptime-test",
-  "tier": "performance",
+  "tier": "functional",
   "command": [
     "make",
     "ARCH=${ARCH}",

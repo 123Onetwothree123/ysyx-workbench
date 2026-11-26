@@ -145,7 +145,7 @@ test: $(GOOD_BIN) $(MEMORY_BIN) $(ILLEGAL_BIN)
 
 	# The generated RTL has no $$finish path to inject from a guest.  Keep a
 	# source-level guard so `si` cannot regress to stepping past gotFinish.
-	grep -Fq 'completedBoundaries < count && !Verilated::gotFinish()' \
+	grep -Fq 'completedBoundaries < count && !NPCTrap::HasHalted()' \
 		$(NPC_DIR)/csrc/sdb/command/siCommand.cpp
 	grep -Fq 'Verilator已请求结束，停止单步' \
 		$(NPC_DIR)/csrc/sdb/command/siCommand.cpp
@@ -153,7 +153,7 @@ test: $(GOOD_BIN) $(MEMORY_BIN) $(ILLEGAL_BIN)
 	# SDB c and SDB si cannot diverge.  The interval must reject zero.
 	test "$$(grep -c 'nvboard_update();' $(NPC_DIR)/csrc/DUT.cpp)" -eq 1
 	! grep -q 'nvboard_update();' $(NPC_DIR)/csrc/main.cpp
-	grep -Fq 'range 1 1000000' $(NPC_DIR)/Kconfig
+	grep -Fq 'range 1 1000000' $(NPC_DIR)/kconfig/Kconfig.soc
 	@echo '[PASS] SDB, itrace, mtrace, and direct/SoC memory observability regressions'
 
 clean:

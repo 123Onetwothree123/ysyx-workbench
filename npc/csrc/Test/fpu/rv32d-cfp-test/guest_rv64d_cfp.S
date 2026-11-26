@@ -13,14 +13,6 @@ scratch:    .zero 32
     .section .text
     .globl _start
 
-.macro CHECK reg, val, code
-    li      t6, \val
-    beq     \reg, t6, 9f
-    li      a0, \code
-    j       halt
-9:
-.endm
-
 _start:
     la      t0, trap_entry
     csrw    mtvec, t0

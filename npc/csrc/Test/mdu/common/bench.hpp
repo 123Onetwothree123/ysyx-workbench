@@ -23,6 +23,12 @@ inline uint64_t scored_us = 0;
 // 读64位mcycle(高/低字double-read防撕裂)
 inline unsigned long long read_mcycle()
 {
+#if __riscv_xlen == 64
+    // RV64 的 mcycle 本身就是 64 位，且不存在 mcycleh。
+    unsigned long long CycleCounter;
+    asm volatile("csrr %0, mcycle" : "=r"(CycleCounter));
+    return CycleCounter;
+#else
     uint32_t low, high, high_again;
     do
     {
@@ -31,6 +37,7 @@ inline unsigned long long read_mcycle()
         asm volatile("csrr %0, mcycleh" : "=r"(high_again));
     } while (high != high_again);
     return ((unsigned long long)high << 32) | low;
+#endif
 }
 
 // 以下两个函数从 microbench 的 src/bench.c 移植

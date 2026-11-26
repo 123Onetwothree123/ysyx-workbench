@@ -1,6 +1,6 @@
 {
   "name": "cpp.fpu.rv32d-cfp-test",
-  "tier": "performance",
+  "tier": "functional",
   "command": [
     "make",
     "test"
@@ -10,5 +10,8 @@
     "fpu",
     "rv32d-cfp-test"
   ],
-  "enabled": true
+  "enabled": true,
+  "archs": [
+    "riscv32e-npc"
+  ]
 }

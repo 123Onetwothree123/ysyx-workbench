@@ -25,36 +25,36 @@ int main() {
 
   asm volatile("csrw mtvec, %0" :: "r"(reinterpret_cast<std::uintptr_t>(trap_handler) & ~std::uintptr_t{3}));
 
-  // ---- 1. 非法 load 编码: opcode=0x03, funct3=011 (lw x0, 0(x0)) ----
+  // ---- 1. 非法 load 编码: opcode=0x03, funct3=111 (RV32/RV64 均为保留编码) ----
   reset_obs();
   asm volatile(
     "li t0, 0\n\t"
     "la t1, 1f\n\t"
     "sw t1, %0\n\t"
-    "1: .word 0x00003003\n\t"
+    "1: .word 0x00007003\n\t"
     "li t0, 1\n\t"
     : "=m"(exp_pc) : : "t0", "t1", "memory");
   check("illegal-load", 2, exp_pc);
 
-  // ---- 2. 非法 store 编码: opcode=0x23, funct3=011 (sw x0, 0(x0)) ----
+  // ---- 2. 非法 store 编码: opcode=0x23, funct3=111 (RV32/RV64 均为保留编码) ----
   reset_obs();
   asm volatile(
     "li t0, 0\n\t"
     "la t1, 1f\n\t"
     "sw t1, %0\n\t"
-    "1: .word 0x00003023\n\t"
+    "1: .word 0x00007023\n\t"
     "li t0, 1\n\t"
     : "=m"(exp_pc) : : "t0", "t1", "memory");
   check("illegal-store", 2, exp_pc);
 
-  // ---- 3. 非法 load(rd=a5)不得写rd: .word 0x00003783 = 非法 lw a5, 0(x0) ----
+  // ---- 3. 非法 load(rd=a5)不得写rd: .word 0x00007783 = funct3=111, rd=a5 ----
   reset_obs();
   asm volatile(
     "li t0, 0\n\t"
     "la t1, 1f\n\t"
     "sw t1, %0\n\t"
     "li a5, 0x12345678\n\t"
-    "1: .word 0x00003783\n\t"
+    "1: .word 0x00007783\n\t"
     "sw a5, %1\n\t"
     "li t0, 1\n\t"
     : "=m"(exp_pc), "=m"(rd_after) : : "t0", "t1", "a5", "memory");

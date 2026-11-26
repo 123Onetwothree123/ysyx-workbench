@@ -1,14 +1,33 @@
 {
-  "name": "cpp.difftest.difftest-tval-abi-test",
-  "tier": "performance",
-  "command": [
-    "make",
-    "run"
-  ],
-  "timeout": 3600,
-  "tags": [
-    "difftest",
-    "difftest-tval-abi-test"
-  ],
-  "enabled": true
+  "tests": [
+    {
+      "name": "cpp.difftest.difftest-tval-abi-test",
+      "tier": "performance",
+      "command": [
+        "make",
+        "run"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "difftest-tval-abi-test"
+      ],
+      "enabled": true
+    },
+    {
+      "name": "cpp.difftest.difftest-tval-abi-rv32-test",
+      "tier": "performance",
+      "command": [
+        "make",
+        "run-rv32"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "difftest-tval-abi-test",
+        "rv32"
+      ],
+      "enabled": true
+    }
+  ]
 }

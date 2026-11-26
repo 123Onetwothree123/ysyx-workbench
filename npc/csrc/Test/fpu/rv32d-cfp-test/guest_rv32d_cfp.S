@@ -22,14 +22,6 @@ trap_epc:   .word 0
     .section .text
     .globl _start
 
-.macro CHECK reg, val, code
-    li      t6, \val
-    beq     \reg, t6, 9f
-    li      a0, \code
-    j       halt
-9:
-.endm
-
 .macro CHECK_WORD addr, val, code
     lw      t6, \addr
     li      t5, \val

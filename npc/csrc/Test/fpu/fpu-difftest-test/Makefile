@@ -5,6 +5,7 @@
 #   make rv32 BIN_RV32=/path/to/npc REF_RV32=/path/to/riscv32-nemu-interpreter-so
 #
 # 负向（RISCV_F=n / RISCV_D=n 的 DUT）：
+#   make negative                       # 自动构建隔离的 no-F/D NPC
 #   make negative NEG_XLEN=64 BIN_NEG=/path/to/npc-no-f
 #
 # 配置错误（RISCV_D=y 无 F、FLEN=32 等必须明确失败）：
@@ -77,7 +78,13 @@ REF_OBJ_RV32 := $(BUILD_DIR)/nemu-fd-rv32-obj
 REF_OBJ_RV64 := $(BUILD_DIR)/nemu-fd-rv64-obj
 
 NEG_XLEN ?= $(NPC_XLEN)
-BIN_NEG ?= $(BIN_RV$(NEG_XLEN))
+# 负向用例默认使用本目录构建的 no-F/D NPC。构建走独立 BUILD_DIR，
+# 并以命令行覆盖关闭 F/D，不修改用户的 npc/.config。
+NEG_BUILD_DIR ?= $(BUILD_DIR)/negative
+NEG_BIN := $(NEG_BUILD_DIR)/ysyx_26030103_npc
+BIN_NEG_PROVIDED := $(filter-out undefined,$(origin BIN_NEG))
+BIN_NEG ?= $(NEG_BIN)
+NEG_BIN_PREREQ := $(if $(BIN_NEG_PROVIDED),,$(NEG_BIN))
 PROBE_NEG ?= $(PROBE_RV$(if $(filter 64,$(NEG_XLEN)),64,32))
 
 MISMATCH_XLEN ?= $(NPC_XLEN)
@@ -90,7 +97,8 @@ CONFIG_CHECK ?= auto
 STRICT ?= 0
 
 .PHONY: all guests audit refs ref-rv32 ref-rv64 rv32 rv64 negative mismatch \
-	config-errors fdiv-shared test test-all strict-test clean clean-logs
+	config-errors fdiv-shared test test-all strict-test clean clean-logs \
+	negative-clean
 
 all: guests audit
 
@@ -234,7 +242,14 @@ fdiv-shared: $(FDIV_SHARED) $(REF_RV64)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh fdiv-shared 64 \
 		"$(BIN_RV64)" "$(FDIV_SHARED)" "$(REF_RV64)" "$(LOG_DIR)"
 
-negative: $(PROBE_NEG)
+# 默认自动构建隔离的 no-F/D NPC；显式 BIN_NEG=/path 时直接使用外部 binary。
+$(NEG_BIN): $(TEST_DIR)/build_negative_npc.sh $(TEST_DIR)/Makefile $(NPC_DIR)/.config
+	@$(TEST_DIR)/build_negative_npc.sh "$(NPC_DIR)" "$(NEG_BUILD_DIR)" "$(NEG_BIN)"
+
+negative-clean:
+	rm -rf "$(NEG_BUILD_DIR)"
+
+negative: $(PROBE_NEG) $(NEG_BIN_PREREQ)
 	@STRICT="$(STRICT)" $(TEST_DIR)/run.sh negative "$(NEG_XLEN)" \
 		"$(BIN_NEG)" "$(PROBE_NEG)" "$(LOG_DIR)"
 

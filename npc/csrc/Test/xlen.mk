@@ -39,6 +39,7 @@ NPC_SOC_XLEN_FOLLOW := $(or $(CONFIG_SOC_XLEN_FOLLOW_CPU),n)
 XLEN_CFLAGS := -DCONFIG_XLEN=$(NPC_XLEN)
 
 XLEN_AM_ARCH := $(if $(XLEN_IS_64),riscv64-npc,riscv32e-npc)
+XLEN_SOC_ARCH := $(if $(XLEN_IS_64),riscv64-ysyxsoc,riscv32i-ysyxsoc)
 XLEN_CROSS_COMPILE ?= riscv64-unknown-elf-
 XLEN_GUEST_MARCH := $(if $(XLEN_IS_64),rv64im_zicsr_zifencei,rv32im_zicsr_zifencei)
 XLEN_GUEST_MABI := $(if $(XLEN_IS_64),lp64,ilp32)
@@ -53,3 +54,4 @@ xlen-show:
 	@printf 'CONFIG_SOC_XLEN=%s\n' '$(NPC_SOC_XLEN)'
 	@printf 'CONFIG_SOC_XLEN_FOLLOW_CPU=%s\n' '$(NPC_SOC_XLEN_FOLLOW)'
 	@printf 'XLEN_AM_ARCH=%s\n' '$(XLEN_AM_ARCH)'
+	@printf 'XLEN_SOC_ARCH=%s\n' '$(XLEN_SOC_ARCH)'

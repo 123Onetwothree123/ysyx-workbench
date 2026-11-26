@@ -14,8 +14,6 @@ public:
     DCachesType& operator=(DCachesType&&) noexcept = default;
     DCachesType(const DCachesType&) = delete;
     DCachesType& operator=(const DCachesType&) = delete;
-    [[nodiscard]] auto begin() const noexcept;
-    [[nodiscard]] auto end() const noexcept;
     [[nodiscard]] std::size_t size() const noexcept;
     DCache& operator[](std::size_t i) const;
 };

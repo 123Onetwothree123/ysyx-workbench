@@ -1,13 +1,17 @@
 {
   "name": "cpp.peripheral.flash-test",
-  "tier": "performance",
+  "tier": "functional",
   "command": [
-    "make"
+    "make",
+    "run"
   ],
   "timeout": 3600,
   "tags": [
     "peripheral",
     "flash-test"
+  ],
+  "archs": [
+    "riscv32e-npc"
   ],
   "enabled": true
 }

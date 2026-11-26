@@ -1,14 +1,33 @@
 {
-  "name": "cpp.difftest.rvc-difftest-test",
-  "tier": "performance",
-  "command": [
-    "make",
-    "test"
-  ],
-  "timeout": 3600,
-  "tags": [
-    "difftest",
-    "rvc-difftest-test"
-  ],
-  "enabled": true
+  "tests": [
+    {
+      "name": "cpp.difftest.rvc-difftest-test",
+      "tier": "performance",
+      "command": [
+        "make",
+        "test"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "rvc-difftest-test"
+      ],
+      "enabled": true
+    },
+    {
+      "name": "cpp.difftest.rvc-difftest-mismatch-test",
+      "tier": "performance",
+      "command": [
+        "make",
+        "mismatch"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "rvc-difftest-test",
+        "mismatch"
+      ],
+      "enabled": true
+    }
+  ]
 }

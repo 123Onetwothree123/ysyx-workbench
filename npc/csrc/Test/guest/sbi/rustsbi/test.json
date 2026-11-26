@@ -1,0 +1,17 @@
+{
+  "name": "cpp.guest.sbi.rustsbi",
+  "tier": "performance",
+  "command": [
+    "./run.sh",
+    "npc"
+  ],
+  "timeout": 3600,
+  "tags": [
+    "guest",
+    "rustsbi"
+  ],
+  "enabled": true,
+  "archs": [
+    "riscv64-npc"
+  ]
+}

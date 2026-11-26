@@ -23,6 +23,10 @@ if(EXISTS "${AUTO_CONF}")
     include(${PRJ_DIR}/scripts/read_config.cmake)
 endif()
 
+if(CONFIG_CC_COMPILE_COMMANDS STREQUAL "y")
+    set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+endif()
+
 # 目标 XLEN: 默认取自本工具 Kconfig 的 CONFIG_XLEN；显式 -DCONFIG_XLEN=32/64
 # (例如父 Makefile 传入) 优先，用于同一个源码树构建两种位宽。
 if(NOT DEFINED CONFIG_XLEN OR CONFIG_XLEN STREQUAL "")
@@ -59,18 +63,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CXX_FLAGS -std=c++26)
 set(LD_FLAGS)
 
-macro(flag_list_out lst_out)
-    set(${lst_out})
-endmacro()
-
 macro(add_cxx flag)
     list(APPEND CXX_FLAGS ${flag})
 endmacro()
 macro(add_ld flag)
-    list(APPEND LD_FLAGS ${flag})
-endmacro()
-macro(add_both flag)
-    list(APPEND CXX_FLAGS ${flag})
     list(APPEND LD_FLAGS ${flag})
 endmacro()
 
@@ -85,6 +81,14 @@ macro(if_y_both var flag)
         list(APPEND LD_FLAGS ${flag})
     endif()
 endmacro()
+
+# 编译器类型检测
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set(IS_CLANG TRUE)
+else()
+    set(IS_CLANG FALSE)
+    list(APPEND CXX_FLAGS -fmodules)
+endif()
 
 # 标准库 (仅 Clang 需要 -stdlib= 标志, GCC 默认 libstdc++)
 if(IS_CLANG AND DEFINED CONFIG_STDLIB_FLAG AND NOT CONFIG_STDLIB_FLAG STREQUAL "")
@@ -133,14 +137,6 @@ list(APPEND CXX_FLAGS
     -DRUN_MODE=${CONFIG_RUN_MODE}
     -DCACHESIM_DIR=\"${PRJ_DIR}\"
 )
-
-# 编译器类型检测
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(IS_CLANG TRUE)
-else()
-    set(IS_CLANG FALSE)
-    list(APPEND CXX_FLAGS -fmodules)
-endif()
 
 # 标准库模块源: 按编译器+标准库选择
 #   GCC                        → libstdc++ 的 bits/std.cc
@@ -241,7 +237,6 @@ foreach(IXX_SRC ${IXX_SRCS})
 
     if(IS_CLANG)
         set(MOD_PCM ${PCM_DIR}/${MOD_NAME}.pcm)
-        list(APPEND ALL_PCMS ${MOD_PCM})
 
         # 依赖：types.pcm 必须先于 trace/cache/stats/dse；trace/cache 先于 dse
         set(PCM_DEPS ${STD_PCM})

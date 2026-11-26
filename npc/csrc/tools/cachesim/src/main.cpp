@@ -1,4 +1,3 @@
-module;
 #include "common/CliOptions.hpp"
 #include "common/CsvResult.hpp"
 #include <cstdio>

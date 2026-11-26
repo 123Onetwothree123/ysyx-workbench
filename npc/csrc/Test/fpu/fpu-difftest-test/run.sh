@@ -6,8 +6,8 @@
 #
 # 结果语义：
 #   [PASS] 断言成立；
-#   [SKIP] 前提尚不具备（F/D 尚未实现、缺少二进制、REF 没有 F/D、
-#          或负向用例拿到了已启用 F/D 的 DUT），绝不伪造 PASS；
+#   [SKIP] 前提尚不具备（F/D 尚未实现、缺少二进制、REF 没有 F/D），
+#          绝不伪造 PASS；
 #   [FAIL] 行为错误，或前提具备但比对失败。
 # STRICT=1 把 SKIP 升级为 FAIL，供 F/D 合入后的 CI 使用。
 set -uo pipefail
@@ -317,14 +317,17 @@ run_negative() {
     local xlen="$1" binary="$2" probe="$3" logdir="$4"
     local probe_log="$logdir/negative-rv${xlen}.log"
 
-    require_file "$binary" "RV${xlen} 负向 NPC binary"
-    require_file "$probe" "RV${xlen} F/D 探针镜像"
+    # 负向路径不再接受“缺少资产”即 SKIP：默认构建会先生成 binary，
+    # 显式 BIN_NEG 缺失属于配置错误，应直接失败。
+    [[ -f "$binary" ]] ||
+        fail "缺少 RV${xlen} 负向 NPC binary：$binary（需要 RISCV_F=n/RISCV_D=n 的构建）"
+    [[ -f "$probe" ]] || fail "缺少 RV${xlen} F/D 探针镜像：$probe"
 
     local probe_status=0
     probe_fpu "$xlen" "$binary" "$probe" "$probe_log" || probe_status=$?
     case "$probe_status" in
         0)
-            skip "RV${xlen} DUT 已启用 F/D；负向用例需要 RISCV_F=n 或 RISCV_D=n 的 binary"
+            fail "RV${xlen} DUT 已启用 F/D；negative 需要 RISCV_F=n 或 RISCV_D=n 的 binary（BIN_NEG 必须指向该类构建）"
             ;;
         2)
             if [[ "$LAST_PROBE_KIND" == no_f ]]; then
@@ -443,6 +446,19 @@ run_config_errors() {
         --exclude=./NPCSimResult --exclude=./yosys-sta-result \
         --exclude=./.git -cf - . 2>/dev/null | tar -C "$copy" -xf -
     [[ -f "$copy/Makefile" ]] || fail "复制 NPC 源码失败"
+    # npc/vendor 是指向仓库根 vendor 的软链接；临时树只复制了 npc，
+    # 悬空链接会缺少 fudian 源码。把链接指回原 vendor（第三方只读源码）。
+    local vendor_target=""
+    if [[ -L "$npc_dir/vendor" ]]; then
+        vendor_target="$(readlink -f "$npc_dir/vendor" 2>/dev/null || true)"
+        [[ -n "$vendor_target" && -d "$vendor_target" ]] ||
+            fail "npc/vendor 链接目标不存在：$npc_dir/vendor"
+        ln -sfn "$vendor_target" "$root/vendor"
+    fi
+    # 复制树里的 CMake 缓存记录的是原工作树绝对路径，在临时目录直接
+    # 复用会报 source/build 目录不匹配；删除缓存让 cmake 就地重新配置。
+    find "$copy/tools/build" "$copy/tools/kconfig/build" \
+        -name CMakeCache.txt -type f -delete 2>/dev/null || true
 
     local config_log="$logdir/config-defconfig.log"
     : >"$config_log"
@@ -462,8 +478,8 @@ run_config_errors() {
     }
 
     run_one_config_case() {
-        local name="$1" needle_desc="$2"
-        shift 2
+        local name="$1" needle_desc="$2" expected_re="$3"
+        shift 3
         local -a config_args=("$@")
         local build_dir="$root/build-$name"
         local typed_json="$build_dir/generated/npc_config.typed.json"
@@ -496,6 +512,12 @@ run_config_errors() {
             show_log "$log"
             fail "配置错误检查超时（$name）"
         }
+        # Scala 编译失败说明还没进入配置校验；不能把编译错误当成
+        # “配置被拒绝”，否则会伪造 PASS。
+        if grep -Eq 'Compilation failed|errors found' "$log"; then
+            show_log "$log"
+            fail "$name 临时树 Scala 编译失败，未到达配置校验"
+        fi
 
         # 当前主线 F/D 只是 Kconfig 占位，elaboration 的拒绝信息带有
         # “Kconfig/RTL”字样；这不能冒充对应配置规则的验证。
@@ -503,7 +525,11 @@ run_config_errors() {
             case_skip "$name 被“F/D 占位未实现”拒绝，尚未验证 $needle_desc"
             return 2
         fi
-        if ! grep -Eq "$needle_desc" "$log"; then
+        # make 会回显完整命令行（含 --set 'CONFIG_...'），先剔除这些行，
+        # 只允许真正的配置拒绝信息命中期望表达式。
+        local reason_log="$logdir/config-${name}.reason.log"
+        grep -Ev -- '--set ' "$log" >"$reason_log" || true
+        if ! grep -Eq "$expected_re" "$reason_log"; then
             show_log "$log"
             fail "$name 失败原因不明确，未包含 $needle_desc"
         fi
