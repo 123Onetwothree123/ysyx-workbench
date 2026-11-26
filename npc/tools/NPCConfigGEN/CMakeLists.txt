@@ -28,15 +28,17 @@ set(NPC_CONFIG_GEN_SOURCES
     TypedConfig/render.cpp
 )
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/NPCStdModule.cmake)
-
 add_executable(npc_config_gen ${NPC_CONFIG_GEN_SOURCES})
 target_sources(npc_config_gen PRIVATE
     FILE_SET CXX_MODULES
     BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
     FILES npc.configgen.ixx
 )
-npc_add_std_module(npc_config_gen)
+# CMake 3.30+ 自带 import std 支持；更老的版本用项目提供的 std 模块。
+if(CMAKE_VERSION VERSION_LESS 3.30)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/NPCStdModule.cmake)
+    npc_add_std_module(npc_config_gen)
+endif()
 target_compile_options(npc_config_gen PRIVATE -Wall -Wextra)
 set_target_properties(npc_config_gen PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
