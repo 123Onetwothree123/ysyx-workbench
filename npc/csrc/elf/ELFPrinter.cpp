@@ -2,39 +2,27 @@ module;
 #include <elf.h>
 module npc.elf.ELFPrinter;
 import std;
+import npc.config;
 import npc.unicode;
 import npc.elf.ELFFile;
 import npc.elf.ELFNames;
 import npc.elf.ELFQuery;
 namespace
 {
-constexpr auto AddressWidth{npc::elf::IsELF64 ? 16 : 8};
+// 与npc::XHexDigits保持一致
+constexpr auto AddressWidth{npc::XHexDigits};
 template <typename... Args>
 void print_to(std::ostream &os, std::format_string<Args...> format, Args &&...args)
 {
     std::format_to(std::ostreambuf_iterator<char>(os), format, std::forward<Args>(args)...);
 }
-std::string_view elf_class_name(unsigned char elf_class)
+std::size_t ColumnWidth(std::size_t minimum, std::string_view header)
 {
-    switch (elf_class)
-    {
-    case ELFCLASSNONE:
-    {
-        return "none(无)";
-    }
-    case ELFCLASS32:
-    {
-        return "ELF32(32位)";
-    }
-    case ELFCLASS64:
-    {
-        return "ELF64(64位)";
-    }
-    default:
-    {
-        return "unknown(未知)";
-    }
-    }
+    return std::max(minimum, static_cast<std::size_t>(display_width(header)));
+}
+std::string HexCell(std::uint64_t value, int digits, std::size_t width)
+{
+    return pad_left(std::format("{0:0{1}x}", value, digits), width);
 }
 std::string_view elf_data_name(unsigned char data)
 {
@@ -398,14 +386,14 @@ void print_section_headers(std::ostream &os,
     constexpr auto IndexWidth{std::size_t{10}};
     constexpr auto NameWidth{std::size_t{18}};
     constexpr auto TypeWidth{std::size_t{40}};
-    const auto AddressColumnWidth{std::max<std::size_t>(AddressWidth, display_width("Address(地址)"))};
-    const auto OffsetWidth{std::max<std::size_t>(6, display_width("Off(偏移)"))};
-    const auto SizeWidth{std::max<std::size_t>(6, display_width("Size(大小)"))};
-    const auto EntrySizeWidth{std::max<std::size_t>(2, display_width("ES(项大小)"))};
-    const auto FlagsWidth{std::max<std::size_t>(3, display_width("Flg(标志)"))};
-    const auto LinkWidth{std::max<std::size_t>(2, display_width("Lk(链接)"))};
-    const auto InfoWidth{std::max<std::size_t>(3, display_width("Inf(信息)"))};
-    const auto AlignWidth{std::max<std::size_t>(2, display_width("Al(对齐)"))};
+    const auto AddressColumnWidth{ColumnWidth(static_cast<std::size_t>(AddressWidth), "Address(地址)")};
+    const auto OffsetWidth{ColumnWidth(6, "Off(偏移)")};
+    const auto SizeWidth{ColumnWidth(6, "Size(大小)")};
+    const auto EntrySizeWidth{ColumnWidth(2, "ES(项大小)")};
+    const auto FlagsWidth{ColumnWidth(3, "Flg(标志)")};
+    const auto LinkWidth{ColumnWidth(2, "Lk(链接)")};
+    const auto InfoWidth{ColumnWidth(3, "Inf(信息)")};
+    const auto AlignWidth{ColumnWidth(2, "Al(对齐)")};
     print_to(os,
              "  {} {} {} {} {} {} {} {} {} {} {}\n",
              pad_right("[Nr](编号)", IndexWidth),
@@ -427,7 +415,7 @@ void print_section_headers(std::ostream &os,
                  pad_right(std::format("[{:2}]", i), IndexWidth),
                  pad_right(section_name(section_name_table, section.sh_name), NameWidth),
                  pad_right(section_type_name(section.sh_type), TypeWidth),
-                 pad_left(std::format("{0:0{1}x}", static_cast<unsigned long long>(section.sh_addr), AddressWidth), AddressColumnWidth),
+                 HexCell(section.sh_addr, AddressWidth, AddressColumnWidth),
                  pad_left(std::format("{:06x}", static_cast<unsigned long long>(section.sh_offset)), OffsetWidth),
                  pad_left(std::format("{:06x}", static_cast<unsigned long long>(section.sh_size)), SizeWidth),
                  pad_left(std::format("{:02x}", static_cast<unsigned long long>(section.sh_entsize)), EntrySizeWidth),
@@ -451,8 +439,8 @@ void print_symbols(std::ostream &os,
              table_name,
              symbols.size());
     constexpr auto NumWidth{std::size_t{10}};
-    const auto ValueWidth{std::max<std::size_t>(AddressWidth, display_width("Value(值)"))};
-    const auto SizeColumnWidth{std::max<std::size_t>(5, display_width("Size(大小)"))};
+    const auto ValueWidth{ColumnWidth(static_cast<std::size_t>(AddressWidth), "Value(值)")};
+    const auto SizeColumnWidth{ColumnWidth(5, "Size(大小)")};
     constexpr auto TypeColumnWidth{std::size_t{18}};
     constexpr auto BindColumnWidth{std::size_t{14}};
     constexpr auto VisibilityWidth{std::size_t{18}};
@@ -473,7 +461,7 @@ void print_symbols(std::ostream &os,
         print_to(os,
                  "  {} {} {} {} {} {} {} {}\n",
                  pad_left(std::format("{:4}:", i), NumWidth),
-                 pad_left(std::format("{0:0{1}x}", static_cast<unsigned long long>(symbol.st_value), AddressWidth), ValueWidth),
+                 HexCell(symbol.st_value, AddressWidth, ValueWidth),
                  pad_left(std::to_string(static_cast<unsigned long long>(symbol.st_size)), SizeColumnWidth),
                  pad_right(symbol_type_name(symbol.st_info), TypeColumnWidth),
                  pad_right(symbol_bind_name(symbol.st_info), BindColumnWidth),

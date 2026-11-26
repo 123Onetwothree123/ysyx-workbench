@@ -7,4 +7,5 @@ export namespace npc::elf
 [[nodiscard]] std::optional<std::string_view> string_at(std::span<const char> table, std::size_t offset);
 [[nodiscard]] std::string_view section_name(const std::vector<char> &table, std::uint32_t name_offset) noexcept;
 [[nodiscard]] std::string_view symbol_name(const std::vector<char> &table, std::uint32_t name_offset) noexcept;
+[[nodiscard]] std::string_view elf_class_name(unsigned char elf_class) noexcept;
 }

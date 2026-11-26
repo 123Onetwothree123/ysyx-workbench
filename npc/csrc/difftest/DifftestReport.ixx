@@ -81,6 +81,18 @@ struct DifftestReport
 {
     return std::format("0x{:0{}x}", Value, XLen == 64 ? 16 : 8);
 }
+// 后缀顺序固定为-csr、-fp，GPR差异只用基串表示
+[[nodiscard]] inline std::string EventNameWithSuffix(std::string_view Base,
+                                                     bool CsrOk,
+                                                     bool FpOk)
+{
+    std::string Event{Base};
+    if (!CsrOk)
+        Event += "-csr";
+    if (!FpOk)
+        Event += "-fp";
+    return Event;
+}
 [[nodiscard]] inline std::string_view TrapCauseName(std::uint32_t Cause)
 {
     const bool Interrupt{(Cause & 0x80000000U) != 0};

@@ -36,18 +36,18 @@ object ysyx_26030103_KconfigDefaults {
     SOCResetAddress = 0x20000000L,
     NpcRAMBase = NpcRamBase
   )
-  val NpcXlen: Int = 64
+  val NpcXlen: Int = 32
   val NpcFPULen: Int = 64
-  val NpcAddressWidth: Int = 64
-  val NpcSocXlen: Int = 64
-  val NpcApbXlen: Int = 64
-  val NpcInternalBusWidth: Int = 64
+  val NpcAddressWidth: Int = 32
+  val NpcSocXlen: Int = 32
+  val NpcApbXlen: Int = 32
+  val NpcInternalBusWidth: Int = 32
   val NpcBlockSizeLog2: Int = 4
-  val NpcIndexBits: Int = 5
+  val NpcIndexBits: Int = 4
   val NpcICacheBlockSizeLog2: Int = 4
-  val NpcICacheIndexBits: Int = 5
+  val NpcICacheIndexBits: Int = 4
   val NpcDCacheBlockSizeLog2: Int = 4
-  val NpcDCacheIndexBits: Int = 5
+  val NpcDCacheIndexBits: Int = 4
   val NpcWBufDepth: Int = 4
   val NpcMisalignedSupport: Int = 1
   val NpcMisalignedGranuleBytes: Int = 8
@@ -59,8 +59,8 @@ object ysyx_26030103_KconfigDefaults {
   val NpcJalBTBWays: Int = 1
   val NpcRASBits: Int = 4
   val NpcCachePadding: Int = 0
-  val MMUPTEBits: Int = 64
-  val MMUXlen: Int = 64
+  val MMUPTEBits: Int = 32
+  val MMUXlen: Int = 32
   val MMUPTEValidBit: Int = 0
   val MMUPTEReadBit: Int = 1
   val MMUPTEWriteBit: Int = 2
@@ -70,11 +70,11 @@ object ysyx_26030103_KconfigDefaults {
   val MMUPTEABit: Int = 6
   val MMUPTEDBit: Int = 7
   val MMUPTEPPNLow: Int = 10
-  val MMUPTEPPNHigh: Int = 53
+  val MMUPTEPPNHigh: Int = 31
   val MMUCustomSatpMode: Int = 10
   val MMUPageSizeBytes: Int = 4096
-  val MMULevels: Int = 3
-  val MMUPTESizeBytes: Int = 8
+  val MMULevels: Int = 2
+  val MMUPTESizeBytes: Int = 4
   val MMUPageTableSizeBytes: Int = 4096
   val MMUCacheVIPTAliasScanWidth: Int = 4
   val MMUCacheVIPTAliasDirectoryEntries: Int = 0
@@ -84,7 +84,7 @@ object ysyx_26030103_KconfigDefaults {
   val MMUPTWPMPFaultQueueDepth: Int = 8
   val MMUPTWCacheEntries: Int = 16
   val MMUPTWCacheWays: Int = 2
-  val MMUTLBASIDBits: Int = 16
+  val MMUTLBASIDBits: Int = 9
   val MMUItlbEntries: Int = 16
   val MMUItlbWays: Int = 2
   val MMUDtlbEntries: Int = 32
@@ -104,10 +104,10 @@ object ysyx_26030103_KconfigDefaults {
   val MMUPMPEntries: Int = 16
   val MMUPMPGranularityLog2: Int = 6
   val MMUPageBits: Int = 12
-  val MMUTableEntries: Int = 512
-  val MMUPTEWidth: Int = 64
-  val MMUIndexBits: Int = 9
-  val MMUVaBits: Int = 39
+  val MMUTableEntries: Int = 1024
+  val MMUPTEWidth: Int = 32
+  val MMUIndexBits: Int = 10
+  val MMUVaBits: Int = 32
   val MMUPTWBusDepth: Int = 16
   val AXIIDWidth: Int = 4
   val AXIArbCpuResponseQueueDepth: Int = 16
@@ -144,7 +144,7 @@ object ysyx_26030103_KconfigDefaults {
   val MMUMstatusReadMask: Long = 8264106L
   val MMUMstatusReadSet: Long = 0L
   val MMUMstatusWriteMask: Long = 8264106L
-  val MMUSatpReadMask: Long = -1L
+  val MMUSatpReadMask: Long = 4294967295L
   val MMUSatpReadSet: Long = 0L
-  val MMUSatpWriteMask: Long = -1L
+  val MMUSatpWriteMask: Long = 4294967295L
 }

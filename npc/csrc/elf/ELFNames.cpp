@@ -1,3 +1,5 @@
+module;
+#include <elf.h>
 module npc.elf.ELFNames;
 import std;
 namespace
@@ -47,5 +49,27 @@ std::string_view section_name(const std::vector<char> &table, std::uint32_t name
 std::string_view symbol_name(const std::vector<char> &table, std::uint32_t name_offset) noexcept
 {
     return NameOrPlaceholder(table, name_offset, "<no-strtab>(<无串表>)");
+}
+std::string_view elf_class_name(unsigned char elf_class) noexcept
+{
+    switch (elf_class)
+    {
+    case ELFCLASSNONE:
+    {
+        return "none(无)";
+    }
+    case ELFCLASS32:
+    {
+        return "ELF32(32位)";
+    }
+    case ELFCLASS64:
+    {
+        return "ELF64(64位)";
+    }
+    default:
+    {
+        return "unknown(未知)";
+    }
+    }
 }
 }

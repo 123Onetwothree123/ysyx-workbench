@@ -86,6 +86,7 @@ static void stub_mmio_write(paddr_t addr, word_t data) {
 #endif
 
 // 适配新版本difftest
+static uint8_t mrom[MROM_SIZE] = {};
 static uint8_t sram[SRAM_SIZE] = {};
 // flash
 static uint8_t flash[FLASH_SIZE] = {};
@@ -117,8 +118,9 @@ bool in_backed_memory_range(paddr_t addr, size_t len)
     return true;
   }
   return ysyxsoc_memory_mode &&
-         (in_sram_range(addr, len) || in_flash_range(addr, len) ||
-          in_psram_range(addr, len) || in_sdram_range(addr, len));
+         (in_mrom_range(addr, len) || in_sram_range(addr, len) ||
+          in_flash_range(addr, len) || in_psram_range(addr, len) ||
+          in_sdram_range(addr, len));
 }
 
 bool paddr_is_backed(paddr_t addr, int len)
@@ -137,6 +139,10 @@ bool paddr_is_backed(paddr_t addr, int len)
 
 uint8_t *guest_to_host(paddr_t paddr)
 {
+  if (ysyxsoc_memory_mode && in_mrom(paddr))
+  {
+    return mrom + paddr - MROM_BASE;
+  }
   if (ysyxsoc_memory_mode && in_sram(paddr))
   {
     return sram + paddr - SRAM_BASE;
@@ -168,6 +174,8 @@ paddr_t host_to_guest(uint8_t *haddr)
 {
   if (ysyxsoc_memory_mode)
   {
+    if (host_address_in(haddr, mrom, MROM_SIZE))
+      return MROM_BASE + (paddr_t)(haddr - mrom);
     if (host_address_in(haddr, sram, SRAM_SIZE))
       return SRAM_BASE + (paddr_t)(haddr - sram);
     if (host_address_in(haddr, flash, FLASH_SIZE))
@@ -218,6 +226,10 @@ word_t paddr_read(paddr_t addr, int len)
 #endif
     return ret;
   }
+  if (ysyxsoc_memory_mode && in_mrom_range(addr, len))
+  {
+    return host_read(mrom + addr - MROM_BASE, len);
+  }
   if (ysyxsoc_memory_mode && in_sram_range(addr, len))
   {
     return host_read(sram + addr - SRAM_BASE, len);
@@ -267,6 +279,10 @@ void paddr_write(paddr_t addr, int len, word_t data)
         cpu.pc, addr, len, data);
 #endif
     pmem_write(addr, len, data);
+    return;
+  }
+  if (ysyxsoc_memory_mode && in_mrom_range(addr, len))
+  {
     return;
   }
   if (ysyxsoc_memory_mode && in_sram_range(addr, len))

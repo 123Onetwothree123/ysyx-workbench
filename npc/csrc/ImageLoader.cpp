@@ -1,6 +1,7 @@
 module;
 #include <elf.h>
 module npc.ImageLoader;
+import ysyx_26030103_Platform;
 import npc.Output;
 import npc.config;
 import npc.SimulationContext;
@@ -21,17 +22,6 @@ namespace
 // RV32 不允许把 64 位地址截断。
 constexpr npc::XWord kImageBase{npc::MBase};
 #ifndef VRISCV32E_NPC
-std::uint32_t LoadLe32(const std::vector<std::uint8_t> &Bytes,
-                       std::size_t Offset)
-{
-    std::uint32_t value{0};
-    if (Offset <= Bytes.size() && Bytes.size() - Offset >= sizeof(value))
-    {
-        std::memcpy(&value, Bytes.data() + Offset, sizeof(value));
-    }
-    return value;
-}
-
 void StoreLe32(std::vector<std::uint8_t> &Bytes, std::size_t Offset,
                std::uint32_t Value)
 {
@@ -147,7 +137,10 @@ std::expected<std::size_t, std::string> LoadELFImage(
             return std::unexpected{std::format("ELF 程序头 {} 非法（p_filesz/p_memsz/p_paddr 越界）", Index)};
         }
     }
-    if (imageEnd - kImageBase + kCachePadding > kImageCapacity)
+    if (!ysyx_26030103::ImageFitsWindow(
+            static_cast<std::uintmax_t>(imageEnd - kImageBase),
+            kCachePadding,
+            kImageCapacity))
     {
         return std::unexpected{std::format("ELF 镜像末端 0x{:x} 超出仿真内存窗口 [{:#x}, {:#x})",
             imageEnd,
@@ -227,7 +220,7 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(
             return std::unexpected(std::format("无法获取镜像文件大小{}: {}", path.string(), error.message()));
         }
         const auto padding{static_cast<std::uintmax_t>(kCachePadding)};
-        if (padding > kImageCapacity || FileSize > kImageCapacity - padding)
+        if (!ysyx_26030103::ImageFitsWindow(FileSize, padding, kImageCapacity))
         {
             return std::unexpected(std::format("镜像过大：{} 字节 + {} 字节填充，但当前仿真内存只有 {} 字节", FileSize, kCachePadding, kImageCapacity));
         }
@@ -269,7 +262,10 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(
             {
                 return std::unexpected{file.error()};
             }
-            const auto payloadSize{LoadLe32(*file, kSocStubSizeOffset)};
+            const auto payloadSize{ysyx_26030103::LoadLittleEndian32(
+                *file,
+                kSocStubSizeOffset,
+                ysyx_26030103::LoadPolicy::RequireFull)};
             if (payloadSize == FileSize - kSocStubBytes)
             {
                 std::vector<std::uint8_t> stub(
@@ -280,8 +276,10 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(
                 // Flash +0x1000 复制、从 Flash +0xff0 读 size。拆分后
                 // payload 已在 Flash +0，size 又留在 MROM +0xff0，因此
                 // 只重定位这两条 lui 立即数。
-                if (LoadLe32(stub, 0x0) == 0x300012b7U &&
-                    LoadLe32(stub, 0xc) == 0x300013b7U)
+                if (ysyx_26030103::LoadLittleEndian32(
+                        stub, 0x0, ysyx_26030103::LoadPolicy::RequireFull) == 0x300012b7U &&
+                    ysyx_26030103::LoadLittleEndian32(
+                        stub, 0xc, ysyx_26030103::LoadPolicy::RequireFull) == 0x300013b7U)
                 {
                     StoreLe32(stub, 0x0, 0x300002b7U);
                     StoreLe32(stub, 0xc, 0x200013b7U);

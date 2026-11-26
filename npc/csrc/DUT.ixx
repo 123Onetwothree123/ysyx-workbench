@@ -1,12 +1,5 @@
-module;
-#ifdef VRISCV32E_NPC
-#include "Vriscv32e_npc_SimTop.h"
-#define TOP_MODULE Vriscv32e_npc_SimTop
-#else
-#include "VysyxSoCFull.h"
-#define TOP_MODULE VysyxSoCFull
-#endif
 export module npc.DUT;
+export import ysyx_26030103_TargetTop;
 import npc.config;
 import std;
 import npc.DicArchCounterStats;
@@ -24,7 +17,7 @@ private:
     SimulationContext &context;
     // 先于 dut 析构，避免模型仍引用已销毁的 tracer。
     std::unique_ptr<Tracer> tracer;
-    std::unique_ptr<TOP_MODULE> dut;
+    std::unique_ptr<TargetTop> dut;
     std::size_t cycle{0};
 
     npc::VgaChecker vga;
@@ -40,6 +33,11 @@ private:
     npc::DebugStateMirror mirror;
     // 仅记录精确退休的 store；RV64 用完整 64 位地址键。
     std::unordered_map<std::uint64_t, std::uint8_t> debug_memory_writes;
+
+    void Tick();
+    [[nodiscard]] npc::XWord ReadPhysicalGPR(std::uint32_t index);
+    // 旧RTL无浮点调试口时返回0，调用方先查HasFPDebugPorts
+    [[nodiscard]] std::uint64_t ReadPhysicalFPR(std::uint32_t index);
 
 public:
     struct RetireCSRState
@@ -59,8 +57,8 @@ public:
     explicit DUT(SimulationContext &Context);
     ~DUT();
     [[nodiscard]] SimulationContext &Context() noexcept;
-    TOP_MODULE &operator*();
-    TOP_MODULE *operator->();
+    TargetTop &operator*();
+    TargetTop *operator->();
     void eval();
     void final();
     // 退出前统一清理钩子；未设置时退化为 final()。

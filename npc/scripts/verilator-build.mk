@@ -73,6 +73,8 @@ NPC_IMPORT_HEADERS := $(shell grep -rhoP '(?<=import <)[^>]+' $(NPC_CSRC_DIR) --
 
 NPC_IXX_SRCS := \
   $(NPC_CONFIG_MODULE) \
+  $(NPC_CSRC_DIR)/ysyx_26030103_Platform.ixx \
+  $(NPC_CSRC_DIR)/ysyx_26030103_TargetTop.ixx \
   $(NPC_CSRC_DIR)/io/Output.ixx \
   $(NPC_CSRC_DIR)/log/log.ixx \
   $(NPC_CSRC_DIR)/unicode.ixx \

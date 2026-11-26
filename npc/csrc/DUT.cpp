@@ -1,12 +1,4 @@
 module;
-#ifdef VRISCV32E_NPC
-#include "Vriscv32e_npc_SimTop.h"
-#include <algorithm>
-#define TOP_MODULE Vriscv32e_npc_SimTop
-#else
-#include "VysyxSoCFull.h"
-#define TOP_MODULE VysyxSoCFull
-#endif
 #include <verilated_vcd_c.h>
 #include <verilated_fst_c.h>
 #include <verilated_save.h>
@@ -16,6 +8,7 @@ module;
 void nvboard_update(void);
 #endif
 module npc.DUT;
+import ysyx_26030103_Platform;
 import npc.Output;
 import npc.config;
 import npc.trace.itrace;
@@ -133,10 +126,10 @@ DUT::DUT(SimulationContext &Context) : context{Context}
         Verilated::traceEverOn(true);
         tracer = std::make_unique<Tracer>();
     }
-    dut = std::make_unique<TOP_MODULE>();
+    dut = std::make_unique<TargetTop>();
     heartbeat = std::getenv("NPC_HEARTBEAT") != nullptr;
     dut->debug_gpr_raddr = 0;
-    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    if constexpr (HasFPDebugPorts<TargetTop>)
         dut->debug_fpr_raddr = 0;
 #ifdef VRISCV32E_NPC
     dut->ram_init_valid = 0;
@@ -190,7 +183,7 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
     // 只清零镜像加 64KiB 边距，避免初始化整个 RAM。
     constexpr std::size_t ZeroMarginBytes{64U * 1024U};
     constexpr std::size_t WordBytes{sizeof(std::uint32_t)};
-    if (image.size() > RamBytes)
+    if (!ysyx_26030103::ImageFitsWindow(image.size(), 0, RamBytes))
     {
         throw std::length_error{
             std::format("direct-NPC 镜像 {} 字节超出 RAM {} 字节", image.size(), RamBytes)};
@@ -215,10 +208,7 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
         }
         dut->ram_init_index = static_cast<std::uint32_t>(wordIndex);
         dut->ram_init_data = word;
-        dut->clock = 0;
-        dut->eval();
-        dut->clock = 1;
-        dut->eval();
+        Tick();
     }
     dut->clock = 0;
     dut->ram_init_valid = 0;
@@ -296,17 +286,47 @@ SimulationContext &DUT::Context() noexcept
 {
     return context;
 }
-TOP_MODULE &DUT::operator*()
+TargetTop &DUT::operator*()
 {
     return *dut;
 }
-TOP_MODULE *DUT::operator->()
+TargetTop *DUT::operator->()
 {
     return dut.get();
 }
 void DUT::eval()
 {
     dut->eval();
+}
+
+void DUT::Tick()
+{
+    dut->clock = 0;
+    dut->eval();
+    dut->clock = 1;
+    dut->eval();
+}
+
+npc::XWord DUT::ReadPhysicalGPR(std::uint32_t index)
+{
+    dut->debug_gpr_raddr = static_cast<CData>(index);
+    dut->eval();
+    return DebugGPR(*dut);
+}
+
+std::uint64_t DUT::ReadPhysicalFPR(std::uint32_t index)
+{
+    if constexpr (HasFPDebugPorts<TargetTop>)
+    {
+        dut->debug_fpr_raddr = static_cast<CData>(index);
+        dut->eval();
+        return DebugFPR(*dut);
+    }
+    else
+    {
+        static_cast<void>(index);
+        return 0;
+    }
 }
 void DUT::SetShutdownHook(std::function<void()> hook)
 {
@@ -332,7 +352,7 @@ void DUT::reset()
     dut->clock = 0;
     dut->reset = 1;
     dut->debug_gpr_raddr = 0;
-    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    if constexpr (HasFPDebugPorts<TargetTop>)
         dut->debug_fpr_raddr = 0;
 #ifdef VRISCV32E_NPC
     dut->uart_rx_valid = 0;
@@ -342,15 +362,12 @@ void DUT::reset()
     // 同步复位需时钟沿；cpu_reset_chain 10 级，保持须明显超过 10 拍。
     for (int i = 0; i < 20; ++i)
     {
-        dut->clock = 0;
-        dut->eval();
-        dut->clock = 1;
-        dut->eval();
+        Tick();
     }
     dut->reset = 0;
     cycle = 0;
     fault_count = 0;
-    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    if constexpr (HasFPDebugPorts<TargetTop>)
     {
         mirror.SetFCSR(static_cast<std::uint64_t>(dut->debug_fcsr));
     }
@@ -379,7 +396,7 @@ void DUT::step()
     const auto debug_gpr_write_address{
         static_cast<std::size_t>(dut->debug_gpr_waddr)};
     // 浮点写口与 GPR 同沿；旧 RTL 无端口时不实例化。
-    constexpr bool HasFP{HasFPDebugPorts<TOP_MODULE>};
+    constexpr bool HasFP{HasFPDebugPorts<TargetTop>};
     bool debug_fpr_write{false};
     std::size_t debug_fpr_write_address{0};
     if constexpr (HasFP)
@@ -437,11 +454,11 @@ void DUT::step()
             debug_gpr_write_address < 32)
         {
             // 沿后回读物理 GPR，避免写数据错误被镜像掩盖。
-            dut->debug_gpr_raddr =
-                static_cast<CData>(debug_gpr_write_address);
-            dut->eval();
-            mirror.SetGPR(static_cast<std::uint32_t>(debug_gpr_write_address),
-                          DebugGPR(*dut));
+            const auto debug_gpr_write_value{ReadPhysicalGPR(
+                static_cast<std::uint32_t>(debug_gpr_write_address))};
+            mirror.SetGPR(
+                static_cast<std::uint32_t>(debug_gpr_write_address),
+                debug_gpr_write_value);
         }
     }
     mirror.SetGPR(0, 0);
@@ -452,12 +469,11 @@ void DUT::step()
             if (debug_fpr_write_address < 32)
             {
                 // 同样回读物理 FPR；FLEN=32 时高半区为 0。
-                dut->debug_fpr_raddr =
-                    static_cast<CData>(debug_fpr_write_address);
-                dut->eval();
+                const auto debug_fpr_write_value{ReadPhysicalFPR(
+                    static_cast<std::uint32_t>(debug_fpr_write_address))};
                 mirror.SetFPR(
                     static_cast<std::uint32_t>(debug_fpr_write_address),
-                    DebugFPR(*dut));
+                    debug_fpr_write_value);
             }
         }
         mirror.SetFCSR(static_cast<std::uint64_t>(dut->debug_fcsr));
@@ -793,9 +809,7 @@ std::expected<npc::XWord, std::string> DUT::ReadGPR(std::uint32_t index)
     {
         return std::unexpected{std::format("GPR编号都超31号了: {0}", index)};
     }
-    dut->debug_gpr_raddr = static_cast<CData>(index);
-    dut->eval();
-    return DebugGPR(*dut);
+    return ReadPhysicalGPR(index);
 }
 std::expected<npc::XWord, std::string> DUT::ReadPC()
 {
@@ -813,7 +827,7 @@ npc::XWord DUT::ReadCachedPC() const noexcept
 }
 bool DUT::HasFPDebugState() const
 {
-    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    if constexpr (HasFPDebugPorts<TargetTop>)
     {
         return static_cast<bool>(dut->debug_fp_valid);
     }
@@ -834,7 +848,7 @@ bool DUT::HasFPDebugState() const
 std::expected<std::uint64_t, std::string>
 DUT::ReadCachedFPR(std::uint32_t index) const
 {
-    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    if constexpr (HasFPDebugPorts<TargetTop>)
     {
         return mirror.ReadCachedFPR(index);
     }
@@ -847,7 +861,7 @@ DUT::ReadCachedFPR(std::uint32_t index) const
 }
 std::uint64_t DUT::ReadCachedFCSR() const noexcept
 {
-    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    if constexpr (HasFPDebugPorts<TargetTop>)
     {
         return mirror.ReadCachedFCSR();
     }
@@ -904,11 +918,11 @@ DUT::TrapCSRState DUT::ReadTrapCSR() const
 }
 bool DUT::HasTrapTvalDebugState() const noexcept
 {
-    return HasTrapTvalDebugPorts<TOP_MODULE>;
+    return HasTrapTvalDebugPorts<TargetTop>;
 }
 npc::XWord DUT::ReadTrapTval() const
 {
-    if constexpr (HasTrapTvalDebugPorts<TOP_MODULE>)
+    if constexpr (HasTrapTvalDebugPorts<TargetTop>)
     {
         return DebugWord(
             *dut, dut->debug_trap_tval, dut->debug_trap_tval_hi);
@@ -925,25 +939,21 @@ std::uint32_t DUT::ReadTrapCause() const
 void DUT::RefreshCachedArchitecturalState()
 {
     mirror.RefreshGPR([this](std::uint32_t index) {
-        dut->debug_gpr_raddr = static_cast<CData>(index);
-        dut->eval();
-        return DebugGPR(*dut);
+        return ReadPhysicalGPR(index);
     });
     dut->debug_gpr_raddr = 0;
-    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    if constexpr (HasFPDebugPorts<TargetTop>)
     {
         if (static_cast<bool>(dut->debug_fp_valid))
         {
             mirror.RefreshFPR([this](std::uint32_t index) {
-                dut->debug_fpr_raddr = static_cast<CData>(index);
-                dut->eval();
-                return DebugFPR(*dut);
+                return ReadPhysicalFPR(index);
             });
             dut->debug_fpr_raddr = 0;
         }
     }
     dut->eval();
-    if constexpr (HasFPDebugPorts<TOP_MODULE>)
+    if constexpr (HasFPDebugPorts<TargetTop>)
     {
         mirror.SetFCSR(static_cast<std::uint64_t>(dut->debug_fcsr));
     }

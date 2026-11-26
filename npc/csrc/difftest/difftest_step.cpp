@@ -37,12 +37,6 @@ SnapshotDiff CompareSnapshots(const Snapshot &ref, const Snapshot &dut)
     }
     return diff;
 }
-std::string EventWithSuffix(std::string event, const SnapshotDiff &diff)
-{
-    if (!diff.csrOk) event += "-csr";
-    if (!diff.fpOk) event += "-fp";
-    return event;
-}
 // 快照报告各调用点的差异只有 DUTNextPC 是否刷新、是否补 trap tval、
 // REF 指令来源及备注，其余字段必须逐字一致。
 struct SnapshotReportOptions
@@ -218,7 +212,8 @@ void DifftestTrapStep(DUT &dut)
     const auto diff{CompareSnapshots(refSnap, dutSnap)};
     if (!diff.Ok())
     {
-        const auto event{EventWithSuffix("trap-post", diff)};
+        const auto event{npc::difftest::EventNameWithSuffix(
+            "trap-post", diff.csrOk, diff.fpOk)};
         auto report{MakeBaseReport(dut, event, true)};
         FillSnapshotReport(
             report, refSnap, dutSnap,
@@ -272,7 +267,8 @@ static bool DifftestFinalCheckImpl(DUT &dut)
     const auto diff{CompareSnapshots(refSnap, dutSnap)};
     if (!diff.Ok())
     {
-        const auto event{EventWithSuffix("final", diff)};
+        const auto event{npc::difftest::EventNameWithSuffix(
+            "final", diff.csrOk, diff.fpOk)};
         auto report{MakeBaseReport(dut, event, false)};
         FillSnapshotReport(
             report, refSnap, dutSnap,

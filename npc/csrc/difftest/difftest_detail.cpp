@@ -158,12 +158,9 @@ namespace npc::difftest::detail
 
     std::string PostEvent(bool regsOk, bool csrOk, bool fpOk)
     {
-        std::string event{"retire-post"};
-        if (!csrOk)
-            event += "-csr";
-        if (!fpOk)
-            event += "-fp";
-        return event;
+        // regsOk不参与命名，GPR差异由基串"retire-post"表示
+        static_cast<void>(regsOk);
+        return npc::difftest::EventNameWithSuffix("retire-post", csrOk, fpOk);
     }
 
     void FillDUTInstruction(npc::difftest::DifftestReport &report,

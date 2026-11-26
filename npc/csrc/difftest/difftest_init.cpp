@@ -1,6 +1,7 @@
 module;
 #include <dlfcn.h>
 module npc.difftest.difftest;
+import ysyx_26030103_Platform;
 import std;
 import npc.Output;
 import npc.config;
@@ -25,6 +26,9 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
     }
     auto &out{dut.Context().Out()};
     auto &flash{dut.Context().Flash()};
+#ifndef VRISCV32E_NPC
+    auto &mrom{dut.Context().Mrom()};
+#endif
     if (!REFSoFile)
     {
         return {};
@@ -215,19 +219,21 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
 #endif
     (*InitSymbol)(0);
 
+    // ImageSize是逻辑镜像长度，packed时只算Flash payload
     if (ImageSize > flash.size())
     {
         return std::unexpected{"DiffTest 镜像长度大于已加载内存"};
     }
-    if (flash.size() > static_cast<std::size_t>(npc::MSize))
+#ifdef VRISCV32E_NPC
+
+    if (!ysyx_26030103::ImageFitsWindow(
+            flash.size(), 0, static_cast<std::size_t>(npc::MSize)))
     {
         return std::unexpected{std::format(
             "DiffTest 镜像 {} 字节超出平台镜像窗口 {} 字节",
             flash.size(),
             static_cast<std::size_t>(npc::MSize))};
     }
-#ifdef VRISCV32E_NPC
-
     const auto ramBytes{static_cast<std::size_t>(npc::MSize)};
     const auto syncBytes{ramBytes};
     std::vector<std::uint8_t> referenceMemory(syncBytes, 0);
@@ -237,8 +243,36 @@ std::expected<void, std::string> DifftestInitialize(DUT &dut,
               referenceMemory.size(),
               DifftestCPUState::GetDirectionToRef());
 #else
-
-    State().ref.REFMemcpy(npc::MBase,
+    // raw/ELF镜像同时写进Mrom()和Flash()，MROM只搬4KiB前缀；packed按各自长度搬
+    const bool sharedImage{mrom.size() == flash.size() &&
+                           std::ranges::equal(mrom, flash)};
+    const auto mromBytes{
+        sharedImage
+            ? std::min<std::size_t>(mrom.size(),
+                                    static_cast<std::size_t>(npc::SocMSize))
+            : mrom.size()};
+    if (!sharedImage &&
+        !ysyx_26030103::ImageFitsWindow(
+            mromBytes, 0, static_cast<std::size_t>(npc::SocMSize)))
+    {
+        return std::unexpected{std::format(
+            "DiffTest MROM 镜像 {} 字节超出 MROM 窗口 {} 字节",
+            mromBytes,
+            static_cast<std::size_t>(npc::SocMSize))};
+    }
+    if (!ysyx_26030103::ImageFitsWindow(
+            flash.size(), 0, static_cast<std::size_t>(npc::SocFlashSize)))
+    {
+        return std::unexpected{std::format(
+            "DiffTest Flash 镜像 {} 字节超出 Flash 窗口 {} 字节",
+            flash.size(),
+            static_cast<std::size_t>(npc::SocFlashSize))};
+    }
+    State().ref.REFMemcpy(npc::SocMBase,
+              mrom.data(),
+              mromBytes,
+              DifftestCPUState::GetDirectionToRef());
+    State().ref.REFMemcpy(npc::SocFlashBase,
               flash.data(),
               flash.size(),
               DifftestCPUState::GetDirectionToRef());

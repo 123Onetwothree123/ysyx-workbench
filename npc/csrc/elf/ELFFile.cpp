@@ -1,11 +1,11 @@
 module;
 #include <elf.h>
 module npc.elf.ELFFile;
+import npc.elf.ELFNames;
 import std;
 namespace
 {
 constexpr unsigned char ExpectedELFClass{npc::elf::IsELF64 ? ELFCLASS64 : ELFCLASS32};
-constexpr auto ExpectedELFClassName{std::string_view{npc::elf::IsELF64 ? "ELF64(64位)" : "ELF32(32位)"}};
 std::unexpected<std::string> make_error(std::string message)
 {
     return std::unexpected(std::move(message));
@@ -85,7 +85,7 @@ std::expected<void, std::string> validate_header(const Header &header)
     }
     if (header.e_ident[EI_CLASS] != ExpectedELFClass)
     {
-        return make_error("ELF类别不匹配(ELF class mismatch)：期望(expected)" + std::string(ExpectedELFClassName));
+        return make_error("ELF类别不匹配(ELF class mismatch)：期望(expected)" + std::string(elf_class_name(ExpectedELFClass)));
     }
     if (header.e_ident[EI_DATA] != ELFDATA2LSB)
     {

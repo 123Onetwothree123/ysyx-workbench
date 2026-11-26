@@ -1,19 +1,13 @@
 #include <verilated.h>
 #include <cstdio>
-#ifdef VRISCV32E_NPC
-#include "Vriscv32e_npc_SimTop.h"
-#define TOP_MODULE Vriscv32e_npc_SimTop
-#else
-#include "VysyxSoCFull.h"
-#define TOP_MODULE VysyxSoCFull
-#endif
 #if __has_include(<nvboard.h>)
 #include <nvboard.h>
 #else
 void nvboard_init(int vga_clk_cycle = 1);
 void nvboard_quit();
 #endif
-extern void nvboard_bind_all_pins(TOP_MODULE* top);
+import ysyx_26030103_TargetTop;
+extern void nvboard_bind_all_pins(TargetTop* top);
 import std;
 import npc.Output;
 import npc;

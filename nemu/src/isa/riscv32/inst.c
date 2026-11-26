@@ -18,6 +18,7 @@
 #include <cpu/cpu.h>
 #include <cpu/ifetch.h>
 #include <cpu/decode.h>
+#include <memory/paddr.h>
 #include <iringbuf.h>
 #include <ftrace.h>
 #include <cpu/btrace.h>
@@ -52,6 +53,11 @@ static word_t exception_cause = 0;
 static vaddr_t exception_epc = 0;
 
 void isa_raise_mem_exception(word_t cause, vaddr_t tval) {
+  if (cause == 5) {
+    fprintf(stderr, "[ref-debug] load fault tval=0x%llx pc=0x%llx socmode=%d\n",
+            (unsigned long long)tval, (unsigned long long)cpu.pc,
+            (int)is_ysyxsoc_memory_mode());
+  }
   if (exception_jmp != NULL) {
     exception_cause = cause;
     isa_trap_tval = tval;
