@@ -85,7 +85,6 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/sdb/EvaluationContext.ixx \
   $(NPC_CSRC_DIR)/sdb/RegisterName.ixx \
   $(NPC_CSRC_DIR)/sdb/TablePrinter.ixx \
-  $(NPC_CSRC_DIR)/sdb/SDBCommandUtils.ixx \
   $(NPC_CSRC_DIR)/trace/RecordInstruction.ixx \
   $(NPC_CSRC_DIR)/trace/FtraceEvent.ixx \
   $(NPC_CSRC_DIR)/trace/FtraceFrame.ixx \
@@ -133,6 +132,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/sdb/SDBCommandContext.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/NPCEvaluationContext.ixx \
+  $(NPC_CSRC_DIR)/sdb/SDBCommandUtils.ixx \
   $(NPC_CSRC_DIR)/sdb/SDBCommandRegistry.ixx \
   $(NPC_CSRC_DIR)/sdb/command/helpCommand.ixx \
   $(NPC_CSRC_DIR)/sdb/command/historyCommand.ixx \

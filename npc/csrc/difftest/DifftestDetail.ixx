@@ -83,12 +83,6 @@ Fn TryLoadSymbol(const char *Name)
     return reinterpret_cast<Fn>(Symbol);
 }
 
-npc::XWord ReadRetirePC(DUT &dut);
-npc::XWord ReadNextPC(DUT &dut);
-npc::XWord ReadMtracePC(DUT &dut);
-npc::XWord ReadMtraceAddr(DUT &dut);
-npc::XWord ReadTrapPC(DUT &dut);
-npc::XWord ReadTrapTarget(DUT &dut);
 npc::XWord ReadTrapTval(DUT &dut);
 DifftestCPUState ReadReferenceState();
 DifftestCPUState ReadDUTStateAtPC(DUT &dut, npc::XWord pc);

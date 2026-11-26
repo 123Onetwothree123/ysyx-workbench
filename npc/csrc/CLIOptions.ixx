@@ -5,6 +5,9 @@ export class CLIOptions final
 {
 public:
     [[nodiscard]] static std::expected<CLIOptions, std::string> Parse(int argc, char const *argv[]);
+    // 用法文本由同一张选项表生成。
+    [[nodiscard]] static std::string Usage(std::string_view Program);
+    [[nodiscard]] bool GetHelpRequested() const noexcept;
     [[nodiscard]] const std::optional<std::filesystem::path> &GetImageFile() const noexcept;
     [[nodiscard]] const std::optional<std::filesystem::path> &GetELFFile() const noexcept;
     [[nodiscard]] const std::optional<std::filesystem::path> &GetDiffFile() const noexcept;
@@ -23,4 +26,5 @@ private:
     std::optional<std::filesystem::path> RestoreFile{};
     bool VGACheckEnabled{false};
     bool BatchMode{false};
+    bool HelpRequested{false};
 };

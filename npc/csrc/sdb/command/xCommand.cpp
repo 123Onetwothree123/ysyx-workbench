@@ -4,8 +4,6 @@ import npc.SimulationContext;
 import npc.Output;
 import npc.config;
 import npc.sdb.SDBCommandUtils;
-import npc.expressions.expressions;
-import npc.sdb.NPCEvaluationContext;
 import npc.DUT;
 
 std::string_view xCommand::name() const noexcept
@@ -84,15 +82,13 @@ SDBCommandResult xCommand::execute(SDBCommandContext &context, std::string_view 
         out.Info("用法：x N[b|h|w|g] EXPR");
         return SDBCommandResult::Continue;
     }
-    expressions ExpressionsEngine;
-    NPCEvaluationContext EvalContext{context.GetDUT()};
-    const auto AddressResult{ExpressionsEngine.evaluate(args, EvalContext)};
+    const auto AddressResult{SDBEvaluateExpressionValue(args, context.GetDUT())};
     if (!AddressResult)
     {
         out.Error("表达式错误：{}", AddressResult.error());
         return SDBCommandResult::Continue;
     }
-    const auto StartAddress{AddressResult.value()};
+    const auto StartAddress{*AddressResult};
     if (Count > std::numeric_limits<std::uint64_t>::max() / UnitSize)
     {
         out.Error("错误：请求范围过大");

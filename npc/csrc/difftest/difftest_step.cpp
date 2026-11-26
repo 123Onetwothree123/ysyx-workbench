@@ -43,6 +43,39 @@ std::string EventWithSuffix(std::string event, const SnapshotDiff &diff)
     if (!diff.fpOk) event += "-fp";
     return event;
 }
+// 快照报告各调用点的差异只有 DUTNextPC 是否刷新、是否补 trap tval、
+// REF 指令来源及备注，其余字段必须逐字一致。
+struct SnapshotReportOptions
+{
+    bool SetDUTNextPC{};
+    bool FillTrapTvalCSR{};
+    bool RefInstructionIsCurrent{};
+    std::string_view RefInstructionNote{};
+};
+void FillSnapshotReport(npc::difftest::DifftestReport &report,
+                        const Snapshot &RefSnapshot,
+                        const Snapshot &DUTSnapshot,
+                        const SnapshotReportOptions &options)
+{
+    report.RefPC = RefSnapshot.regs.GetPC();
+    report.RefState = MakeReportGPRState(RefSnapshot.regs);
+    report.DUTState = MakeReportGPRState(DUTSnapshot.regs);
+    if (options.SetDUTNextPC)
+        report.DUTNextPC = report.DUTState->PC;
+    auto RefCSR{MakeReportCSRState(RefSnapshot.csr)};
+    auto DUTCSR{MakeReportCSRState(DUTSnapshot.csr)};
+    if (options.FillTrapTvalCSR)
+        FillTrapTvalCSR(report, RefCSR, DUTCSR);
+    report.RefCSR = std::move(RefCSR);
+    report.DUTCSR = std::move(DUTCSR);
+    if (RefSnapshot.fp && DUTSnapshot.fp)
+    {
+        report.RefFP = MakeReportFPState(*RefSnapshot.fp);
+        report.DUTFP = MakeReportFPState(*DUTSnapshot.fp);
+    }
+    FillRefInstruction(report, options.RefInstructionIsCurrent,
+                       options.RefInstructionNote);
+}
 }
 static void DifftestStepImpl(DUT &dut)
 {
@@ -53,7 +86,7 @@ static void DifftestStepImpl(DUT &dut)
     }
     if (!State().Enabled || State().Failed)
         return;
-    const auto retirePC{ReadRetirePC(dut)};
+    const auto retirePC{dut.ReadRetirePC()};
     const auto before{ReadReferenceState()};
     if (before.GetPC() != retirePC)
     {
@@ -64,7 +97,7 @@ static void DifftestStepImpl(DUT &dut)
         return;
     }
 
-    const auto nextPC{ReadNextPC(dut)};
+    const auto nextPC{dut.ReadNextPC()};
     const auto DUTState{ReadDUTStateAtPC(dut, nextPC)};
     const auto DUTCSR{ReadDUTRetireCSR(dut)};
     const bool injectResult{!ReferenceModelsDataAccess(dut) ||
@@ -104,18 +137,11 @@ static void DifftestStepImpl(DUT &dut)
     {
         const auto event{PostEvent(regsOk, csrOk, fpOk)};
         auto report{MakeBaseReport(dut, event, false)};
-        report.RefPC = REFState.GetPC();
-        report.RefState = MakeReportGPRState(REFState);
-        report.DUTState = MakeReportGPRState(DUTState);
-        report.DUTNextPC = report.DUTState->PC;
-        report.RefCSR = MakeReportCSRState(REFCSR);
-        report.DUTCSR = MakeReportCSRState(DUTCSR);
-        if (REFFP && DUTFP)
-        {
-            report.RefFP = MakeReportFPState(*REFFP);
-            report.DUTFP = MakeReportFPState(*DUTFP);
-        }
-        FillRefInstruction(report, true, "");
+        const Snapshot RefSnapshot{REFState, REFCSR, REFFP};
+        const Snapshot DUTSnapshot{DUTState, DUTCSR, DUTFP};
+        FillSnapshotReport(report, RefSnapshot, DUTSnapshot,
+                           {.SetDUTNextPC = true,
+                            .RefInstructionIsCurrent = true});
         ReportMismatch(dut, event, nextPC, std::move(report));
         return;
     }
@@ -132,7 +158,7 @@ void DifftestTrapStep(DUT &dut)
     if (!State().Enabled || State().Failed)
         return;
 
-    const auto trapPC{ReadTrapPC(dut)};
+    const auto trapPC{dut.ReadTrapPC()};
     const auto rawCause{static_cast<std::uint32_t>(dut->debug_trap_cause)};
     // 中断位需从 NPC 的 bit31 转到 NEMU RV64 的 bit63。
     std::uint64_t cause{rawCause};
@@ -181,7 +207,7 @@ void DifftestTrapStep(DUT &dut)
         State().ref.REFRaiseIntr(cause);
     }
 
-    const auto target{ReadTrapTarget(dut)};
+    const auto target{dut.ReadTrapTarget()};
     Snapshot refSnap{ReadReferenceState(), ReadReferenceCSR(), std::nullopt};
     Snapshot dutSnap{ReadDUTStateAtPC(dut, target), ReadDUTTrapCSR(dut), std::nullopt};
     if (State().FPCompareEnabled)
@@ -194,22 +220,10 @@ void DifftestTrapStep(DUT &dut)
     {
         const auto event{EventWithSuffix("trap-post", diff)};
         auto report{MakeBaseReport(dut, event, true)};
-        report.RefPC = refSnap.regs.GetPC();
-        report.RefState = MakeReportGPRState(refSnap.regs);
-        report.DUTState = MakeReportGPRState(dutSnap.regs);
-        auto refCSR{MakeReportCSRState(refSnap.csr)};
-        auto dutCSR{MakeReportCSRState(dutSnap.csr)};
-        FillTrapTvalCSR(report, refCSR, dutCSR);
-        report.RefCSR = std::move(refCSR);
-        report.DUTCSR = std::move(dutCSR);
-        if (refSnap.fp && dutSnap.fp)
-        {
-            report.RefFP = MakeReportFPState(*refSnap.fp);
-            report.DUTFP = MakeReportFPState(*dutSnap.fp);
-        }
-        FillRefInstruction(
-            report, false,
-            "REF 本步仅注入 trap，未执行指令（显示上一条）");
+        FillSnapshotReport(
+            report, refSnap, dutSnap,
+            {.FillTrapTvalCSR = true,
+             .RefInstructionNote = "REF 本步仅注入 trap，未执行指令（显示上一条）"});
         ReportMismatch(dut, event, target, std::move(report));
         return;
     }
@@ -260,20 +274,10 @@ static bool DifftestFinalCheckImpl(DUT &dut)
     {
         const auto event{EventWithSuffix("final", diff)};
         auto report{MakeBaseReport(dut, event, false)};
-        report.RefPC = refSnap.regs.GetPC();
-        report.RefState = MakeReportGPRState(refSnap.regs);
-        report.DUTState = MakeReportGPRState(dutSnap.regs);
-        report.DUTNextPC = report.DUTState->PC;
-        report.RefCSR = MakeReportCSRState(refSnap.csr);
-        report.DUTCSR = MakeReportCSRState(dutSnap.csr);
-        if (refSnap.fp && dutSnap.fp)
-        {
-            report.RefFP = MakeReportFPState(*refSnap.fp);
-            report.DUTFP = MakeReportFPState(*dutSnap.fp);
-        }
-        FillRefInstruction(
-            report, false,
-            "REF 最后执行的指令（最终检查未再执行）");
+        FillSnapshotReport(
+            report, refSnap, dutSnap,
+            {.SetDUTNextPC = true,
+             .RefInstructionNote = "REF 最后执行的指令（最终检查未再执行）"});
         ReportMismatch(dut, event, dutSnap.regs.GetPC(), std::move(report));
         return false;
     }

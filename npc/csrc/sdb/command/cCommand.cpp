@@ -1,5 +1,4 @@
 module;
-#include <verilated.h>
 module npc.sdb.command.cCommand;
 import npc.Output;
 import npc.config;
@@ -7,6 +6,7 @@ import npc.NPCTrap;
 import npc.DUT;
 import npc.sdb.NPCEvaluationContext;
 import npc.sdb.command.WatchpointPool;
+import npc.sdb.SDBCommandUtils;
 import npc.SimulationContext;
 
 [[nodiscard]] std::string_view cCommand::name() const noexcept
@@ -23,9 +23,8 @@ import npc.SimulationContext;
 SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view args)
 {
     auto &out{context.GetSimulation().Out()};
-    if (!args.empty())
+    if (SDBRejectUnexpectedArguments(args, "用法：c", out))
     {
-        out.Info("用法：c");
         return SDBCommandResult::Continue;
     }
     auto &dut{context.GetDUT()};
@@ -35,20 +34,7 @@ SDBCommandResult cCommand::execute(SDBCommandContext &context, std::string_view 
     dut.EnableUARTStdin(true);
     while (!NPCTrap::HasHalted())
     {
-        // $finish 可能与本拍已寄存的 halt 脉冲同时可见。先结算 halt，
-        // 再退出，否则正常的 GOOD/BAD trap 会被误报成未触发陷阱。
-        if (Verilated::gotFinish())
-        {
-            dut.PollSimulationHalt();
-            break;
-        }
-        dut.step();
-        // A DiffTest mismatch raised by this step has priority over a
-        // same-cycle simulation halt, otherwise a0 == 0 could turn BAD into
-        // an apparent GOOD result.
-        if (NPCTrap::HasHalted())
-            break;
-        if (dut.PollSimulationHalt())
+        if (dut.StepWithHaltPriority())
             break;
         if constexpr (npc::HasWatchpoint)
         {

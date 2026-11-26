@@ -15,6 +15,7 @@ constexpr int VFrontPorch{10};
 constexpr int VTotal{VSync + VBackPorch + VVisible + VFrontPorch};
 constexpr std::size_t VisiblePixels{
     static_cast<std::size_t>(HVisible) * VVisible};
+constexpr std::size_t BytesPerPixel{3};
 }
 namespace npc
 {
@@ -52,9 +53,9 @@ void VgaChecker::Enable(bool Hsync, bool Vsync)
     frames_ = 0;
     completed_frame_available_ = false;
     timed_out_ = false;
-    working_frame_.assign(640 * 480 * 3, 0);
-    frame_.assign(640 * 480 * 3, 0);
-    pixel_coverage_.assign(640 * 480, 0);
+    working_frame_.assign(VisiblePixels * BytesPerPixel, 0);
+    frame_.assign(VisiblePixels * BytesPerPixel, 0);
+    pixel_coverage_.assign(VisiblePixels, 0);
 }
 bool VgaChecker::Enabled() const
 {
@@ -209,7 +210,7 @@ bool VgaChecker::Sample(const VgaSample &sample, Output &out)
             auto &coverage{pixel_coverage_[pixel_index]};
             if (coverage != std::numeric_limits<std::uint8_t>::max())
                 ++coverage;
-            const auto byte_index{pixel_index * 3};
+            const auto byte_index{pixel_index * BytesPerPixel};
             const std::uint32_t rgb{sample.rgb};
             working_frame_[byte_index + 0] =
                 static_cast<std::uint8_t>(rgb >> 16);
@@ -237,16 +238,16 @@ bool VgaChecker::Report(Output &out)
     out.Info("  完整帧数: {}", frames_);
     if (line_period_count_ > 1)
     {
-        out.Info("  行周期(期望800拍): 平均 {:.1f}, 异常行数 {}",
+        out.Info("  行周期(期望{}拍): 平均 {:.1f}, 异常行数 {}", HTotal,
             static_cast<double>(line_period_sum_) / static_cast<double>(line_period_count_ - 1), line_period_bad_);
     }
-    out.Info("  帧周期异常次数(期望420000拍): {}", frame_period_bad_);
-    out.Info("  HSYNC脉宽异常(期望低96/高704拍): {}", hsync_width_bad_);
-    out.Info("  VSYNC脉宽异常(期望低1600/高418400拍): {}", vsync_width_bad_);
+    out.Info("  帧周期异常次数(期望{}拍): {}", HTotal * VTotal, frame_period_bad_);
+    out.Info("  HSYNC脉宽异常(期望低{}/高{}拍): {}", HSync, HTotal - HSync, hsync_width_bad_);
+    out.Info("  VSYNC脉宽异常(期望低{}/高{}拍): {}", VSync * HTotal, (VTotal - VSync) * HTotal, vsync_width_bad_);
     out.Info("  HSYNC光栅电平错误拍数: {}", hsync_level_errors_);
     out.Info("  VSYNC光栅电平错误拍数: {}", vsync_level_errors_);
     out.Info("  有效区/porch时序错误拍数: {}", valid_timing_errors_);
-    out.Info("  最近一帧有效像素(期望307200): {}", last_frame_valid_pixels_);
+    out.Info("  最近一帧有效像素(期望{}): {}", VisiblePixels, last_frame_valid_pixels_);
     out.Info("  最近一帧缺失/重复像素: {}/{}",
         last_frame_missing_pixels_, last_frame_duplicate_pixels_);
     out.Info("  累计缺失/重复像素: {}/{}",
@@ -268,7 +269,7 @@ bool VgaChecker::Report(Output &out)
         }
         else
         {
-            f << "P6\n640 480\n255\n";
+            f << std::format("P6\n{} {}\n255\n", HVisible, VVisible);
             f.write(reinterpret_cast<const char *>(frame_.data()),
                     static_cast<std::streamsize>(frame_.size()));
             if (!f)
@@ -290,7 +291,7 @@ bool VgaChecker::Report(Output &out)
         hsync_width_bad_ == 0 && vsync_width_bad_ == 0 &&
         hsync_level_errors_ == 0 && vsync_level_errors_ == 0 &&
         valid_timing_errors_ == 0 &&
-        frame_pixel_bad_ == 0 && last_frame_valid_pixels_ == 307200 &&
+        frame_pixel_bad_ == 0 && last_frame_valid_pixels_ == VisiblePixels &&
         last_frame_missing_pixels_ == 0 &&
         last_frame_duplicate_pixels_ == 0 && pos_errors_ == 0 &&
         !timed_out_ && ppm_ok};

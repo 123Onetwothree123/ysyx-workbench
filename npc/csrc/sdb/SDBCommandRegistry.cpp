@@ -75,19 +75,23 @@ SDBCommandResult SDBCommandRegistry::Execute(std::string_view line)
     {
         return SDBCommandResult::Continue;
     }
-    const auto CommandIt{std::ranges::find_if(Commands, [Name](const std::unique_ptr<SDBCommand> &Command){return Command->name() == Name; })};
-    if (CommandIt == Commands.end())
+    const auto command{FindCommandForExecution(Name)};
+    if (command == nullptr)
     {
         Context.GetSimulation().Out().Error("未知命令: {}", line);
         return SDBCommandResult::Continue;
     }
-    return (*CommandIt)->execute(Context, Args);
+    return command->execute(Context, Args);
 }
 void SDBCommandRegistry::RegisterCommand(std::unique_ptr<SDBCommand> command)
 {
     Commands.push_back(std::move(command));
 }
 const SDBCommand *SDBCommandRegistry::FindCommand(std::string_view name) const
+{
+    return FindCommandForExecution(name);
+}
+SDBCommand *SDBCommandRegistry::FindCommandForExecution(std::string_view name) const
 {
     const auto CommandIt{std::ranges::find_if(Commands, [name](const std::unique_ptr<SDBCommand> &Command)
                                               { return Command->name() == name; })};

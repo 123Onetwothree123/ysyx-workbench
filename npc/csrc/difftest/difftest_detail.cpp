@@ -8,6 +8,7 @@ import npc.trace.disasm;
 import npc.DUT;
 import npc.Output;
 import npc.SimulationContext;
+import npc.SoCMemoryMap.SoCMemoryMap;
 import :detail;
 namespace npc::difftest::detail
 {
@@ -17,27 +18,6 @@ namespace npc::difftest::detail
         return state;
     }
 
-    template <typename Top>
-    npc::XWord DebugWord(const Top &, std::uint32_t Low, std::uint32_t High)
-    {
-        if constexpr (npc::XLen == 64)
-        {
-            return static_cast<npc::XWord>(Low) |
-                   (static_cast<npc::XWord>(High) << 32U);
-        }
-        else
-        {
-            static_cast<void>(High);
-            return static_cast<npc::XWord>(Low);
-        }
-    }
-
-    npc::XWord ReadRetirePC(DUT &dut) { return DebugWord(*dut, dut->debug_pc, dut->debug_pc_hi); }
-    npc::XWord ReadNextPC(DUT &dut) { return DebugWord(*dut, dut->debug_next_pc, dut->debug_next_pc_hi); }
-    npc::XWord ReadMtracePC(DUT &dut) { return DebugWord(*dut, dut->debug_mtrace_pc, dut->debug_mtrace_pc_hi); }
-    npc::XWord ReadMtraceAddr(DUT &dut) { return DebugWord(*dut, dut->debug_mtrace_addr, dut->debug_mtrace_addr_hi); }
-    npc::XWord ReadTrapPC(DUT &dut) { return DebugWord(*dut, dut->debug_trap_pc, dut->debug_trap_pc_hi); }
-    npc::XWord ReadTrapTarget(DUT &dut) { return DebugWord(*dut, dut->debug_trap_target, dut->debug_trap_target_hi); }
     npc::XWord ReadTrapTval(DUT &dut) { return dut.ReadTrapTval(); }
 
     DifftestCPUState ReadReferenceState()
@@ -64,21 +44,23 @@ namespace npc::difftest::detail
 
     DifftestCSRState ReadDUTRetireCSR(DUT &dut)
     {
+        const auto state{dut.ReadRetireCSR()};
         return {
-            .mstatus = DebugWord(*dut, dut->debug_csr_mstatus, dut->debug_csr_mstatus_hi),
-            .mtvec = DebugWord(*dut, dut->debug_csr_mtvec, dut->debug_csr_mtvec_hi),
-            .mepc = DebugWord(*dut, dut->debug_csr_mepc, dut->debug_csr_mepc_hi),
-            .mcause = DebugWord(*dut, dut->debug_csr_mcause, dut->debug_csr_mcause_hi),
+            .mstatus = state.mstatus,
+            .mtvec = state.mtvec,
+            .mepc = state.mepc,
+            .mcause = state.mcause,
         };
     }
 
     DifftestCSRState ReadDUTTrapCSR(DUT &dut)
     {
+        const auto state{dut.ReadTrapCSR()};
         return {
-            .mstatus = DebugWord(*dut, dut->debug_trap_mstatus, dut->debug_trap_mstatus_hi),
-            .mtvec = DebugWord(*dut, dut->debug_trap_mtvec, dut->debug_trap_mtvec_hi),
-            .mepc = DebugWord(*dut, dut->debug_trap_mepc, dut->debug_trap_mepc_hi),
-            .mcause = DebugWord(*dut, dut->debug_trap_mcause, dut->debug_trap_mcause_hi),
+            .mstatus = state.mstatus,
+            .mtvec = state.mtvec,
+            .mepc = state.mepc,
+            .mcause = state.mcause,
         };
     }
 
@@ -110,22 +92,19 @@ namespace npc::difftest::detail
     bool ReferenceModelsDataAccess(DUT &dut)
     {
         if (!dut->debug_mtrace_valid ||
-            ReadMtracePC(dut) != ReadRetirePC(dut))
+            dut.ReadMtracePC() != dut.ReadRetirePC())
             return true;
         const auto width{static_cast<unsigned>(dut->debug_mtrace_width)};
         if (width > 3U)
             return false;
         const auto bytes{static_cast<npc::XWord>(1U << width)};
-        const auto address{ReadMtraceAddr(dut)};
+        const auto address{dut.ReadMtraceAddress()};
 #ifdef VRISCV32E_NPC
         return RangeContains(address, bytes,
                              static_cast<npc::XWord>(npc::MBase),
                              static_cast<npc::XWord>(npc::MSize));
 #else
-        return RangeContains(address, bytes, npc::PmaSramBase, npc::PmaSramSize) ||
-               RangeContains(address, bytes, npc::PmaMromBase, npc::PmaMromSize) ||
-               RangeContains(address, bytes, npc::PmaPsramBase, npc::PmaPsramSize) ||
-               RangeContains(address, bytes, npc::PmaSdramBase, npc::PmaSdramSize);
+        return SoCMemoryMap::IsReferenceModeledRam(address, bytes);
 #endif
     }
 
@@ -140,22 +119,10 @@ namespace npc::difftest::detail
 
     std::string DisassembleWord(std::uint64_t pc, std::uint32_t instruction)
     {
-        init_disasm();
-        std::array<std::uint8_t, 4> bytes{
-            static_cast<std::uint8_t>(instruction),
-            static_cast<std::uint8_t>(instruction >> 8U),
-            static_cast<std::uint8_t>(instruction >> 16U),
-            static_cast<std::uint8_t>(instruction >> 24U),
-        };
-        std::array<char, 128> assembly{};
-        disassemble(assembly.data(),
-                    static_cast<int>(assembly.size()),
-                    pc,
-                    bytes.data(),
-                    static_cast<int>(bytes.size()));
-        if (assembly.front() == '\0')
+        auto assembly{::DisassembleWord(pc, instruction)};
+        if (assembly.empty())
             return "<反汇编失败>";
-        return std::string{assembly.data()};
+        return assembly;
     }
 
     npc::difftest::ReportGPRState MakeReportGPRState(
@@ -204,7 +171,7 @@ namespace npc::difftest::detail
                             bool trapEvent)
     {
         report.HasDUTInstruction = true;
-        report.DUTInstructionPC = ReadRetirePC(dut);
+        report.DUTInstructionPC = dut.ReadRetirePC();
         report.DUTInstruction =
             static_cast<std::uint32_t>(dut->debug_instructions);
         report.DUTAssembly =
@@ -240,8 +207,8 @@ namespace npc::difftest::detail
     {
         report.HasTrap = true;
         report.TrapCause = dut.ReadTrapCause();
-        report.TrapEPC = ReadTrapPC(dut);
-        report.TrapTarget = ReadTrapTarget(dut);
+        report.TrapEPC = dut.ReadTrapPC();
+        report.TrapTarget = dut.ReadTrapTarget();
         report.TrapTvalAvailable = dut.HasTrapTvalDebugState();
         if (report.TrapTvalAvailable)
             report.TrapTval = ReadTrapTval(dut);
@@ -337,7 +304,7 @@ namespace npc::difftest::detail
         report.Event = std::string{event};
         report.XLen = npc::XLen;
         report.Cycle = dut.GetCycle();
-        report.DUTRetirePC = ReadRetirePC(dut);
+        report.DUTRetirePC = dut.ReadRetirePC();
         report.HasDUTNextPC = true;
         FillDUTInstruction(report, dut, trapEvent);
         if (trapEvent)
@@ -347,7 +314,7 @@ namespace npc::difftest::detail
         }
         else
         {
-            report.DUTNextPC = ReadNextPC(dut);
+            report.DUTNextPC = dut.ReadNextPC();
         }
         return report;
     }

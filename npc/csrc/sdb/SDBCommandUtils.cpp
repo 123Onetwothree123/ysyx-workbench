@@ -1,4 +1,6 @@
 module npc.sdb.SDBCommandUtils;
+import npc.expressions.expressions;
+import npc.sdb.NPCEvaluationContext;
 [[nodiscard]] std::string_view SDBTrimLeft(std::string_view text)
 {
     auto first{text.find_first_not_of(" \t")};
@@ -28,9 +30,8 @@ module npc.sdb.SDBCommandUtils;
         return {line, {}};
     }
     const auto CommandName{line.substr(0, CommandEnd)};
-    const auto name{line.substr(0, CommandEnd)};
     line.remove_prefix(CommandEnd);
-    return {name, SDBTrimRight(SDBTrimLeft(line))};
+    return {CommandName, SDBTrimRight(SDBTrimLeft(line))};
 }
 [[nodiscard]] bool SDBValidateExpressionSyntax(std::string_view expression)
 {
@@ -55,4 +56,44 @@ module npc.sdb.SDBCommandUtils;
         }
     }
     return ParenCount == 0;
+}
+[[nodiscard]] bool SDBRejectUnexpectedArguments(std::string_view arguments,
+                                               std::string_view usage,
+                                               Output &out)
+{
+    if (arguments.empty())
+    {
+        return false;
+    }
+    out.Info("{}", usage);
+    return true;
+}
+[[nodiscard]] std::expected<std::uint64_t, std::string>
+SDBEvaluateExpressionValue(std::string_view expression, DUT &dut)
+{
+    expressions ExpressionEngine;
+    NPCEvaluationContext EvaluationContext{dut};
+    return ExpressionEngine.evaluate(expression, EvaluationContext);
+}
+[[nodiscard]] std::expected<std::uint64_t, std::string>
+SDBEvaluateExpression(std::string_view arguments,
+                      DUT &dut,
+                      std::string_view EmptyArgumentsError,
+                      std::string_view SyntaxError)
+{
+    arguments = SDBTrimLeft(arguments);
+    if (arguments.empty())
+    {
+        return std::unexpected(std::string{EmptyArgumentsError});
+    }
+    if (!SDBValidateExpressionSyntax(arguments))
+    {
+        return std::unexpected(std::string{SyntaxError});
+    }
+    auto result{SDBEvaluateExpressionValue(arguments, dut)};
+    if (!result)
+    {
+        return std::unexpected(std::format("表达式错误：{}", result.error()));
+    }
+    return *result;
 }

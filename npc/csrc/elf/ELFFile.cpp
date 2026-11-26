@@ -156,10 +156,7 @@ std::expected<std::vector<char>, std::string> read_string_table(ELFFile &file, c
         return make_error("字符串表过大(string table is too large)");
     }
     const auto payload_size{static_cast<std::size_t>(section.sh_size)};
-    const auto file_size{file.size()};
-    if (!file_size ||
-        static_cast<std::uint64_t>(section.sh_offset) > *file_size ||
-        payload_size > *file_size - static_cast<std::uint64_t>(section.sh_offset))
+    if (!detail::CheckRange(file.size(), static_cast<std::uint64_t>(section.sh_offset), payload_size))
     {
         return make_error("字符串表超出文件范围(string table exceeds file size)");
     }

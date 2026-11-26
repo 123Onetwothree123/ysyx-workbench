@@ -12,27 +12,35 @@ namespace npc
 {
 namespace
 {
-std::optional<std::size_t> EnvCycle(const char *name)
+std::optional<std::string_view> EnvValue(const char *name)
 {
     if (const char *value{std::getenv(name)}; value != nullptr && *value != '\0')
     {
-        return static_cast<std::size_t>(std::stoull(value));
+        return std::string_view{value};
+    }
+    return std::nullopt;
+}
+std::optional<std::size_t> EnvCycle(const char *name)
+{
+    if (const auto value{EnvValue(name)})
+    {
+        return static_cast<std::size_t>(std::stoull(std::string{*value}));
     }
     return std::nullopt;
 }
 std::filesystem::path EnvPath(const char *name)
 {
-    if (const char *value{std::getenv(name)}; value != nullptr && *value != '\0')
+    if (const auto value{EnvValue(name)})
     {
-        return value;
+        return std::filesystem::path{*value};
     }
     return {};
 }
 std::string EnvString(const char *name)
 {
-    if (const char *value{std::getenv(name)}; value != nullptr && *value != '\0')
+    if (const auto value{EnvValue(name)})
     {
-        return value;
+        return std::string{*value};
     }
     return {};
 }
@@ -42,10 +50,9 @@ void CheckpointController::LoadEnvironment()
     checkpoint_cycle_ = EnvCycle("NPC_CHECKPOINT_CYCLE");
     checkpoint_file_ = EnvPath("NPC_CHECKPOINT_FILE");
     checkpoint_marker_ = EnvString("NPC_CHECKPOINT_MARKER");
-    if (const char *value{std::getenv("NPC_CHECKPOINT_CONTINUE")};
-        value != nullptr)
+    if (const auto value{EnvValue("NPC_CHECKPOINT_CONTINUE")})
     {
-        checkpoint_continue_ = std::string{value} == "1";
+        checkpoint_continue_ = *value == "1";
     }
 #ifdef VRISCV32E_NPC
     fork_cycle_ = EnvCycle("NPC_FORK_AT");

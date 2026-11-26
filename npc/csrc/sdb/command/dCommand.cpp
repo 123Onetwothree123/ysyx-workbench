@@ -24,20 +24,18 @@ SDBCommandResult dCommand::execute(SDBCommandContext &context, std::string_view 
         out.Error("d命令的参数是空的");
         return SDBCommandResult::Continue;
     }
-    auto NO{std::size_t{0}};
-    const auto result{std::from_chars(args.data(), args.data() + args.size(), NO, 10)};
-    if (result.ec != std::errc())
+    const auto parsed{SDBParseIntegerArgument<std::size_t>(args)};
+    if (!parsed)
     {
         out.Error("无效的监视点编号'{}'，from_chars解析错误", args);
         return SDBCommandResult::Continue;
     }
-    auto remainder{std::string_view{result.ptr, static_cast<std::size_t>(args.data() + args.size() - result.ptr)}};
-    remainder = SDBTrimLeft(remainder);
-    if (!remainder.empty())
+    if (!parsed->remainder.empty())
     {
-        out.Error("参数中有尾部垃圾'{}'", remainder);
+        out.Error("参数中有尾部垃圾'{}'", parsed->remainder);
         return SDBCommandResult::Continue;
     }
+    const auto NO{parsed->value};
     const auto MAX_WP{context.GetSimulation().Watchpoints().GetMaxWatchpoints()};
     if (NO >= MAX_WP)
     {

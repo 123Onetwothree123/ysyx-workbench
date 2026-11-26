@@ -42,6 +42,20 @@ private:
     std::unordered_map<std::uint64_t, std::uint8_t> debug_memory_writes;
 
 public:
+    struct RetireCSRState
+    {
+        npc::XWord mstatus{};
+        npc::XWord mtvec{};
+        npc::XWord mepc{};
+        npc::XWord mcause{};
+    };
+    struct TrapCSRState
+    {
+        npc::XWord mstatus{};
+        npc::XWord mtvec{};
+        npc::XWord mepc{};
+        npc::XWord mcause{};
+    };
     explicit DUT(SimulationContext &Context);
     ~DUT();
     [[nodiscard]] SimulationContext &Context() noexcept;
@@ -58,6 +72,8 @@ public:
     void EnableUARTStdin(bool enable);
     // 沿后调用；须在检查 Verilated::gotFinish() 前结算。
     [[nodiscard]] bool PollSimulationHalt();
+    // 推进一拍并按优先级结算 halt；返回 true 表示调用方应退出运行循环。
+    [[nodiscard]] bool StepWithHaltPriority();
     void reset();
     // 把镜像写入 direct-NPC RAM；SoC 路径为 no-op。
     void InitializeMemory(std::span<const std::uint8_t> image);
@@ -80,10 +96,18 @@ public:
     [[nodiscard]] std::expected<std::uint64_t, std::string>
         ReadCachedFPR(std::uint32_t index) const;
     [[nodiscard]] std::uint64_t ReadCachedFCSR() const noexcept;
+    // 退休点与 mtrace 调试端口；RV64 由低/高 32 位字拼成 XWord。
+    [[nodiscard]] npc::XWord ReadRetirePC() const;
+    [[nodiscard]] npc::XWord ReadNextPC() const;
+    [[nodiscard]] npc::XWord ReadMtracePC() const;
+    [[nodiscard]] npc::XWord ReadMtraceAddress() const;
     // 完整 XLEN 的 halt/trap 地址视图。
     [[nodiscard]] npc::XWord ReadHaltPC() const;
     [[nodiscard]] npc::XWord ReadTrapPC() const;
     [[nodiscard]] npc::XWord ReadTrapTarget() const;
+    // 退休点与 trap 点 CSR 调试视图，字段名与 RISC-V CSR 一致。
+    [[nodiscard]] RetireCSRState ReadRetireCSR() const;
+    [[nodiscard]] TrapCSRState ReadTrapCSR() const;
     // 无 tval 调试端口时返回 false，DiffTest 走 cause-only。
     [[nodiscard]] bool HasTrapTvalDebugState() const noexcept;
     [[nodiscard]] npc::XWord ReadTrapTval() const;

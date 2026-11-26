@@ -72,6 +72,28 @@ void WriteCsvLine(std::ostream &output, const Range &fields)
     }
     output.put('\n');
 }
+
+std::filesystem::path CreateUniqueDirectory(
+    const std::filesystem::path &root,
+    std::string_view name,
+    const char *message)
+{
+    for (std::size_t suffix{0};; ++suffix)
+    {
+        const auto directory_name{suffix == 0
+            ? std::string{name}
+            : std::format("{}-{}", name, suffix)};
+        const auto candidate{root / directory_name};
+        std::error_code error;
+        if (std::filesystem::create_directory(candidate, error))
+            return candidate;
+        // 已存在（含未置错误码的情形）时换下一个后缀。
+        if (error == std::errc::file_exists || !error)
+            continue;
+        throw std::filesystem::filesystem_error{
+            std::string{message}, candidate, error};
+    }
+}
 }
 
 std::filesystem::path NPCSimResult::CreateDefaultResultDirectory()
@@ -94,26 +116,8 @@ std::filesystem::path NPCSimResult::CreateDefaultResultDirectory()
 
     const std::filesystem::path result_root{"NPCSimResult"};
     std::filesystem::create_directories(result_root);
-    for (std::size_t suffix{0};; ++suffix)
-    {
-        const auto directory_name{
-            suffix == 0 ? timestamp : std::format("{}-{}", timestamp, suffix)};
-        const auto result_dir{result_root / directory_name};
-        std::error_code error;
-        if (std::filesystem::create_directory(result_dir, error))
-        {
-            return result_dir;
-        }
-        if (error == std::errc::file_exists)
-        {
-            continue;
-        }
-        if (error)
-        {
-            throw std::filesystem::filesystem_error{
-                "无法创建默认性能结果目录", result_dir, error};
-        }
-    }
+    return CreateUniqueDirectory(
+        result_root, timestamp, "无法创建默认性能结果目录");
 }
 
 void NPCSimResult::Save(
@@ -375,26 +379,8 @@ void NPCSimResult::Save(
     };
 
     // 先写临时目录再 rename，避免留下半截 CSV。
-    std::filesystem::path staging_dir;
-    for (std::size_t suffix{0};; ++suffix)
-    {
-        const auto directory_name{suffix == 0
-            ? std::string{".npc-result-tmp"}
-            : std::format(".npc-result-tmp-{}", suffix)};
-        const auto candidate{result_dir / directory_name};
-        std::error_code error;
-        if (std::filesystem::create_directory(candidate, error))
-        {
-            staging_dir = candidate;
-            break;
-        }
-        if (error == std::errc::file_exists || !error)
-        {
-            continue;
-        }
-        throw std::filesystem::filesystem_error{
-            "无法创建性能结果临时目录", candidate, error};
-    }
+    const auto staging_dir{CreateUniqueDirectory(
+        result_dir, ".npc-result-tmp", "无法创建性能结果临时目录")};
 
     const auto staging_file{staging_dir / csv_file.filename()};
     try

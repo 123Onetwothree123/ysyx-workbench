@@ -24,6 +24,15 @@ public:
     // 有效 SocXLen 拒绝超出 SoC 总线宽度的地址，避免静默截断。
     static std::optional<AddressRange> find(npc::XWord address,
                                             npc::XWord length = 1);
+    // SDB live-memory shadow 的窗口：SRAM/PSRAM/SDRAM 与 ChipLinkMem。
+    // shadow 按 store 起始地址登记，跨窗口尾部的访问沿用旧行为；
+    // length 仅用于拒绝零长度访问，不参与窗口范围判定。
+    static bool IsShadowRam(npc::XWord address, npc::XWord length);
+    // DiffTest REF 能建模的数据窗口：SRAM/MROM/PSRAM/SDRAM。
+    // 与 shadow 集合有意不同：MROM 属于 REF 数据窗口但不建 shadow，
+    // ChipLinkMem 不进 REF 模型。要求整段访问完整落在窗口内。
+    static bool IsReferenceModeledRam(npc::XWord address,
+                                      npc::XWord length);
 
 private:
     inline static const std::array Ranges{

@@ -60,16 +60,19 @@ std::string_view Output::ColorFor(OutputLevel Level) const noexcept
     }
     return "";
 }
-void Output::Write(OutputLevel Level, std::string_view Message)
+void Output::WriteImpl(OutputLevel level, std::string_view text, bool AppendNewline)
 {
-    auto &stream{StreamFor(Level)};
-    const auto color{UseColor(Level) ? ColorFor(Level) : std::string_view{}};
+    auto &stream{StreamFor(level)};
+    const auto color{UseColor(level) ? ColorFor(level) : std::string_view{}};
     if (!color.empty())
     {
         stream << color;
     }
-    stream.write(Message.data(), static_cast<std::streamsize>(Message.size()));
-    stream.put('\n');
+    stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+    if (AppendNewline)
+    {
+        stream.put('\n');
+    }
     if (!color.empty())
     {
         stream << "\033[0m";
@@ -77,28 +80,19 @@ void Output::Write(OutputLevel Level, std::string_view Message)
     stream.flush();
     if (file.is_open())
     {
-        file.write(Message.data(), static_cast<std::streamsize>(Message.size()));
-        file.put('\n');
+        file.write(text.data(), static_cast<std::streamsize>(text.size()));
+        if (AppendNewline)
+        {
+            file.put('\n');
+        }
         file.flush();
     }
 }
+void Output::Write(OutputLevel Level, std::string_view Message)
+{
+    WriteImpl(Level, Message, true);
+}
 void Output::WriteRaw(OutputLevel Level, std::string_view Text)
 {
-    auto &stream{StreamFor(Level)};
-    const auto color{UseColor(Level) ? ColorFor(Level) : std::string_view{}};
-    if (!color.empty())
-    {
-        stream << color;
-    }
-    stream.write(Text.data(), static_cast<std::streamsize>(Text.size()));
-    if (!color.empty())
-    {
-        stream << "\033[0m";
-    }
-    stream.flush();
-    if (file.is_open())
-    {
-        file.write(Text.data(), static_cast<std::streamsize>(Text.size()));
-        file.flush();
-    }
+    WriteImpl(Level, Text, false);
 }

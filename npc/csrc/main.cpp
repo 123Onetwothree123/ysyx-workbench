@@ -47,32 +47,31 @@ int main(int argc, char const *argv[])
         return 1;
     };
 
-    for (int i{1}; i < argc; ++i)
-    {
-        const std::string_view arg{argv[i]};
-        if (arg == "--help" || arg == "-h")
-        {
-            out.Info("用法: {} [选项] [镜像文件]", argv[0]);
-            out.Info("  -e, --elf FILE          加载 ELF 符号");
-            out.Info("  -d, --diff FILE         指定 DiffTest REF .so");
-            out.Info("  -r, --result-dir DIR    性能结果目录");
-            out.Info("      --restore FILE      恢复 Verilator 检查点");
-            out.Info("      --vga-check         开启 VGA 时序检查");
-            out.Info("  -b, --batch             批处理模式");
-            out.Info("  -h, --help              显示帮助");
-            if constexpr (npc::LogLevel > 0)
-            {
-                log_close(out);
-            }
-            return 0;
-        }
-    }
-
     // CLI、镜像和 ELF 须在 DUT 构造前完成。
     auto options{CLIOptions::Parse(argc, argv)};
     if (!options)
     {
         return failBeforeDUT(options.error());
+    }
+    if (options->GetHelpRequested())
+    {
+        const auto usage{CLIOptions::Usage(argv[0])};
+        std::string_view remaining{usage};
+        while (!remaining.empty())
+        {
+            const auto LineEnd{remaining.find('\n')};
+            out.Info("{}", remaining.substr(0, LineEnd));
+            if (LineEnd == std::string_view::npos)
+            {
+                break;
+            }
+            remaining.remove_prefix(LineEnd + 1);
+        }
+        if constexpr (npc::LogLevel > 0)
+        {
+            log_close(out);
+        }
+        return 0;
     }
 #ifdef VRISCV32E_NPC
     if (options->GetVGACheck())
@@ -217,17 +216,7 @@ int main(int argc, char const *argv[])
         dut.EnableUARTStdin(true);
         while (!NPCTrap::HasHalted())
         {
-            // $finish 与 halt 同拍时先结算 halt。
-            if (Verilated::gotFinish())
-            {
-                dut.PollSimulationHalt();
-                break;
-            }
-            dut.step();
-            // DiffTest 可能在本沿标记 BAD，勿让 custom halt 覆盖。
-            if (NPCTrap::HasHalted())
-                break;
-            if (dut.PollSimulationHalt())
+            if (dut.StepWithHaltPriority())
                 break;
         }
     }

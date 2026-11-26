@@ -4,8 +4,6 @@ import npc.SimulationContext;
 import npc.Output;
 import npc.config;
 import npc.sdb.SDBCommandUtils;
-import npc.expressions.expressions;
-import npc.sdb.NPCEvaluationContext;
 import npc.DUT;
 
 std::string_view pCommand::name() const noexcept
@@ -22,20 +20,7 @@ SDBCommandUsageList pCommand::usage() const noexcept
 SDBCommandResult pCommand::execute(SDBCommandContext &context, std::string_view args)
 {
     auto &out{context.GetSimulation().Out()};
-    args = SDBTrimLeft(args); // 去掉前导空白
-    if (args.empty())
-    {
-        out.Error("参数是空的");
-        return SDBCommandResult::Continue;
-    }
-    if (!SDBValidateExpressionSyntax(args))
-    {
-        out.Error("表达式错误：括号不匹配");
-        return SDBCommandResult::Continue;
-    }
-    expressions expression;
-    NPCEvaluationContext EvaluationContext{context.GetDUT()};
-    auto result{expression.evaluate(args, EvaluationContext)};
+    const auto result{SDBEvaluateExpression(args, context.GetDUT(), "参数是空的", "表达式错误：括号不匹配")};
     if (result)
     {
         auto UnsignedValue{*result};
@@ -48,7 +33,7 @@ SDBCommandResult pCommand::execute(SDBCommandContext &context, std::string_view 
     }
     else
     {
-        out.Error("表达式错误：{}", result.error());
+        out.Error("{}", result.error());
     }
     return SDBCommandResult::Continue;
 }

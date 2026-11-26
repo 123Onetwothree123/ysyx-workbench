@@ -24,6 +24,7 @@ import npc.trace.mtrace;
 import npc.trace.ftrace;
 import npc.difftest.difftest;
 import npc.ysyxSoC;
+import npc.SoCMemoryMap.SoCMemoryMap;
 import npc.NPCTrap;
 import npc.VgaChecker;
 import npc.SimulationContext;
@@ -620,27 +621,14 @@ if constexpr (npc::HasDicArchCounter)
     {
         const auto pc{DebugPC(*dut)};
         const auto instruction{static_cast<std::uint32_t>(dut->debug_instructions)};
-        std::array<std::uint8_t, 4> bytes{
-            static_cast<std::uint8_t>(instruction),
-            static_cast<std::uint8_t>(instruction >> 8U),
-            static_cast<std::uint8_t>(instruction >> 16U),
-            static_cast<std::uint8_t>(instruction >> 24U),
-        };
-        std::array<char, 128> assembly{};
-        disassemble(
-            assembly.data(),
-            static_cast<int>(assembly.size()),
-            pc,
-            bytes.data(),
-            static_cast<int>(bytes.size()));
-        const auto assemblyText{assembly.front() == '\0'
-                                    ? std::string_view{"<unknown>"}
-                                    : std::string_view{assembly.data()}};
+        const auto assemblyText{DisassembleWord(pc, instruction)};
         std::println("[ITRACE] 0x{:0{}x}: {:08x}  {}",
                      pc,
                      npc::XHexDigits,
                      instruction,
-                     assemblyText);
+                     assemblyText.empty()
+                         ? std::string_view{"<unknown>"}
+                         : std::string_view{assemblyText});
     }
     }
     if constexpr (npc::HasITraceWriteFile)
@@ -687,15 +675,7 @@ if constexpr (npc::HasDicArchCounter)
             address - static_cast<std::uint64_t>(npc::MBase) <
                 static_cast<std::uint64_t>(npc::MSize)};
 #else
-        const bool trackable{
-            (address >= npc::PmaSramBase &&
-             address < npc::PmaSramBase + npc::PmaSramSize) ||
-            (address >= npc::PmaPsramBase &&
-             address < npc::PmaPsramBase + npc::PmaPsramSize) ||
-            (address >= npc::PmaSdramBase &&
-             address < npc::PmaSdramBase + npc::PmaSdramSize) ||
-            // ChipLink 下该窗口是外部 RAM；无 store 成功退休则不建影子。
-            address >= npc::PmaChipLinkMemBase};
+        const bool trackable{SoCMemoryMap::IsShadowRam(address, bytes)};
 #endif
         if (trackable && bytes != 0 &&
             address <= std::numeric_limits<std::uint64_t>::max() - (bytes - 1U))
@@ -768,6 +748,20 @@ if constexpr (npc::HasDicArchCounter)
             nvboard_update();
         }
     }
+}
+bool DUT::StepWithHaltPriority()
+{
+    // $finish 与 halt 同拍时先结算 halt。
+    if (Verilated::gotFinish())
+    {
+        static_cast<void>(PollSimulationHalt());
+        return true;
+    }
+    step();
+    // DiffTest 可能在本沿标记 BAD，勿让 custom halt 覆盖。
+    if (NPCTrap::HasHalted())
+        return true;
+    return PollSimulationHalt();
 }
 bool DUT::PollSimulationHalt()
 {
@@ -862,6 +856,22 @@ std::uint64_t DUT::ReadCachedFCSR() const noexcept
         return 0;
     }
 }
+npc::XWord DUT::ReadRetirePC() const
+{
+    return DebugPC(*dut);
+}
+npc::XWord DUT::ReadNextPC() const
+{
+    return DebugNextPC(*dut);
+}
+npc::XWord DUT::ReadMtracePC() const
+{
+    return DebugMtracePC(*dut);
+}
+npc::XWord DUT::ReadMtraceAddress() const
+{
+    return DebugMtraceAddr(*dut);
+}
 npc::XWord DUT::ReadHaltPC() const
 {
     return DebugTrapPCHalt(*dut);
@@ -873,6 +883,24 @@ npc::XWord DUT::ReadTrapPC() const
 npc::XWord DUT::ReadTrapTarget() const
 {
     return DebugTrapTarget(*dut);
+}
+DUT::RetireCSRState DUT::ReadRetireCSR() const
+{
+    return {
+        .mstatus = DebugWord(*dut, dut->debug_csr_mstatus, dut->debug_csr_mstatus_hi),
+        .mtvec = DebugWord(*dut, dut->debug_csr_mtvec, dut->debug_csr_mtvec_hi),
+        .mepc = DebugWord(*dut, dut->debug_csr_mepc, dut->debug_csr_mepc_hi),
+        .mcause = DebugWord(*dut, dut->debug_csr_mcause, dut->debug_csr_mcause_hi),
+    };
+}
+DUT::TrapCSRState DUT::ReadTrapCSR() const
+{
+    return {
+        .mstatus = DebugWord(*dut, dut->debug_trap_mstatus, dut->debug_trap_mstatus_hi),
+        .mtvec = DebugWord(*dut, dut->debug_trap_mtvec, dut->debug_trap_mtvec_hi),
+        .mepc = DebugWord(*dut, dut->debug_trap_mepc, dut->debug_trap_mepc_hi),
+        .mcause = DebugWord(*dut, dut->debug_trap_mcause, dut->debug_trap_mcause_hi),
+    };
 }
 bool DUT::HasTrapTvalDebugState() const noexcept
 {

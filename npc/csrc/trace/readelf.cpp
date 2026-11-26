@@ -141,21 +141,21 @@ std::expected<void, std::string> Readelf::load_from_file()
             section_name_table_ = std::move(*section_names);
         }
     }
-    const auto symbol_table{std::ranges::find_if(*sections, [](const section_header_type &section)
-                                                 { return section.sh_type == SHT_SYMTAB; })};
-    if (symbol_table != sections->end())
+    const auto SymbolTableIndex{npc::elf::symbol_table_section_index(*sections)};
+    if (SymbolTableIndex >= 0)
     {
-        const auto string_table_index{static_cast<std::size_t>(symbol_table->sh_link)};
-        if (string_table_index >= sections->size() || (*sections)[string_table_index].sh_type != SHT_STRTAB)
+        const auto &SymbolTable{(*sections)[static_cast<std::size_t>(SymbolTableIndex)]};
+        const auto StringTableIndex{static_cast<std::size_t>(SymbolTable.sh_link)};
+        if (StringTableIndex >= sections->size() || (*sections)[StringTableIndex].sh_type != SHT_STRTAB)
         {
             return std::unexpected("符号表链接的字符串表无效(symbol table has an invalid linked string table)");
         }
-        auto symbols{npc::elf::read_symbols(*file, *symbol_table)};
+        auto symbols{npc::elf::read_symbols(*file, SymbolTable)};
         if (!symbols)
         {
             return std::unexpected(std::move(symbols.error()));
         }
-        auto strings{npc::elf::read_string_table(*file, (*sections)[string_table_index])};
+        auto strings{npc::elf::read_string_table(*file, (*sections)[StringTableIndex])};
         if (!strings)
         {
             return std::unexpected(std::move(strings.error()));

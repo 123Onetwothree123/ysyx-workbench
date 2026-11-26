@@ -39,8 +39,7 @@ void historyCommand::PrintGNUHistory(std::size_t n, const SDBCommandRegistry &Re
     {
         auto line{hist_list[i]->line};
         auto CmdLine{std::string_view{line}};
-        auto space{CmdLine.find(' ')};
-        auto CmdName{(space == std::string::npos) ? CmdLine : CmdLine.substr(0, space)};
+        const auto CmdName{SDBSplitCommandLine(CmdLine).first};
         auto cmd{Registry.FindCommand(CmdName)};
         if (cmd != nullptr)
         {
@@ -59,15 +58,13 @@ SDBCommandResult historyCommand::execute(SDBCommandContext &context, std::string
     args = SDBTrimLeft(args);
     if (!args.empty())
     {
-        auto num{static_cast<std::ptrdiff_t>(0)};
-        const auto result{std::from_chars(args.data(), args.data() + args.size(), num, 10)};
-        const auto trailing{SDBTrimLeft(std::string_view{result.ptr, args.data() + args.size()})};
-        if (result.ec != std::errc() || num <= 0 || !trailing.empty())
+        const auto parsed{SDBParseIntegerArgument<std::ptrdiff_t>(args)};
+        if (!parsed || parsed->value <= 0 || !parsed->remainder.empty())
         {
             out.Error("无效参数 '{}'。用法是 history [N]", args);
             return SDBCommandResult::Continue;
         }
-        n = static_cast<std::size_t>(num);
+        n = static_cast<std::size_t>(parsed->value);
     }
     PrintGNUHistory(n, Registry, out);
     return SDBCommandResult::Continue;

@@ -25,3 +25,21 @@ std::optional<AddressRange> SoCMemoryMap::find(npc::XWord address, npc::XWord le
     }
     return std::nullopt;
 }
+bool SoCMemoryMap::IsShadowRam(npc::XWord address, npc::XWord length)
+{
+    // shadow 按 store 起始地址登记，不要求整段访问落在窗口内；保持与
+    // 旧实现一致，仅拒绝零长度访问。
+    return length != 0 &&
+           (SRAM.Contains(address) || PSRAM.Contains(address) ||
+            SDRAM.Contains(address) || address >= npc::PmaChipLinkMemBase);
+}
+bool SoCMemoryMap::IsReferenceModeledRam(npc::XWord address,
+                                         npc::XWord length)
+{
+    // REF 只接收完整落在可建模窗口内的访问；ChipLinkMem 不在 REF 模型内。
+    return length != 0 &&
+           (SRAM.Contains(address, length) ||
+            MROM.Contains(address, length) ||
+            PSRAM.Contains(address, length) ||
+            SDRAM.Contains(address, length));
+}

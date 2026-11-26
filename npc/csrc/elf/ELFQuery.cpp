@@ -5,6 +5,22 @@ import std;
 import npc.trace.ReadelfFunction;
 import npc.elf.ELFFile;
 import npc.elf.ELFNames;
+namespace
+{
+// ELF32_ST_* 与 ELF64_ST_* 在 glibc 中定义等价，这里只保留一处编译期选择。
+template <typename ELF32Operation, typename ELF64Operation>
+unsigned ExtractSymbolField(unsigned char byte, ELF32Operation ELF32Function, ELF64Operation ELF64Function) noexcept
+{
+    if constexpr (npc::elf::IsELF64)
+    {
+        return ELF64Function(byte);
+    }
+    else
+    {
+        return ELF32Function(byte);
+    }
+}
+}
 namespace npc::elf
 {
 int symbol_table_section_index(std::span<const SectionHeader> sections) noexcept
@@ -20,36 +36,21 @@ int symbol_table_section_index(std::span<const SectionHeader> sections) noexcept
 }
 unsigned symbol_bind(unsigned char info) noexcept
 {
-    if constexpr (IsELF64)
-    {
-        return ELF64_ST_BIND(info);
-    }
-    else
-    {
-        return ELF32_ST_BIND(info);
-    }
+    return ExtractSymbolField(info,
+                              [](unsigned char value) noexcept { return ELF32_ST_BIND(value); },
+                              [](unsigned char value) noexcept { return ELF64_ST_BIND(value); });
 }
 unsigned symbol_type(unsigned char info) noexcept
 {
-    if constexpr (IsELF64)
-    {
-        return ELF64_ST_TYPE(info);
-    }
-    else
-    {
-        return ELF32_ST_TYPE(info);
-    }
+    return ExtractSymbolField(info,
+                              [](unsigned char value) noexcept { return ELF32_ST_TYPE(value); },
+                              [](unsigned char value) noexcept { return ELF64_ST_TYPE(value); });
 }
 unsigned symbol_visibility(unsigned char other) noexcept
 {
-    if constexpr (IsELF64)
-    {
-        return ELF64_ST_VISIBILITY(other);
-    }
-    else
-    {
-        return ELF32_ST_VISIBILITY(other);
-    }
+    return ExtractSymbolField(other,
+                              [](unsigned char value) noexcept { return ELF32_ST_VISIBILITY(value); },
+                              [](unsigned char value) noexcept { return ELF64_ST_VISIBILITY(value); });
 }
 std::vector<ReadelfFunction> build_functions(std::span<const Symbol> symbols, std::span<const char> string_table)
 {

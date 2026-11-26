@@ -23,104 +23,104 @@ static constexpr std::string_view get_reg_abi_name(std::size_t idx) noexcept
     }
     return {};
 }
-static const char *get_reg_desc(std::string_view arch_name, std::string_view abi_name)
+enum class RegisterClass
 {
-    if (arch_name == "pc")
+    ProgramCounter,
+    Zero,
+    ReturnAddress,
+    StackPointer,
+    GlobalPointer,
+    ThreadPointer,
+    Argument,
+    Saved,
+    Temporary,
+    General,
+};
+
+static constexpr RegisterClass ClassifyRegister(std::string_view ArchName,
+                                                std::string_view ABIName) noexcept
+{
+    if (ArchName == "pc")
     {
-        return "程序计数器";
+        return RegisterClass::ProgramCounter;
     }
-    if (arch_name == "x0")
+    // 原描述只看 arch_name=="x0"，原颜色还接受 abi_name=="zero"。GPR 行的
+    // arch_name 与 abi_name 来自同一下标，二者等价；这里合并为 Zero，
+    // 使描述与颜色共用一次分类，输出不变。
+    if (ArchName == "x0" || ABIName == "zero")
     {
-        return "零寄存器";
+        return RegisterClass::Zero;
     }
-    if (abi_name == "ra")
+    if (ABIName == "ra")
     {
-        return "返回地址";
+        return RegisterClass::ReturnAddress;
     }
-    if (abi_name == "sp")
+    if (ABIName == "sp")
     {
-        return "栈指针";
+        return RegisterClass::StackPointer;
     }
-    if (abi_name == "gp")
+    if (ABIName == "gp")
     {
-        return "全局指针";
+        return RegisterClass::GlobalPointer;
     }
-    if (abi_name == "tp")
+    if (ABIName == "tp")
     {
-        return "线程指针";
+        return RegisterClass::ThreadPointer;
     }
-    if (!abi_name.empty() && abi_name[0] == 'a')
+    if (!ABIName.empty() && ABIName[0] == 'a')
     {
-        return "参数寄存器";
+        return RegisterClass::Argument;
     }
-    if (!abi_name.empty() && abi_name[0] == 's')
+    if (!ABIName.empty() && ABIName[0] == 's')
     {
-        return "保存寄存器";
+        return RegisterClass::Saved;
     }
-    if (!abi_name.empty() && abi_name[0] == 't')
+    if (!ABIName.empty() && ABIName[0] == 't')
     {
-        return "临时寄存器";
+        return RegisterClass::Temporary;
     }
-    return "通用寄存器";
+    return RegisterClass::General;
 }
-static constexpr const char *get_reg_header_color(std::string_view title) noexcept
+
+struct RegisterStyle
 {
-    constexpr std::array<std::pair<const char *, const char *>, 5> colors{{
-        {"编号", ANSI::FG_CYAN},
-        {"寄存器", ANSI::FG_BLUE},
-        {"十进制", ANSI::FG_WHITE},
-        {"十六进制", ANSI::FG_GREEN},
-        {"说明", ANSI::FG_YELLOW},
+    std::string_view description;
+    std::string_view color;
+};
+
+static constexpr RegisterStyle GetRegisterStyle(RegisterClass kind) noexcept
+{
+    // 数组顺序必须与 RegisterClass 的枚举值一一对应。
+    constexpr std::array<RegisterStyle, 10> styles{{
+        {"程序计数器", ANSI::FG_YELLOW},
+        {"零寄存器", ANSI::FG_WHITE},
+        {"返回地址", ANSI::FG_CYAN},
+        {"栈指针", ANSI::FG_YELLOW},
+        {"全局指针", ANSI::FG_BLUE},
+        {"线程指针", ANSI::FG_MAGENTA},
+        {"参数寄存器", ANSI::FG_GREEN},
+        {"保存寄存器", ANSI::FG_CYAN},
+        {"临时寄存器", ANSI::FG_MAGENTA},
+        {"通用寄存器", ANSI::FG_WHITE},
     }};
-    for (const auto &[key, color] : colors)
-    {
-        if (title == key)
-        {
-            return color;
-        }
-    }
-    return ANSI::FG_WHITE;
+    return styles[static_cast<std::size_t>(kind)];
 }
-static const char *get_reg_row_color(std::string_view arch_name, std::string_view abi_name)
+
+struct Header
 {
-    if (arch_name == "pc")
-    {
-        return ANSI::FG_YELLOW;
-    }
-    if (arch_name == "x0" || abi_name == "zero")
-    {
-        return ANSI::FG_WHITE;
-    }
-    if (abi_name == "ra")
-    {
-        return ANSI::FG_CYAN;
-    }
-    if (abi_name == "sp")
-    {
-        return ANSI::FG_YELLOW;
-    }
-    if (abi_name == "gp")
-    {
-        return ANSI::FG_BLUE;
-    }
-    if (abi_name == "tp")
-    {
-        return ANSI::FG_MAGENTA;
-    }
-    if (!abi_name.empty() && abi_name[0] == 'a')
-    {
-        return ANSI::FG_GREEN;
-    }
-    if (!abi_name.empty() && abi_name[0] == 's')
-    {
-        return ANSI::FG_CYAN;
-    }
-    if (!abi_name.empty() && abi_name[0] == 't')
-    {
-        return ANSI::FG_MAGENTA;
-    }
-    return ANSI::FG_WHITE;
-}
+    std::string_view text;
+    std::string_view color;
+    bool center;
+};
+
+// 表头文本同时用于列宽初值和打印，颜色与居中方式随条目一起给出。
+static constexpr std::array<Header, 5> RegisterHeaders{{
+    {"编号", ANSI::FG_CYAN, true},
+    {"寄存器", ANSI::FG_BLUE, false},
+    {"十进制", ANSI::FG_WHITE, true},
+    {"十六进制", ANSI::FG_GREEN, true},
+    {"说明", ANSI::FG_YELLOW, false},
+}};
 static void PrintGPR(DUT &dut, Output &out)
 {
     struct RegRow
@@ -128,7 +128,7 @@ static void PrintGPR(DUT &dut, Output &out)
         std::string arch_name;
         std::string_view abi_name;
         std::uint64_t value;
-        const char *desc;
+        std::string_view desc;
     };
     constexpr auto nr_rows{std::size_t{33}};
     RegRow rows[nr_rows];
@@ -149,70 +149,75 @@ static void PrintGPR(DUT &dut, Output &out)
             auto result{dut.ReadGPR(static_cast<std::uint32_t>(reg_idx))};
             rows[i].value = result ? *result : 0;
         }
-        rows[i].desc = get_reg_desc(rows[i].arch_name, rows[i].abi_name);
+        rows[i].desc =
+            GetRegisterStyle(ClassifyRegister(rows[i].arch_name, rows[i].abi_name)).description;
     }
-    auto id_width{display_width("编号")};
-    auto name_width{display_width("寄存器")};
-    auto dec_width{display_width("十进制")};
-    auto hex_width{display_width("十六进制")};
-    auto desc_width{display_width("说明")};
+    std::vector<int> ColumnWidths;
+    ColumnWidths.reserve(RegisterHeaders.size());
+    for (const auto &header : RegisterHeaders)
+    {
+        ColumnWidths.push_back(display_width(header.text));
+    }
+    // 下标与 RegisterHeaders 的列顺序一致。
     for (std::size_t i{0}; i < nr_rows; i++)
     {
         auto w{display_width(rows[i].arch_name)};
-        if (w > id_width)
+        if (w > ColumnWidths[0])
         {
-            id_width = w;
+            ColumnWidths[0] = w;
         }
         w = display_width(rows[i].abi_name);
-        if (w > name_width)
+        if (w > ColumnWidths[1])
         {
-            name_width = w;
+            ColumnWidths[1] = w;
         }
         w = display_width(std::to_string(rows[i].value));
-        if (w > dec_width)
+        if (w > ColumnWidths[2])
         {
-            dec_width = w;
+            ColumnWidths[2] = w;
         }
         w = display_width(std::format("0x{:0{}x}", rows[i].value,
                                       npc::XHexDigits));
-        if (w > hex_width)
+        if (w > ColumnWidths[3])
         {
-            hex_width = w;
+            ColumnWidths[3] = w;
         }
         w = display_width(rows[i].desc);
-        if (w > desc_width)
+        if (w > ColumnWidths[4])
         {
-            desc_width = w;
+            ColumnWidths[4] = w;
         }
     }
-    std::vector col_widths{id_width, name_width, dec_width, hex_width, desc_width};
     out.Info("寄存器状态：");
-    print_border(col_widths);
+    print_border(ColumnWidths);
     std::print("{}|{}", ANSI::FG_BLUE, ANSI::NONE);
-    print_cell_colored(std::format("{}编号{}", get_reg_header_color("编号"), ANSI::NONE), id_width, true);
-    print_cell_colored(std::format("{}寄存器{}", get_reg_header_color("寄存器"), ANSI::NONE), name_width, false);
-    print_cell_colored(std::format("{}十进制{}", get_reg_header_color("十进制"), ANSI::NONE), dec_width, true);
-    print_cell_colored(std::format("{}十六进制{}", get_reg_header_color("十六进制"), ANSI::NONE), hex_width, true);
-    print_cell_colored(std::format("{}说明{}", get_reg_header_color("说明"), ANSI::NONE), desc_width, false);
+    for (std::size_t i{0}; i < RegisterHeaders.size(); i++)
+    {
+        print_cell_colored(
+            std::format("{}{}{}", RegisterHeaders[i].color, RegisterHeaders[i].text, ANSI::NONE),
+            ColumnWidths[i], RegisterHeaders[i].center);
+    }
     std::print("\n");
-    print_border(col_widths);
+    print_border(ColumnWidths);
     for (std::size_t i{0}; i < nr_rows; i++)
     {
-        const auto row_color{get_reg_row_color(rows[i].arch_name, rows[i].abi_name)};
-        auto id_str{std::format("{}{}{}", row_color, rows[i].arch_name, ANSI::NONE)};
-        auto name_str{std::format("{}{}{}", row_color, rows[i].abi_name, ANSI::NONE)};
+        const auto RowRegisterStyle{
+            GetRegisterStyle(ClassifyRegister(rows[i].arch_name, rows[i].abi_name))};
+        const auto &RowColor{RowRegisterStyle.color};
+        auto id_str{std::format("{}{}{}", RowColor, rows[i].arch_name, ANSI::NONE)};
+        auto name_str{std::format("{}{}{}", RowColor, rows[i].abi_name, ANSI::NONE)};
         auto dec_str{std::format("{}{}{}", ANSI::FG_WHITE, rows[i].value, ANSI::NONE)};
-        auto hex_str{std::format("{}0x{:0{}x}{}", row_color, rows[i].value,
+        auto hex_str{std::format("{}0x{:0{}x}{}", RowColor, rows[i].value,
                                  npc::XHexDigits, ANSI::NONE)};
-        auto desc_str{std::format("{}{}{}", row_color, rows[i].desc, ANSI::NONE)};
+        auto desc_str{std::format("{}{}{}", RowColor, rows[i].desc, ANSI::NONE)};
         std::print("{}|{}", ANSI::FG_BLUE, ANSI::NONE);
-        print_cell_colored(id_str, id_width, true);
-        print_cell_colored(name_str, name_width, false);
-        print_cell_colored(dec_str, dec_width, true);
-        print_cell_colored(hex_str, hex_width, true);
-        print_cell_colored(desc_str, desc_width, false);
+        print_cell_colored(id_str, ColumnWidths[0], RegisterHeaders[0].center);
+        print_cell_colored(name_str, ColumnWidths[1], RegisterHeaders[1].center);
+        print_cell_colored(dec_str, ColumnWidths[2], RegisterHeaders[2].center);
+        print_cell_colored(hex_str, ColumnWidths[3], RegisterHeaders[3].center);
+        print_cell_colored(desc_str, ColumnWidths[4], RegisterHeaders[4].center);
         std::print("\n");
-        print_border(col_widths);
+        print_border(ColumnWidths);
     }
 }
 

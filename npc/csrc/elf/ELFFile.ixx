@@ -3,6 +3,16 @@ module;
 export module npc.elf.ELFFile;
 import npc.config;
 import std;
+namespace npc::elf::detail
+{
+// 校验 [Offset, Offset + Bytes) 未越过文件末尾；文件大小未知视为越界。
+[[nodiscard]] inline bool CheckRange(std::optional<std::uint64_t> FileSize, std::uint64_t offset, std::size_t bytes) noexcept
+{
+    return FileSize.has_value() &&
+           offset <= *FileSize &&
+           static_cast<std::uint64_t>(bytes) <= *FileSize - offset;
+}
+}
 export namespace npc::elf
 {
 inline constexpr bool IsELF64{npc::XLen == 64};
@@ -52,8 +62,7 @@ public:
             return std::unexpected(std::string(what) + "大小溢出size_t(size overflows size_t)");
         }
         const auto bytes{count * ItemSize};
-        const auto file_size{size()};
-        if (!file_size || offset > *file_size || bytes > *file_size - offset)
+        if (!detail::CheckRange(size(), offset, bytes))
         {
             return std::unexpected(std::string(what) + "超出文件范围(range exceeds file size)");
         }

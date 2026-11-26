@@ -29,27 +29,23 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
     if (!args.empty())
     {
         // 用有符号类型接收，这样能检测负数
-        // auto parsed{std::ptrdiff_t{0}};
-        auto parsed{static_cast<std::ptrdiff_t>(0)};
-        const auto result{std::from_chars(args.data(), args.data() + args.size(), parsed, 10)};
-        if (result.ec != std::errc())
+        auto parsed{SDBParseIntegerArgument<std::ptrdiff_t>(args)};
+        if (!parsed)
         {
             out.Error("参数{0}用from_chars解析失败了", args);
             return SDBCommandResult::Continue;
         }
-        if (parsed <= 0)
+        if (parsed->value <= 0)
         {
-            out.Error("步数必须得是正整数，结果现在得到的是 {}", parsed);
+            out.Error("步数必须得是正整数，结果现在得到的是 {}", parsed->value);
             return SDBCommandResult::Continue;
         }
-        auto remainder{std::string_view{result.ptr, static_cast<std::size_t>(args.data() + args.size() - result.ptr)}};
-        remainder = SDBTrimLeft(remainder);
-        if (!remainder.empty())
+        if (!parsed->remainder.empty())
         {
-            out.Error("参数尾部有多余的内容'{}'", remainder);
+            out.Error("参数尾部有多余的内容'{}'", parsed->remainder);
             return SDBCommandResult::Continue;
         }
-        count = static_cast<std::size_t>(parsed);
+        count = static_cast<std::size_t>(parsed->value);
     }
     if (NPCTrap::HasHalted())
     {
@@ -61,12 +57,7 @@ SDBCommandResult siCommand::execute(SDBCommandContext &context, std::string_view
     std::size_t completedBoundaries{0};
     while (completedBoundaries < count && !NPCTrap::HasHalted())
     {
-        if (Verilated::gotFinish())
-            break;
-        dut.step();
-        if (NPCTrap::HasHalted())
-            break;
-        if (dut.PollSimulationHalt())
+        if (dut.StepWithHaltPriority())
             break;
         // si 的计数单位是架构边界，不是时钟周期。cache miss、
         // MDU 和 AXI stall 可以经历任意多拍，都不应提前结束单步。

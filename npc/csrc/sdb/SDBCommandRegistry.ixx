@@ -17,7 +17,9 @@ public:
     void PrintHelp(const SDBCommand &command) const;                           // 打印单个命令帮助
 
 private:
-    void RegisterBuiltins();                             // 注册所有内置命令
+    void RegisterBuiltins(); // 注册所有内置命令
+    // 供 Execute 使用：返回可执行命令指针，找不到时为 nullptr。
+    [[nodiscard]] SDBCommand *FindCommandForExecution(std::string_view name) const;
     SDBCommandContext Context;                           // 命令上下文，持有 DUT 引用
     std::vector<std::unique_ptr<SDBCommand>> Commands{}; // 已注册的命令列表
 };

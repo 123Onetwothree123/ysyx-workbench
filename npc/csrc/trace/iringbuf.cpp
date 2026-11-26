@@ -21,7 +21,7 @@ std::size_t iringbuf::capacity() const
 }
 void iringbuf::push(std::uint64_t pc, std::uint32_t instruction, int len)
 {
-    // 指令长度只能 2/4 字节，越界会让 memcpy 越界读。
+    // 指令长度只能 2/4 字节，越界会在打包指令字节时越界读。
     const int bounded_len{std::clamp(len, 0, 4)};
     buffer[head].SetPC(pc);
     buffer[head].SetInstruction(instruction);
@@ -48,24 +48,21 @@ void iringbuf::print(std::uint64_t ErrorPC, Output &out) const
         constexpr std::string_view marker_selected{"-->"};
         constexpr std::string_view marker_normal{"   "};
         std::string_view marker{(entry.GetPC() == ErrorPC) ? marker_selected : marker_normal};
-        std::array<std::uint8_t, 4> inst_bytes{};
         const auto instruction{entry.GetInstruction()};
-        const auto len{static_cast<std::size_t>(
+        const auto length{static_cast<std::size_t>(
             std::clamp(entry.GetLen(), 0, 4))};
-        std::memcpy(inst_bytes.data(), &instruction, len);
-        std::span<std::uint8_t> bytes_span{inst_bytes.data(), len};
-        std::array<char, 128> AssemblyBuffer{};
-        disassemble(AssemblyBuffer.data(), static_cast<int>(AssemblyBuffer.size()), entry.GetPC(), bytes_span.data(), static_cast<int>(bytes_span.size()));
-        std::string BytesString;
-        BytesString.reserve(len * 4);
-        for (int j{static_cast<int>(len) - 1}; j >= 0; --j)
+        const auto EncodedBytes{InstructionBytes(instruction, length)};
+        std::string BytesText;
+        BytesText.reserve(length * 4);
+        for (int ByteIndex{static_cast<int>(length) - 1}; ByteIndex >= 0; --ByteIndex)
         {
-            std::format_to(std::back_inserter(BytesString), " {:02x}", inst_bytes[j]);
+            std::format_to(std::back_inserter(BytesText), " {:02x}", EncodedBytes[ByteIndex]);
         }
+        const auto assembly{DisassembleWord(entry.GetPC(), instruction, length)};
         out.Info("{:s} 0x{:016x}: {:<24s}{:s}",
                  marker,
                  entry.GetPC(),
-                 AssemblyBuffer.data(),
-                 BytesString);
+                 assembly,
+                 BytesText);
     }
 }

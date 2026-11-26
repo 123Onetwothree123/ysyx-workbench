@@ -53,6 +53,8 @@ private:
     [[nodiscard]] std::ostream &StreamFor(OutputLevel Level) noexcept;
     [[nodiscard]] bool UseColor(OutputLevel Level) const noexcept;
     [[nodiscard]] std::string_view ColorFor(OutputLevel Level) const noexcept;
+    // 换行须在 ANSI 复位码之前写出，故由参数控制而不是调用方补。
+    void WriteImpl(OutputLevel level, std::string_view text, bool AppendNewline);
     std::ofstream file;
     OutputLevel min_level{OutputLevel::Debug};
     bool stdout_color{false};

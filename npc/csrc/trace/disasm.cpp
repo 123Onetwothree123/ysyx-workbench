@@ -43,3 +43,30 @@ void disassemble(char *str, int size, std::uint64_t pc, std::uint8_t *code, int 
     }
     cs_free(insn, count);
 }
+std::array<std::uint8_t, 4>
+InstructionBytes(std::uint32_t instruction, std::size_t length)
+{
+    std::array<std::uint8_t, 4> bytes{};
+    const auto bounded{std::min(length, bytes.size())};
+    for (std::size_t index{0}; index < bounded; ++index)
+    {
+        bytes[index] =
+            static_cast<std::uint8_t>(instruction >> (index * 8U));
+    }
+    return bytes;
+}
+std::string DisassembleWord(std::uint64_t pc, std::uint32_t instruction,
+                            std::size_t length)
+{
+    init_disasm();
+    auto bytes{InstructionBytes(instruction, length)};
+    const auto bounded{std::min(length, bytes.size())};
+    std::array<char, 128> assembly{};
+    disassemble(assembly.data(), static_cast<int>(assembly.size()), pc,
+                bytes.data(), static_cast<int>(bounded));
+    if (assembly.front() == '\0')
+    {
+        return {};
+    }
+    return std::string{assembly.data()};
+}
