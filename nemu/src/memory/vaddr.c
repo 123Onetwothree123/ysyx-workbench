@@ -49,11 +49,6 @@ static paddr_t translate_checked(vaddr_t addr, int len, int type) {
     addr = isa_mmu_translate(addr, len, type);
   }
   if (!isa_pmp_check(addr, len, type) || !paddr_is_backed(addr, len)) {
-    fprintf(stderr, "[ref-debug] read check failed pa=0x%llx len=%d type=%d pmp=%d backed=%d socmode=%d priv=%d mstatus=0x%llx\n",
-            (unsigned long long)addr, len, type,
-            (int)isa_pmp_check(addr, len, type),
-            (int)paddr_is_backed(addr, len), (int)is_ysyxsoc_memory_mode(),
-            (int)cpu.privilege, (unsigned long long)cpu.mstatus);
     isa_raise_mem_exception(access_fault_cause(type), VirtualAddress);
   }
   return addr;
