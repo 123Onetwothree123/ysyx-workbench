@@ -1,4 +1,5 @@
 package ysyx_26030103.exu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
@@ -6,7 +7,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
 //SLT和SLTU是减法器给出比较位，并且在这里转换为0或者1
 //主要是因为SLT和SLTU的比较结果已经是1bit的bool，这里就变成XLEN位的0或者1
 class ysyx_26030103_ALUResultSelect(val XLEN: Int = 32) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"ALUResultSelect XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "ALUResultSelect")
   val io = IO(new Bundle {
     val ALUCtrl = Input(UInt(CtrlWidth.W))
     val adderSum = Input(UInt(XLEN.W))

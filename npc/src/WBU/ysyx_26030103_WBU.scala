@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common._
 class ysyx_26030103_WBU(val XLEN: Int = 32) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"WBU XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "WBU")
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
     // 给ysyx_26030103_GPR的
@@ -23,15 +23,15 @@ class ysyx_26030103_WBU(val XLEN: Int = 32) extends Module {
   // FPCommit 一致）。
   io.WriteEN := io.in.fire && io.in.bits.Retire && io.in.bits.RegisterWrite
   io.FPWriteSELECT := io.in.bits.Rd
-  io.FPWriteEN := io.in.fire && io.in.bits.Retire &&
+  val fpWriteFire = io.in.fire && io.in.bits.Retire &&
     io.in.bits.FPRegisterWrite
+  io.FPWriteEN := fpWriteFire
   io.FPWriteData := io.in.bits.FPWriteData
   // 只有真正退休且修改了 f 寄存器的 FP 指令才把 FS 置 Dirty；FSW/FSD、
   // FCMP/FCLASS 等只读浮点状态，访问故障的 load/store 或被中断压掉的
   // 指令 Retire=0，都不改变架构状态。仅产生 fflags 的路径由 EXU 提交
   // 时另行置 Dirty。
-  io.FPCommit := io.in.fire && io.in.bits.Retire &&
-    io.in.bits.FPRegisterWrite
+  io.FPCommit := fpWriteFire
   // WBSelect 为 2 位，四个取值互斥且穷尽；用 Mux1H 表达，
   // 不需要先给 wdata 赋一个随后必被覆盖的默认值。
   io.wdata := Mux1H(

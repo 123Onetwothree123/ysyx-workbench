@@ -29,8 +29,8 @@ class ysyx_26030103_CSR(
     val PMUZihpm: Boolean = true,
     val PMUSscofpmf: Boolean = true
 ) extends Module {
-  import ysyx_26030103_mstatus.legalize
-  require(XLEN == 32 || XLEN == 64, s"CSR XLEN 非法: $XLEN")
+  import ysyx_26030103_mstatus._
+  ysyx_26030103_XLENRequire(XLEN, "CSR")
   require(!UseD || UseF, "CSR 的 D 扩展依赖 F 扩展")
   private val fflagsWidth = ysyx_26030103_FPUFlags.Width
   private val frmWidth = ysyx_26030103_FPURm.Width
@@ -95,20 +95,6 @@ class ysyx_26030103_CSR(
   private val pmuZihpm = PMUEnable && PMUZihpm
   private val pmuSscofpmf = pmuZihpm && PMUSscofpmf
   private val pmuCounterCount = ysyx_26030103_PMUEventID.CounterCount
-  private val pmuMachineAddresses: Seq[Int] =
-    if (pmuZihpm)
-      (0 until pmuCounterCount).flatMap { index =>
-        Seq(0xb03 + index, 0x323 + index) ++
-          (if (XLEN == 32) Seq(0xb83 + index) else Seq.empty)
-      } ++ (if (pmuSscofpmf) Seq(0xda0) else Seq.empty)
-    else Seq.empty
-  private val pmuUserAddresses: Seq[Int] =
-    if (pmuZihpm)
-      (0 until pmuCounterCount).flatMap { index =>
-        Seq(0xc03 + index) ++
-          (if (XLEN == 32) Seq(0xc83 + index) else Seq.empty)
-      }
-    else Seq.empty
   // HAS_U=n 时 mstatus 的 MPP/SPP 最低值被夹到 S；HAS_S=n 时固定为 M。
   private def legalizeMstatus(value: UInt): UInt =
     legalize(value, hasU = hasU, hasS = hasS, hasF = UseF)
@@ -218,7 +204,7 @@ class ysyx_26030103_CSR(
   val CSRMstatush = 0x310.U(12.W)
   val CSRMcounteren = 0x306.U(12.W)
   val CSRMcountinhibit = 0x320.U(12.W)
-  val CSRScountovf = 0xda0.U(12.W)
+  val CSRScountovf = ysyx_26030103_PMUCSR.CountOvf.U(12.W)
   val CSRMvendorid = 0xf11.U(12.W)
   val CSRMarchid = 0xf12.U(12.W)
   val CSRMimpid = 0xf13.U(12.W)
@@ -235,59 +221,27 @@ class ysyx_26030103_CSR(
   val mhartidReadData = 0.U(32.W)
   // SIE SPIE SPP SUM MXR；RISCV_F 时 sstatus 也包含 FS[14:13]。
   val sstatusMask = "h000c0122".U(32.W) |
-    (if (UseF) "h00006000".U(32.W) else 0.U(32.W))
+    (if (UseF) FsMask.U(32.W) else 0.U(32.W))
   // FS 是 mstatus/sstatus 的同一份架构状态；independent 视图只把 S 模式
   // 其余字段做成独立寄存器，FS/SD 仍必须跟随 mstatus 和 FP dirty。
-  private val sstatusFsMaskValue = if (UseF) 0x6000L else 0L
+  private val sstatusFsMaskValue = if (UseF) FsMask.toLong else 0L
   private val sstatusOwnMaskValue =
     (0x000c0122L | sstatusFsMaskValue) & ~sstatusFsMaskValue
   def isCSRAddress(address: UInt): Bool = io.CSRAddress === address
-  private val FPCSRAddresses =
-    if (UseF) Seq(0x001, 0x002, 0x003) else Seq.empty
-  // 用户只读计数器始终随核实现：M 模式在任何配置下都可读；U 模式是否
-  // 可读由 mcounteren/scounteren 在 IDU 检查。它们不能因为 CSR_ENABLED
-  // 未列出而被裁剪，否则 rdcycle/rdtime/rdinstret 会读回 0。
-  // RV32 才有高半字别名；RV64 的 mcycle/minstret 已是完整 64 位，
-  // mcycleh/minstreth/cycleh/timeh/instreth 在 RV64 属于未实现 CSR。
-  private val baseUserCounterAddresses =
-    if (XLEN == 32) Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
-    else Seq(0xc00, 0xc01, 0xc02)
-  private val userCounterAddresses =
-    baseUserCounterAddresses ++ pmuUserAddresses
-  // envcfg 系列：本实现不支持任何 envcfg 字段（没有 Zicbom/Zicboz/
-  // PBMTE/FIOM 等），按规范作为 WARL 只读零 CSR 暴露：读返回 0，
-  // 写被忽略且不产生非法指令。menvcfg(0x30a)/senvcfg(0x10a) 随 HAS_S
-  // 存在；mstatush(0x310)/menvcfgh(0x31a) 只有 RV32 存在。
-  private val EnvcfgFamilyAddresses: Seq[Int] =
+  private val envcfgAddresses: Seq[Int] =
     _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
       .EnvcfgFamilyCSRAddresses(XLEN).toSeq
-  private val envcfgAddresses: Seq[Int] =
-    EnvcfgFamilyAddresses.filter(a => profile.csrSupported(a))
-  private val EnabledCSRAddresses = (
-    profile.CSREnabled.toSeq.filterNot(EnvcfgFamilyAddresses.contains) ++
-      // identity CSR 始终存在，不依赖 CSR_ENABLED 是否列出。
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
-        .IdentityCSRAddresses.toSeq ++
-      userCounterAddresses ++
-      FPCSRAddresses ++
-      pmuMachineAddresses ++
-      (if (profile.PMPEnabled)
-        (if (XLEN == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)) ++
-          (0x3b0 to 0x3bf)
-      else Seq.empty)
-  ).filter(a => profile.csrSupported(a) || FPCSRAddresses.contains(a) ||
-    userCounterAddresses.contains(a) || pmuMachineAddresses.contains(a))
-    .distinct.sorted ++
-    envcfgAddresses ++
-    // 不实现调试触发器：tselect/tdata*/tcontrol 等地址读回零、写被
-    // 忽略，作为合法的只读零 CSR 暴露给软件。
-    (0x7a0 to 0x7af)
+      .filter(a => profile.csrSupported(a))
+  private val EnabledCSRAddresses =
+    _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+      .ImplementedCSRAddresses(XLEN, profile, UseF, pmuZihpm, pmuSscofpmf,
+        pmuCounterCount)
   val CSRImplemented =
-    EnabledCSRAddresses.map(a => io.CSRAddress === a.U(12.W))
-      .reduceOption(_ || _).getOrElse(false.B)
+    ysyx_26030103_AnyOf(
+      EnabledCSRAddresses.map(a => io.CSRAddress === a.U(12.W)))
   // mstatus.FS 只有在 RISCV_F 时存在；profile 默认读/写掩码没有包含
   // bit[14:13]，这里按 F 开关补上，避免软件写 mstatus 后 FS 被静默清零。
-  private val mstatusFsMask = if (UseF) 0x6000L else 0L
+  private val mstatusFsMask = if (UseF) FsMask.toLong else 0L
   private val mstatusProfileReadMask =
     profile.CSRMstatusReadMask.toLong & 0xffffffffL
   private val mstatusProfileWriteMask =
@@ -410,8 +364,8 @@ class ysyx_26030103_CSR(
   // EXU 的 FPCommit（它依赖 IrqCommit），否则会形成组合环。
   val FPFlagsDirtyReg =
     RegNext(io.FPCommit && io.FPFlags =/= 0.U(fflagsWidth.W), false.B)
-  private val fsDirtyValue = (mstatus.io.rdata & ~"h6000".U(32.W)) |
-    (if (UseF) "h6000".U(32.W) else 0.U(32.W))
+  private val fsDirtyValue = (mstatus.io.rdata & ~FsMask.U(32.W)) |
+    (if (UseF) FsMask.U(32.W) else 0.U(32.W))
   val fsDirtyCommit = UseF.B && (io.FPStateDirtyCommit || FPFlagsDirtyReg)
   val mstatusRawReadData = Mux(fsDirtyCommit, fsDirtyValue, mstatus.io.rdata)
   // M-only 时特权级恒为 M，不生成寄存器；有 S 或 U 时需要保存可达的
@@ -658,41 +612,28 @@ class ysyx_26030103_CSR(
   } else false.B
 
   val mstatusExceptionData = {
-    val mTrap = legalizeMstatus(
-      (mstatusReadData & ~"h00001888".U(32.W)) |
-        (privilege << 11) | (mstatusReadData(3) << 7)
-    )
+    val mTrap = legalizeMstatus(trapEntryMachine(mstatusReadData, privilege))
     if (hasS) {
-      val sTrap = legalizeMstatus(
-        (mstatusReadData & ~"h00000122".U(32.W)) |
-          (privilege(0) << 8) | (mstatusReadData(1) << 5)
-      )
+      val sTrap =
+        legalizeMstatus(trapEntrySupervisor(mstatusReadData, privilege))
       Mux(trapToS, sTrap, mTrap)
     } else mTrap
   }
   // MPP 恢复；MIE <- MPIE；MPIE <- 1；MPP 保持最低支持特权级。
   // HAS_U=n 时 legalizeMstatus 已把 MPP 的最低值夹到 S。
   // 返回低于 M 的目标特权级时必须清 MPRV(bit17)；返回 M 时保留。
-  val mstatusMretBase = legalizeMstatus(
-    (mstatusReadData & ~"h00001888".U(32.W)) |
-      (mstatusReadData(7) << 3) | (1.U << 7)
-  )
-  val mstatusMretData = Mux(mstatusReadData(12, 11) === 3.U,
-    mstatusMretBase,
-    mstatusMretBase & ~"h00020000".U(32.W))
+  val mstatusMretData = legalizeMstatus(mret(mstatusReadData))
   // SRET：SPP 决定返回 S/U；SIE <- SPIE；SPIE <- 1；SPP 回到最低支持级。
   // HAS_U=n 时 SPP 固定为 1，SRET 只能返回 S。SRET 的目标总是 S/U，
   // 因此必须无条件清 MPRV(bit17)。
-  val mstatusSretDataOpt = if (hasS) Some(legalizeMstatus(
-    ((mstatusReadData & ~"h00000122".U(32.W)) |
-      (mstatusReadData(5) << 1) | (1.U << 5)) & ~"h00020000".U(32.W)
-  )) else None
+  val mstatusSretDataOpt =
+    if (hasS) Some(legalizeMstatus(sret(mstatusReadData))) else None
   // independent 视图下 SRET 只清 mstatus.MPRV，不写 mstatus 的 S 字段；
   // 退休快照也必须反映这一实际写入。
   val mstatusSretStateData =
     if (!hasS) 0.U(32.W)
     else if (profile.CSRViewMode == "independent")
-      mstatusReadData & ~"h00020000".U(32.W)
+      mstatusReadData & ~MprvMask.U(32.W)
     else mstatusSretDataOpt.get
 
   val mstatusWriteEnable =
@@ -756,7 +697,7 @@ class ysyx_26030103_CSR(
     // 这条仅清 MPRV 的路径覆盖。
     when(sretCommit && !exceptionCommit) {
       mstatus.io.wen := true.B
-      mstatus.io.wdata := mstatusReadData & ~"h00020000".U(32.W)
+      mstatus.io.wdata := mstatusReadData & ~MprvMask.U(32.W)
     }
   }
   if (hasS && profile.CSRViewMode == "independent") {
@@ -769,10 +710,10 @@ class ysyx_26030103_CSR(
     val sWrite = legalizeMstatus(
       (sstatusReg & ~sstatusOwnMaskValue.U(32.W)) |
         (write32(sReadOld) & sstatusOwnMaskValue.U(32.W)))
-    val sTrap = legalizeMstatus((sstatusReg & ~"h00000122".U(32.W)) |
-      (sstatusReg(1) << 5) | (privilege(0) << 8))
-    val sRet = legalizeMstatus((sstatusReg & ~"h00000122".U(32.W)) |
-      (sstatusReg(5) << 1) | (1.U << 5))
+    val sTrap = legalizeMstatus(trapEntrySupervisor(sstatusReg, privilege))
+    val sRet = legalizeMstatus(
+      (sstatusReg & ~TrapSStatusClearMask.U(32.W)) |
+        (sstatusReg(5) << 1) | (1.U << 5))
     when(sstatusWriteEnable) { sstatusReg := sWrite }
     // trap entry 必须优先于同拍的 SRET（SRET 已被中断抢占）。
     when(sretCommit && !exceptionCommit) { sstatusReg := sRet }
@@ -1139,12 +1080,17 @@ class ysyx_26030103_CSR(
   addCSR(CSRMstatush, 0.U(XLEN.W), XLEN == 32)
   pmuOpt.foreach { pmu =>
     for (index <- 0 until pmuCounterCount) {
-      addCSR((0xb03 + index).U(12.W), pmu.io.readData, enabled = true)
-      addCSR((0x323 + index).U(12.W), pmu.io.readData, enabled = true)
-      addCSR((0xc03 + index).U(12.W), pmu.io.readData, enabled = true)
+      addCSR((ysyx_26030103_PMUCSR.CounterBase + index).U(12.W),
+        pmu.io.readData, enabled = true)
+      addCSR((ysyx_26030103_PMUCSR.EventBase + index).U(12.W),
+        pmu.io.readData, enabled = true)
+      addCSR((ysyx_26030103_PMUCSR.UserCounterBase + index).U(12.W),
+        pmu.io.readData, enabled = true)
       if (XLEN == 32) {
-        addCSR((0xb83 + index).U(12.W), pmu.io.readData, enabled = true)
-        addCSR((0xc83 + index).U(12.W), pmu.io.readData, enabled = true)
+        addCSR((ysyx_26030103_PMUCSR.CounterHighBase + index).U(12.W),
+          pmu.io.readData, enabled = true)
+        addCSR((ysyx_26030103_PMUCSR.UserCounterHighBase + index).U(12.W),
+          pmu.io.readData, enabled = true)
       }
     }
     if (pmuSscofpmf) {

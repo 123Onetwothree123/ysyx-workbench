@@ -1,10 +1,11 @@
 package ysyx_26030103.exu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import chisel3._
 
 // ALU 移位器：SLL/SRL/SRA 共用一个桶形移位器。
 // RV32 移位量取 B[4:0]，RV64 取 B[5:0]；W 型移位固定只取 B[4:0]。
 class ysyx_26030103_ALUShifter(val XLEN: Int = 32) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"ALUShifter XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "ALUShifter")
   private val shiftAmountWidth = if (XLEN == 64) 6 else 5
   val io = IO(new Bundle {
     val A = Input(UInt(XLEN.W))

@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
@@ -10,7 +11,7 @@ class ysyx_26030103_PTWRequest(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"PTWRequest XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "PTWRequest")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"PTWRequest AddressWidth 非法: $AddressWidth")
   val ID = UInt(4.W)
@@ -27,7 +28,7 @@ class ysyx_26030103_PTWResponse(
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     val PTEWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
 ) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"PTWResponse XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "PTWResponse")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"PTWResponse AddressWidth 非法: $AddressWidth")
   require(PTEWidth == 32 || PTEWidth == 64,
@@ -54,7 +55,7 @@ private[mmu] class ysyx_26030103_PTWResponsePayload(
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     val PTEWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
 ) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"PTWRespPayload XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "PTWRespPayload")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"PTWRespPayload AddressWidth 非法: $AddressWidth")
   require(PTEWidth == 32 || PTEWidth == 64,
@@ -98,7 +99,7 @@ class ysyx_26030103_PTW(
 ) extends Module {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
   require(BusID >= 0 && BusID <= 15, "PTW busId 必须在 0..15")
-  require(XLEN == 32 || XLEN == 64, s"PTW XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "PTW")
   require(addressWidth == 32 || addressWidth == 64,
     s"PTW addressWidth 非法: $addressWidth")
   require(vaBits >= 2 && vaBits <= XLEN, s"PTW vaBits 非法: $vaBits")

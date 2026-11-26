@@ -57,7 +57,7 @@ class ysyx_26030103_LSU(
     with LSUWrite
     with LSUStage
     with LSUPMP {
-  require(XLEN == 32 || XLEN == 64, s"LSU XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "LSU")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"LSU AddressWidth 非法: $AddressWidth")
   require(AddressWidth <= XLEN,
@@ -249,12 +249,10 @@ class ysyx_26030103_LSU(
       memoryValid: Bool
   ): (Bool, Bool) = {
     val mapped = memoryValid &&
-      DCachePMARegions.map(addressInRegion(address, _))
-        .reduceOption(_ || _).getOrElse(false.B)
+      ysyx_26030103_AnyOf(DCachePMARegions.map(addressInRegion(address, _)))
     val cacheable = memoryValid &&
-      DCachePMARegions.filter(_.Cacheable)
-        .map(addressInRegion(address, _))
-        .reduceOption(_ || _).getOrElse(false.B)
+      ysyx_26030103_AnyOf(
+        DCachePMARegions.filter(_.Cacheable).map(addressInRegion(address, _)))
     (mapped, cacheable)
   }
   val StagePMAAddress = addressOf(stageInputBits.ALUResult)

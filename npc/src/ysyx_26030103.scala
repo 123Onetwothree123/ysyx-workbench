@@ -119,18 +119,8 @@ class ysyx_26030103(
       DataWidth = busDataWidth
     )
   )
-  // ysyxSoC的ChipLink内存窗口。只有当当前PMA明确覆盖完整
-  // 0xc0000000--0xffffffff可读写区域时，才允许CPU slave端口代理
-  // 入站DMA请求。其他配置继续用DECERR安全终止，不会意外暴露
-  // CPU本地CLINT或SoC其他地址。
-  private val chipLinkMemoryBase = BigInt(config.ChipLinkMemoryBase)
-  private val chipLinkMemoryEnd =
-    chipLinkMemoryBase + BigInt(config.ChipLinkMemorySize)
-  protected val DMAProxyEnable = config.PMARegions.exists { region =>
-    region.Readable && region.Writable &&
-    BigInt(region.Base) <= chipLinkMemoryBase &&
-    BigInt(region.EndExclusive) >= chipLinkMemoryEnd
-  }
+  // ysyxSoC的ChipLink内存窗口：PMA完整覆盖时才代理入站DMA请求，否则DECERR终止
+  protected val DMAProxyEnable = config.DMAWindowPresent
   val DMAErrorSlave =
     if (DMAProxyEnable) None
     else

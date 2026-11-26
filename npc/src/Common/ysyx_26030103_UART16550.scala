@@ -177,12 +177,14 @@ class ysyx_26030103_UART16550(
   // IIR：bit0=0 表示有中断；bits[3:1]=010 表示接收数据可用，
   // 001 表示 THRE。RX 数据可用优先级高于 THRE。无中断时 bit0=1，
   // bits[7:6] 跟随 FCR 的 FIFO 使能位（复位后为 0x01）。
+  def iirWord(code: UInt): UInt =
+    Cat(fcr(0), fcr(0), 0.U(2.W), code, 0.U(1.W))
   val iir = Mux(
     rdaPending,
-    Cat(fcr(0), fcr(0), 0.U(2.W), "b010".U(3.W), 0.U(1.W)),
+    iirWord("b010".U(3.W)),
     Mux(
       ier(1) && threPending,
-      Cat(fcr(0), fcr(0), 0.U(2.W), "b001".U(3.W), 0.U(1.W)),
+      iirWord("b001".U(3.W)),
       Cat(fcr(0), fcr(0), "b000001".U(6.W))
     )
   )

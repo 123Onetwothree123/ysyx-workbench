@@ -1,10 +1,11 @@
 package ysyx_26030103.exu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import chisel3._
 import chisel3.util._
 // 64 位周期计数器。RV32 通过 mcycle/mcycleh 访问高低半部；
 // RV64 的 mcycle 直接返回完整 64 位值。
 class ysyx_26030103_mcycle(val XLEN: Int = 32) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"mcycle XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "mcycle")
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Bool())

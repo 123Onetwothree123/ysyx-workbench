@@ -35,10 +35,9 @@ private[infra] trait AXI5XbarDecode {
       burst: UInt,
       regions: Seq[ysyx_26030103_PMARegion]
   ): Bool =
-    regions
-      .map(inRegion(address, length, size, burst, _))
-      .reduceOption(_ || _)
-      .getOrElse(false.B)
+    ysyx_26030103_AnyOf(
+      regions.map(inRegion(address, length, size, burst, _))
+    )
 
   def isCLINT(address: UInt, length: UInt, size: UInt, burst: UInt): Bool = {
     val lastAddress = lastByte(address, length, size, burst)

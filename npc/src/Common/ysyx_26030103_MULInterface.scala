@@ -14,7 +14,7 @@ object ysyx_26030103_MULSignedMode {
 }
 //MUL指令请求。
 class ysyx_26030103_MULInstructionRequest(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"MULInstructionRequest XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "MULInstructionRequest")
   val LHS = UInt(XLEN.W) //左操作数
   val RHS = UInt(XLEN.W) //右操作数
   val SignedMode = UInt(ysyx_26030103_MULSignedMode.Width.W) //符号模式
@@ -22,7 +22,7 @@ class ysyx_26030103_MULInstructionRequest(val XLEN: Int = 32) extends Bundle {
 }
 //MUL指令结果。
 class ysyx_26030103_MULInstructionResponse(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"MULInstructionResponse XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "MULInstructionResponse")
   val Result = UInt(XLEN.W) //指令结果
 }
 //MUL适配层握手接口；Flush取消在途事务。

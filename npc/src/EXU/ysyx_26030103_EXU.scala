@@ -205,17 +205,9 @@ class ysyx_26030103_EXU(
   // RV64 W 型 M 扩展指令：MULW/DIVW/REMW 先符号扩展低 32 位操作数，
   // DIVUW/REMUW 先零扩展；结果再由 sext32 把低 32 位符号扩展回 XLEN。
   val IsWordMDU = ysyx_26030103_MDUOp.IsWordOp(inst.MDUOp)
-  val WordMDUUnsigned = inst.MDUOp === ysyx_26030103_MDUOp.DIVUW ||
-    inst.MDUOp === ysyx_26030103_MDUOp.REMUW
-  val MDUBaseOp = MuxLookup(inst.MDUOp, inst.MDUOp)(
-    Seq(
-      ysyx_26030103_MDUOp.MULW -> ysyx_26030103_MDUOp.MUL,
-      ysyx_26030103_MDUOp.DIVW -> ysyx_26030103_MDUOp.DIV,
-      ysyx_26030103_MDUOp.DIVUW -> ysyx_26030103_MDUOp.DIVU,
-      ysyx_26030103_MDUOp.REMW -> ysyx_26030103_MDUOp.REM,
-      ysyx_26030103_MDUOp.REMUW -> ysyx_26030103_MDUOp.REMU
-    )
-  )
+  val MDUBaseOp = ysyx_26030103_MDUOp.BaseOp(inst.MDUOp)
+  val WordMDUUnsigned = IsWordMDU && (MDUBaseOp === ysyx_26030103_MDUOp.DIVU ||
+    MDUBaseOp === ysyx_26030103_MDUOp.REMU)
   val MDUWordLHS =
     if (XLEN == 32) inst.ALU_A
     else Mux(WordMDUUnsigned, zext32(inst.ALU_A(31, 0)),

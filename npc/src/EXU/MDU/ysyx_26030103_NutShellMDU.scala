@@ -4,6 +4,7 @@ package ysyx_26030103.exu
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_MDUOp
+import _root_.ysyx_26030103.common.ysyx_26030103_MULSignedMode
 import _root_.ysyx_26030103.config._
 
 class ysyx_26030103_NutShellMDU(
@@ -13,19 +14,19 @@ class ysyx_26030103_NutShellMDU(
   private val mul = Module(new ysyx_26030103_NutShellMultiplier(xlen + 1))
   private val div = Module(new ysyx_26030103_NutShellDivider(xlen))
   private val op = io.Request.bits.MDUOp
-  private val isDiv = op === ysyx_26030103_MDUOp.DIV ||
-    op === ysyx_26030103_MDUOp.DIVU ||
-    op === ysyx_26030103_MDUOp.REM ||
-    op === ysyx_26030103_MDUOp.REMU
-  private val isDivSign = isDiv && !op(0)
+  private val isDiv = ysyx_26030103_MDUOp.IsDiv(op)
+  private val isDivSign = ysyx_26030103_MDUOp.IsSignedDiv(op)
 
   private def signExtend(value: UInt): UInt = Cat(value(xlen - 1), value)
   private def zeroExtend(value: UInt): UInt = Cat(0.U(1.W), value)
   private val lhs = io.Request.bits.LHS
   private val rhs = io.Request.bits.RHS
-  private val mulLeftHandSide = Mux(op === ysyx_26030103_MDUOp.MULH ||
-    op === ysyx_26030103_MDUOp.MULHSU, signExtend(lhs), zeroExtend(lhs))
-  private val mulRightHandSide = Mux(op === ysyx_26030103_MDUOp.MULH,
+  private val mulSignedMode = ysyx_26030103_MDUOp.MulSignedMode(op)
+  private val mulLeftHandSide = Mux(
+    ysyx_26030103_MULSignedMode.LHSSigned(mulSignedMode),
+    signExtend(lhs), zeroExtend(lhs))
+  private val mulRightHandSide = Mux(
+    ysyx_26030103_MULSignedMode.RHSSigned(mulSignedMode),
     signExtend(rhs), zeroExtend(rhs))
 
   // 单笔在途 + 结果保持：NutShell 的 DIV 只在 s_finish 一拍拉高 valid，
@@ -38,10 +39,9 @@ class ysyx_26030103_NutShellMDU(
   private val resultReg = RegInit(0.U(xlen.W))
   private val divIterationsReg = RegInit(0.U(16.W))
   private val divEarlyOutReg = RegInit(false.B)
-  private val mulResult = Mux(opReg === ysyx_26030103_MDUOp.MUL,
-    mul.io.out.bits(xlen - 1, 0), mul.io.out.bits(2 * xlen - 1, xlen))
-  private val divResult = Mux(opReg === ysyx_26030103_MDUOp.REM ||
-    opReg === ysyx_26030103_MDUOp.REMU,
+  private val mulResult = Mux(ysyx_26030103_MDUOp.TakeHigh(opReg),
+    mul.io.out.bits(2 * xlen - 1, xlen), mul.io.out.bits(xlen - 1, 0))
+  private val divResult = Mux(ysyx_26030103_MDUOp.IsRemainder(opReg),
     div.io.out.bits(2 * xlen - 1, xlen), div.io.out.bits(xlen - 1, 0))
   private val selectedOutValid = Mux(divSelected, div.io.out.valid, mul.io.out.valid)
   private val selectedResult = Mux(divSelected, divResult, mulResult)

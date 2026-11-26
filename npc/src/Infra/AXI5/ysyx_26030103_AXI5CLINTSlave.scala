@@ -8,6 +8,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.{
   SelectWord
 }
 import ysyx_26030103_AXI5WriteData.{merge32}
+import ysyx_26030103_AXI5Burst.{beatBytes}
 class ysyx_26030103_CLINTIO(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
@@ -113,14 +114,7 @@ class ysyx_26030103_AXI5CLINTSlave(
     wValidReg := true.B
     wLastReg := io.W.WLAST
   }
-  val wStep = MuxLookup(AWSizeReg, 0.U(addressWidth.W))(
-    Seq(
-      0.U -> 1.U(addressWidth.W),
-      1.U -> 2.U(addressWidth.W),
-      2.U -> 4.U(addressWidth.W),
-      3.U -> 8.U(addressWidth.W)
-    )
-  )
+  val wStep = beatBytes(AWSizeReg, addressWidth)
   val wDataWide = wDataReg.pad(64)
   val wStrobeWide = wStrobeReg.pad(8)
   val wDataWord = SelectWord(wDataWide, wAddressReg, busWide)
@@ -205,14 +199,7 @@ class ysyx_26030103_AXI5CLINTSlave(
     else lane
   }
 
-  val ARStep = MuxLookup(ARSizeReg, 0.U(addressWidth.W))(
-    Seq(
-      0.U -> 1.U(addressWidth.W),
-      1.U -> 2.U(addressWidth.W),
-      2.U -> 4.U(addressWidth.W),
-      3.U -> 8.U(addressWidth.W)
-    )
-  )
+  val ARStep = beatBytes(ARSizeReg, addressWidth)
   val NextARAddress = Mux(ARBurstReg === 1.U, ARAddressReg + ARStep, ARAddressReg)
 
   when(ARFire) {

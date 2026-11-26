@@ -3,7 +3,7 @@ import chisel3._
 import chisel3.util._
 //DIV指令请求。
 class ysyx_26030103_DIVInstructionRequest(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"DIVInstructionRequest XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "DIVInstructionRequest")
   val LHS = UInt(XLEN.W) //被除数
   val RHS = UInt(XLEN.W) //除数
   val Signed = Bool() //有符号运算
@@ -11,7 +11,7 @@ class ysyx_26030103_DIVInstructionRequest(val XLEN: Int = 32) extends Bundle {
 }
 //DIV指令结果。
 class ysyx_26030103_DIVInstructionResponse(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"DIVInstructionResponse XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "DIVInstructionResponse")
   val Result = UInt(XLEN.W) //指令结果
 }
 //DIV适配层握手接口。

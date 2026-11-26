@@ -1,4 +1,5 @@
 package ysyx_26030103.exu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
@@ -7,7 +8,7 @@ class ysyx_26030103_mepc(
     // IALIGN=16（C 扩展打开）时 mepc/sepc 只清 bit0；否则低两位都为 0。
     val UseC: Boolean = false
 ) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"mepc XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "mepc")
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Bool())

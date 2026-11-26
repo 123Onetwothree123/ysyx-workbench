@@ -37,3 +37,33 @@ object ysyx_26030103_PMUEventID {
   val ICacheAccess = 30
   val ICacheMiss = 31
 }
+
+object ysyx_26030103_PMUCSR {
+  val CounterBase = 0xb03
+  val CounterHighBase = 0xb83
+  val EventBase = 0x323
+  val CountOvf = 0xda0
+  val UserCounterBase = 0xc03
+  val UserCounterHighBase = 0xc83
+
+  def MachineAddresses(
+      xlen: Int,
+      zihpm: Boolean,
+      sscofpmf: Boolean,
+      count: Int
+  ): Seq[Int] =
+    if (zihpm)
+      (0 until count).flatMap { index =>
+        Seq(CounterBase + index, EventBase + index) ++
+          (if (xlen == 32) Seq(CounterHighBase + index) else Seq.empty)
+      } ++ (if (sscofpmf) Seq(CountOvf) else Seq.empty)
+    else Seq.empty
+
+  def UserAddresses(xlen: Int, zihpm: Boolean, count: Int): Seq[Int] =
+    if (zihpm)
+      (0 until count).flatMap { index =>
+        Seq(UserCounterBase + index) ++
+          (if (xlen == 32) Seq(UserCounterHighBase + index) else Seq.empty)
+      }
+    else Seq.empty
+}

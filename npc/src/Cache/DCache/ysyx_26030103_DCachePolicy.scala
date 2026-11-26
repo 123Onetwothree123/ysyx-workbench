@@ -29,14 +29,14 @@ object ysyx_26030103_DCachePolicy {
     )
     val lineLast = lineBase +
       ((BigInt(1) << BlockSizeLog2) - 1).U((AddressWidth + 1).W)
-    PMARegions
-      .filter(region => region.Readable && region.Cacheable)
-      .map { region =>
-        lineBase >= BigInt(region.Base).U((AddressWidth + 1).W) &&
-        lineLast < BigInt(region.EndExclusive).U((AddressWidth + 1).W)
-      }
-      .reduceOption(_ || _)
-      .getOrElse(false.B)
+    ysyx_26030103_AnyOf(
+      PMARegions
+        .filter(region => region.Readable && region.Cacheable)
+        .map { region =>
+          lineBase >= BigInt(region.Base).U((AddressWidth + 1).W) &&
+          lineLast < BigInt(region.EndExclusive).U((AddressWidth + 1).W)
+        }
+    )
   }
 
   def IsCacheable(

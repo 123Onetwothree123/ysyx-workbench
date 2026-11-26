@@ -5,7 +5,7 @@ import chisel3._
 // 是否调用 RVC 展开器并计算 snpc=PC+2/PC+4 由 IDU 决定；默认 XLEN=32
 // 保证既有单元测试和 RV32 配置的端口布局兼容。
 class ysyx_26030103_IFUMessage(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"IFUMessage XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "IFUMessage")
   val Instruction = UInt(32.W)
   // 1=本条是 16 位压缩指令；0=32 位指令。关闭 C 扩展时恒为 0。
   val IsCompressed = Bool()

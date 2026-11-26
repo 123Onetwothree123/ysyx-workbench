@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
@@ -9,7 +10,7 @@ class ysyx_26030103_TLBWrite(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val PTEWidth: Int = ysyx_26030103_KconfigDefaults.MMUPTEWidth
 ) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"TLBWrite XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "TLBWrite")
   require(PTEWidth == 32 || PTEWidth == 64, s"TLBWrite PTEWidth 非法: $PTEWidth")
   val valid = Bool()
   val VirtualAddress = UInt(XLEN.W)
@@ -56,7 +57,7 @@ class ysyx_26030103_TLB(
   require(levels >= 1 && levels <= ysyx_26030103_MMUProfile.MaxLevels,
     s"TLB levels 必须在 1..${ysyx_26030103_MMUProfile.MaxLevels}")
   require(indexBits >= 1 && indexBits <= 30, "TLB indexBits 非法")
-  require(XLEN == 32 || XLEN == 64, s"TLB XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "TLB")
   require(addressWidth == 32 || addressWidth == 64,
     s"TLB addressWidth 非法: $addressWidth")
   require(vaBits > pageBits && vaBits <= XLEN, "TLB vaBits 非法")

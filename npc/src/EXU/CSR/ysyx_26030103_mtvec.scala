@@ -1,8 +1,9 @@
 package ysyx_26030103.exu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import chisel3._
 import chisel3.util._
 class ysyx_26030103_mtvec(val XLEN: Int = 32) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"mtvec XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "mtvec")
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val reset = Input(Bool())

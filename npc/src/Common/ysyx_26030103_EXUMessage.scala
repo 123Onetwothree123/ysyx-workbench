@@ -2,7 +2,7 @@ package ysyx_26030103.common
 import chisel3._
 
 class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"EXUMessage XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "EXUMessage")
   // 与提交记录同行传递，供退休级调试/trace精确对齐。
   // Instruction 保留原始编码（16 位压缩指令零扩展）。
   val Instruction = UInt(32.W)

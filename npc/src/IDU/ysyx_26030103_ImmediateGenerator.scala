@@ -1,9 +1,10 @@
 package ysyx_26030103.idu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_opcode._
 class ysyx_26030103_ImmediateGenerator(val XLEN: Int = 32) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"ImmediateGenerator XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "ImmediateGenerator")
   val io = IO(new Bundle {
     val Instruction = Input(UInt(32.W))
     val Immediate = Output(UInt(XLEN.W))

@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
@@ -16,7 +17,7 @@ class ysyx_26030103_LSUMMU(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"LSUMMU XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "LSUMMU")
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_EXUMessage(XLEN)))
     val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))

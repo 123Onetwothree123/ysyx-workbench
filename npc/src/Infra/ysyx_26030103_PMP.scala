@@ -2,6 +2,7 @@ package ysyx_26030103.infra
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_AnyOf
 
 // 基础 RISC-V PMP：OFF/TOR/NA4/NAPOT，最低编号匹配项优先；未匹配时
 // M 放行、S/U 拒绝，带 L 的匹配项对 M 也强制权限。
@@ -82,17 +83,16 @@ class ysyx_26030103_PMP(entries: Int = 16, AddressWidth: Int = 32) extends Modul
     val matchesAny = (0 until activeEntries).map { i =>
       startMatches(i) || endMatches(i)
     }
-    val anyMatch = matchesAny.reduceOption(_ || _).getOrElse(false.B)
+    val anyMatch = ysyx_26030103_AnyOf(matchesAny)
     // 规范：最低编号的“匹配任意字节”的表项决定结果；该表项必须覆盖
     // 整个访问范围，否则访问失败。不能对起点和终点分别做优先仲裁再 OR。
     val firstMatch = (0 until activeEntries).map { i =>
       matchesAny(i) &&
-        !((0 until i).map(j => matchesAny(j))
-          .reduceOption(_ || _).getOrElse(false.B))
+        !ysyx_26030103_AnyOf((0 until i).map(j => matchesAny(j)))
     }
-    val allCovered = (0 until activeEntries).map { i =>
+    val allCovered = ysyx_26030103_AnyOf((0 until activeEntries).map { i =>
       firstMatch(i) && startMatches(i) && endMatches(i)
-    }.reduceOption(_ || _).getOrElse(false.B)
+    })
     val permissions = (0 until activeEntries).map { i =>
       val entryConfig = io.config(i)
       val unlockedM = privilege === 3.U && !entryConfig(7)

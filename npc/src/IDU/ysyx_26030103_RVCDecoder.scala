@@ -1,4 +1,5 @@
 package ysyx_26030103.idu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
@@ -30,7 +31,7 @@ class ysyx_26030103_RVCDecoder(
     val UseF: Boolean = false,
     val UseD: Boolean = false
 ) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"RVCDecoder XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "RVCDecoder")
   require(!UseD || UseF, "RVCDecoder 的 D 扩展依赖 F 扩展")
 
   val io = IO(new Bundle {

@@ -19,6 +19,11 @@ object ysyx_26030103_AtomicOp {
   val MINU: UInt = 0x18.U(Width.W) // AMOMINU
   val MAXU: UInt = 0x1c.U(Width.W) // AMOMAXU
 
+  val All: Seq[UInt] = Seq(ADD, SWAP, LR, SC, XOR, OR, AND, MIN, MAX, MINU, MAXU)
+
+  def IsDefined(op: UInt): Bool =
+    ysyx_26030103_AnyOf(All.map(op === _))
+
   def IsLr(op: UInt): Bool = op === LR
   def IsSc(op: UInt): Bool = op === SC
   // 该操作是否会在读之后写回内存（AMO 与成功的 SC）。

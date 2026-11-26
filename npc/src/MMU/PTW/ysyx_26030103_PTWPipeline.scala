@@ -1,5 +1,7 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
+import _root_.ysyx_26030103.common.ysyx_26030103_AnyOf
 
 import chisel3._
 import chisel3.util._
@@ -35,7 +37,7 @@ class ysyx_26030103_PTWPipeline(
     vaBits: Int = ysyx_26030103_KconfigDefaults.MMUVaBits
 ) extends ysyx_26030103_PTWBackend(ResponsePorts, XLEN, addressWidth, PTESizeBytes * 8) {
   require(Set("fault", "ignore", "hardware").contains(adMode), "未知 PTW A/D 模式")
-  require(XLEN == 32 || XLEN == 64, s"PTW pipeline XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "PTW pipeline")
   require(addressWidth == 32 || addressWidth == 64,
     s"PTW pipeline addressWidth 非法: $addressWidth")
   require(vaBits >= 2 && vaBits <= XLEN, s"PTW pipeline vaBits 非法: $vaBits")
@@ -623,10 +625,10 @@ class ysyx_26030103_PTWPipeline(
   var taken: Seq[Bool] = Seq.fill(outstanding)(false.B)
   for (port <- 0 until ResponsePorts) {
     val eligible = (0 until outstanding).map { i =>
-      val olderPending = (0 until outstanding).map { j =>
+      val olderPending = ysyx_26030103_AnyOf((0 until outstanding).map { j =>
         if (j == i) false.B
         else context(j).busy && !taken(j) && olderThan(context(j).age, context(i).age)
-      }.reduceOption(_ || _).getOrElse(false.B)
+      })
       val orderOk = if (inOrder) !olderPending else true.B
       context(i).busy && context(i).done && !taken(i) && orderOk
     }

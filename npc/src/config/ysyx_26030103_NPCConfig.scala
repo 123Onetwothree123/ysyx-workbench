@@ -453,10 +453,8 @@ case class ysyx_26030103_NPCConfig(
   // 入站 DMA 只代理 ChipLink 内存窗口（与 AXI5Arbiter 的检查一致）。
   // UNCACHED 模式在 Cache 使用的 PMA 视图里把该窗口切成不可缓存段；
   // 原始 PMARegions 仍供 Xbar/PMA 权限检查使用，读写/执行权限不变。
-  private val DMAWindowBase =
-    ysyx_26030103_PMAOptions.Default.chipLinkMemBase
-  private val DMAWindowEnd =
-    DMAWindowBase + ysyx_26030103_PMAOptions.Default.chipLinkMemSize
+  private val DMAWindowBase = ChipLinkMemoryBase
+  private val DMAWindowEnd = DMAWindowBase + ChipLinkMemorySize
   // Cache 实际使用的 PMA 视图；只有显式 UNCACHED 模式才与 PMARegions 不同。
   final val CachePMARegions: Seq[ysyx_26030103_PMARegion] =
     if (DMACoherence != ysyx_26030103_DMACoherence.Uncached) PMARegions

@@ -1,5 +1,6 @@
 package ysyx_26030103.mmu
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
+import _root_.ysyx_26030103.common.ysyx_26030103_AnyOf
 
 import chisel3._
 import chisel3.util._
@@ -126,7 +127,7 @@ class ysyx_26030103_PTWCluster(
   // 响应顺序：in_order 下高编号完成者必须等待低编号尚未完成的请求。
   val done = VecInit((0 until outstanding).map(i => busy(i) && walkers(i).io.response.valid))
   def lowerPending(i: Int): Bool =
-    (0 until i).map(j => busy(j) && !walkers(j).io.response.valid).reduceOption(_ || _).getOrElse(false.B)
+    ysyx_26030103_AnyOf((0 until i).map(j => busy(j) && !walkers(j).io.response.valid))
   val eligibleBase = (0 until outstanding).map { i =>
     if (inOrder) done(i) && !lowerPending(i) else done(i)
   }
@@ -162,9 +163,9 @@ class ysyx_26030103_PTWCluster(
   }
 
   for (i <- 0 until outstanding) {
-    val selected = (0 until ResponsePorts).map { port =>
+    val selected = ysyx_26030103_AnyOf((0 until ResponsePorts).map { port =>
       selectedValid(port) && selectedOneHot(port)(i) && io.response(port).ready
-    }.reduceOption(_ || _).getOrElse(false.B)
+    })
     // flush 后 busy 已清零的 walker 仍可能在收尾旧 walk，完成时自动弹掉
     // 结果，避免卡在 done 状态而永久占住空闲列表。
     walkers(i).io.response.ready := !busy(i) || selected

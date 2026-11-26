@@ -1,4 +1,5 @@
 package ysyx_26030103.ifu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 import chisel3._
 import chisel3.util._
@@ -23,7 +24,7 @@ class ysyx_26030103_IFU(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val UseC: Boolean = false
 ) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"IFU XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "IFU")
   val io = IO(new Bundle {
     // 发给 ICache 的取指请求地址（C 模式下按 4 字节对齐）。
     val FetchAddress = Output(UInt(XLEN.W))

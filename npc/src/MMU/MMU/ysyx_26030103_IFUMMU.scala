@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
@@ -13,7 +14,7 @@ class ysyx_26030103_IFUMMU(
     XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"IFUMMU XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "IFUMMU")
   val io = IO(new Bundle {
     val fetchValid = Input(Bool())
     val fetchReady = Output(Bool())

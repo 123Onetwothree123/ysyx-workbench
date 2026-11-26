@@ -19,8 +19,10 @@ abstract class ysyx_26030103_HardFloatFPUBase(
   protected val sigS = 24
   protected val expD = 11
   protected val sigD = 53
-  protected val canonicalNaN32 = "h7fc00000".U(32.W)
-  protected val canonicalNaN64 = "h7ff8000000000000".U(64.W)
+  protected val canonicalNaN32: UInt =
+    ysyx_26030103_FPUFormat.canonicalNaN32.U(32.W)
+  protected val canonicalNaN64: UInt =
+    ysyx_26030103_FPUFormat.canonicalNaN64.U(64.W)
   // HardFloat 的 detectTininess：0=before rounding，1=after rounding。
   protected val detectTininessUInt: UInt =
     (if (params.DetectTininessBeforeRounding) 0.U(1.W) else 1.U(1.W))
@@ -28,22 +30,17 @@ abstract class ysyx_26030103_HardFloatFPUBase(
     (if (params.DetectTininessBeforeRounding) false.B else true.B)
 
   // 输入边界：FLEN=64 时未 NaN-box 的单精度输入视为 canonical NaN
-  private def isBoxedS(value: UInt): Bool =
-    if (FLEN == 64) value(63, 32) === "hffffffff".U(32.W) else true.B
   private def sInput(value: UInt): UInt =
-    if (FLEN == 64) Mux(isBoxedS(value), value(31, 0), canonicalNaN32)
-    else value(31, 0)
+    ysyx_26030103_FPUFormat.unboxS(value, FLEN)
   private def dInput(value: UInt): UInt =
     if (FLEN == 64) value else 0.U(64.W)
 
   protected def boxF32(value: UInt): UInt =
-    if (FLEN == 64) Cat(Fill(FLEN - 32, 1.U(1.W)), value(31, 0))
-    else value(31, 0)
+    ysyx_26030103_FPUFormat.boxS(value, FLEN)
   protected def boxD(value: UInt): UInt =
     if (FLEN == 64) value(63, 0) else 0.U(FLEN.W)
   protected def sext32ToFLEN(value: UInt): UInt =
-    if (FLEN == 64) Cat(Fill(FLEN - 32, value(31)), value(31, 0))
-    else value(31, 0)
+    ysyx_26030103_FPUFormat.sext32ToFLEN(value, FLEN)
 
   protected val request = io.request.bits
   protected val aRaw = request.rs1

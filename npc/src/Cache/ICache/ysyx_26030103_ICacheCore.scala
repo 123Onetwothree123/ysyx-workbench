@@ -190,10 +190,8 @@ private[cache] trait ICacheCore { this: ysyx_26030103_ICacheBase =>
       address: UInt,
       regions: Seq[ysyx_26030103_PMARegion]
   ): Bool =
-    regions
-      .map(addressInRegion(address, _))
-      .reduceOption(_ || _)
-      .getOrElse(false.B)
+    ysyx_26030103_AnyOf(
+      regions.map(addressInRegion(address, _)))
 
   private val executableRegions = PMARegions.filter(_.Executable)
   private val cacheableRegions = PMARegions.filter(r => r.Executable && r.Cacheable)

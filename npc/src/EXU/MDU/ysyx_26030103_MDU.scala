@@ -6,14 +6,14 @@ import _root_.ysyx_26030103.config._
 
 //MDU请求。
 class ysyx_26030103_MDURequest(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"MDURequest XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "MDURequest")
   val LHS = UInt(XLEN.W) //左操作数
   val RHS = UInt(XLEN.W) //右操作数
   val MDUOp = UInt(ysyx_26030103_MDUOp.Width.W) //M扩展操作码
 }
 //MDU结果。
 class ysyx_26030103_MDUResponse(val XLEN: Int = 32) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"MDUResponse XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "MDUResponse")
   val Result = UInt(XLEN.W) //指令结果
 }
 //MDU路由握手接口。

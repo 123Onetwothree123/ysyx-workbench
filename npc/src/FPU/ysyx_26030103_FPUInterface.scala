@@ -73,6 +73,27 @@ object ysyx_26030103_FPUFlags {
   val NV = 4
 }
 
+object ysyx_26030103_FPUFormat {
+  val canonicalNaN32: BigInt = BigInt("7fc00000", 16)
+  val canonicalNaN64: BigInt = BigInt("7ff8000000000000", 16)
+  val allOnes32: BigInt = BigInt("ffffffff", 16)
+
+  def unboxS(value: UInt, flen: Int): UInt =
+    if (flen == 32) {
+      value
+    } else {
+      Mux(value(63, 32) === allOnes32.U(32.W), value(31, 0),
+        canonicalNaN32.U(32.W))
+    }
+
+  def boxS(value: UInt, flen: Int): UInt =
+    if (flen == 32) value else Cat(allOnes32.U(32.W), value(31, 0))
+
+  def sext32ToFLEN(value: UInt, flen: Int): UInt =
+    if (flen == 64) Cat(Fill(flen - 32, value(31)), value(31, 0))
+    else value(31, 0)
+}
+
 // rs1/rs2/rs3 为 FLEN 位 IEEE 754 位模式；NaN-boxing 由上层/后端在边界处理。
 class ysyx_26030103_FPURequest(val FLEN: Int = 64) extends Bundle {
   require(FLEN == 32 || FLEN == 64, s"FpuRequest FLEN 非法: $FLEN")

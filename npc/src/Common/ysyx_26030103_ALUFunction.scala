@@ -20,7 +20,7 @@ object ysyx_26030103_ALUFunction {
   val SRAW: UInt = 14.U(CtrlWidth.W)
   val NOP: UInt = 15.U(CtrlWidth.W)
   private def Matches(function: UInt, choices: Seq[UInt]): Bool =
-    choices.map(function === _).reduceOption(_ || _).getOrElse(false.B)
+    ysyx_26030103_AnyOf(choices.map(function === _))
   // 妈的，傻卵deepseek写的什么垃圾，操作数居然没有隔离，等于说选RV32，ALU那边64的还在，还每个周期也在算，凭空增加面积和功耗
   // 现在我才新加上选择哪些控制码需要对应子块真正参与运算
   def IsAddLike(function: UInt): Bool = Matches(function, Seq(ADD, ADDW))

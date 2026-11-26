@@ -1,4 +1,5 @@
 package ysyx_26030103.mmu
+import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 
 import chisel3._
@@ -17,7 +18,7 @@ class ysyx_26030103_MMURequest(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"MMURequest XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "MMURequest")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"MMURequest AddressWidth 非法: $AddressWidth")
   val ID = UInt(4.W)
@@ -33,7 +34,7 @@ class ysyx_26030103_MMUResponse(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth
 ) extends Bundle {
-  require(XLEN == 32 || XLEN == 64, s"MMUResponse XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "MMUResponse")
   require(AddressWidth == 32 || AddressWidth == 64,
     s"MMUResponse AddressWidth 非法: $AddressWidth")
   val ID = UInt(4.W)

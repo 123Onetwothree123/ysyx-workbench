@@ -6,6 +6,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_opcode._
 import _root_.ysyx_26030103.common.ysyx_26030103_IFUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_IDUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_AtomicOp
+import _root_.ysyx_26030103.common.ysyx_26030103_AnyOf
 import _root_.ysyx_26030103.fpu._
 class ysyx_26030103_IDU(
     val config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
@@ -189,14 +190,7 @@ class ysyx_26030103_IDU(
   // 其余 funct3 以及 RISCV_A=n 时整个 AMO 操作码都按非法指令处理。
   val amoFunct5 = instruction(31, 27)
   // 只放行标准定义的 11 个 funct5；其余保留编码必须落入非法指令。
-  val amoFunct5Valid = Seq(
-    ysyx_26030103_AtomicOp.ADD, ysyx_26030103_AtomicOp.SWAP,
-    ysyx_26030103_AtomicOp.LR, ysyx_26030103_AtomicOp.SC,
-    ysyx_26030103_AtomicOp.XOR, ysyx_26030103_AtomicOp.OR,
-    ysyx_26030103_AtomicOp.AND, ysyx_26030103_AtomicOp.MIN,
-    ysyx_26030103_AtomicOp.MAX, ysyx_26030103_AtomicOp.MINU,
-    ysyx_26030103_AtomicOp.MAXU
-  ).map(amoFunct5 === _).reduce(_ || _)
+  val amoFunct5Valid = ysyx_26030103_AtomicOp.IsDefined(amoFunct5)
   // LR 的编码把 rs2 固定为 0；rs2 非零属于保留编码，必须按非法指令
   // 陷入（NEMU REF 的 lr_w/lr_d 模式也只匹配 rs2=00000）。
   val atomicRs2Legal =
@@ -434,58 +428,16 @@ class ysyx_26030103_IDU(
   // 本核心目前只实现下面明确列出的机器态 CSR 集合，访问集合外的 CSR
   // 将被视为非法指令。
   val CSRAddress = instruction(31, 20)
-  private val baseUserCounterAddresses =
-    if (XLEN == 32) Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
-    else Seq(0xc00, 0xc01, 0xc02)
-  private val pmuUserCounterAddresses =
-    if (pmuZihpm)
-      (0 until pmuCounterCount).flatMap { index =>
-        Seq(0xc03 + index) ++
-          (if (XLEN == 32) Seq(0xc83 + index) else Seq.empty)
-      }
-    else Seq.empty
   private val userCounterAddresses =
-    baseUserCounterAddresses ++ pmuUserCounterAddresses
-  private val pmuMachineAddresses =
-    if (pmuZihpm)
-      (0 until pmuCounterCount).flatMap { index =>
-        Seq(0xb03 + index, 0x323 + index) ++
-          (if (XLEN == 32) Seq(0xb83 + index) else Seq.empty)
-      } ++ (if (pmuSscofpmf) Seq(0xda0) else Seq.empty)
-    else Seq.empty
-  // F/D 的 fflags(0x001)/frm(0x002)/fcsr(0x003) 是 U 级可访问 CSR；
-  // 是否实现由 RISCV_F 决定，不依赖 MMU profile 的整数 CSR 集合。
-  private val FPCSRAddresses =
-    if (useF) Seq(0x001, 0x002, 0x003) else Seq.empty
-  // envcfg 系列只作为 WARL 只读零 CSR 暴露，地址存在性与 CSR 模块保持
-  // 一致：menvcfg/senvcfg 随 HAS_S，mstatush/menvcfgh 只有 RV32。
-  private val EnvcfgFamilyAddresses: Seq[Int] =
     _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
-      .EnvcfgFamilyCSRAddresses(XLEN).toSeq
-  private val envcfgAddresses: Seq[Int] =
-    EnvcfgFamilyAddresses.filter(a => config.MMU.csrSupported(a))
-  private val CSRAddresses = (
-    config.MMU.CSREnabled.toSeq.filterNot(EnvcfgFamilyAddresses.contains) ++
-      // identity CSR 始终实现，不依赖 CSR_ENABLED 是否列出。
-      _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
-        .IdentityCSRAddresses.toSeq ++
-      userCounterAddresses ++ FPCSRAddresses ++ pmuMachineAddresses ++
-      // RV64 只有 pmpcfg0/pmpcfg2，0x3a1/0x3a3 是 RV32 专用编码。
-      (if (config.MMU.PMPEnabled)
-        (if (XLEN == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)) ++
-          (0x3b0 to 0x3bf)
-       else Seq.empty)
-  ).filter(a => config.MMU.csrSupported(a) || userCounterAddresses.contains(a) ||
-    FPCSRAddresses.contains(a) || pmuMachineAddresses.contains(a))
-    .distinct.sorted ++
-    envcfgAddresses ++
-    // 本核不实现调试触发器，但把触发相关 CSR 硬连为只读零而不是
-    // 非法指令。软件（如 riscv-tests/breakpoint.S）通过写入后读回
-    // 判断能力；非法陷入会让“未实现即跳过”的探测路径误判失败。
-    (0x7a0 to 0x7af)
+      .UserCounterAddresses(XLEN, pmuZihpm, pmuCounterCount)
+  private val CSRAddresses =
+    _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
+      .ImplementedCSRAddresses(XLEN, config.MMU, useF, pmuZihpm, pmuSscofpmf,
+        pmuCounterCount)
   val CSRAddressValid =
     if (config.MMU.CSRMissingMode == "zero") true.B
-    else CSRAddresses.map(a => CSRAddress === a.U(12.W)).reduceOption(_ || _).getOrElse(false.B)
+    else ysyx_26030103_AnyOf(CSRAddresses.map(a => CSRAddress === a.U(12.W)))
   // 地址位 [9:8] 编码最低可访问特权级：00=U, 01=S, 11=M。
   // HAS_U=n 时 U 级不再存在：防御性地把 0 级请求提升为 S，并显式拒绝
   // U 级 CSR，避免上游异常状态重新打开 U 模式访问路径。HAS_S=n 但
@@ -504,8 +456,8 @@ class ysyx_26030103_IDU(
   // 用户只读计数器是 U 级地址，但 M 模式始终可以访问；S 模式由
   // mcounteren 控制，U 模式再由 scounteren 控制。HAS_U=n 时它们仍
   // 由 CSR 模块实现，不能因为地址位 [9:8]=00 就被判成非法。
-  val isUserCounter = userCounterAddresses.map(a => CSRAddress === a.U(12.W))
-    .reduceOption(_ || _).getOrElse(false.B)
+  val isUserCounter = ysyx_26030103_AnyOf(
+    userCounterAddresses.map(a => CSRAddress === a.U(12.W)))
   val CSRPrivilegeOk = isFPCSR || isUserCounter || (if (!hasS && !hasU)
     CSRAddress(9, 8) === "b11".U(2.W)
   else

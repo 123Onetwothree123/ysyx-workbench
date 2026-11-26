@@ -11,14 +11,41 @@ object ysyx_26030103_mstatus {
   // 无法把特权级切回 U。HAS_S=n/HAS_U=y（M+U）时 MPP 仍可保存 U，
   // 但 SPP 不存在；M-only 时 MPP 固定为 M。
   private val FieldMask = BigInt("007e19aa", 16)
-  private val FsMask = BigInt("00006000", 16)
-  private val MppMask = BigInt("00001800", 16)
-  private val SppMask = BigInt("00000100", 16)
+  val FsMask = BigInt("00006000", 16)
+  val MppMask = BigInt("00001800", 16)
+  val SppMask = BigInt("00000100", 16)
   // 只有 S/U 模式存在的字段：SIE/SPIE/SPP/SUM/TVM/TW/TSR。
-  private val SOnlyFields = BigInt("00740122", 16)
+  val SOnlyFields = BigInt("00740122", 16)
   // SUM 只影响 S/U 页表权限；HAS_U=n 时没有 U 级，直接固定为 0。
-  private val SumField = BigInt("00040000", 16)
+  val SumField = BigInt("00040000", 16)
   private val MachineMpp = BigInt("00001800", 16)
+  val MprvMask = BigInt("00020000", 16)
+  val TrapMStatusClearMask = BigInt("00001888", 16)
+  val TrapSStatusClearMask = BigInt("00000122", 16)
+  val MieBit = 3
+  val MpieBit = 7
+  val MppShift = 11
+  val SppBit = 8
+
+  def trapEntryMachine(current: UInt, privilege: UInt): UInt =
+    (current & ~TrapMStatusClearMask.U(32.W)) |
+      (privilege << MppShift) | (current(MieBit) << MpieBit)
+
+  def trapEntrySupervisor(current: UInt, privilege: UInt): UInt =
+    (current & ~TrapSStatusClearMask.U(32.W)) |
+      (privilege(0) << SppBit) | (current(1) << 5)
+
+  def mret(current: UInt): UInt = {
+    val restored = (current & ~TrapMStatusClearMask.U(32.W)) |
+      (current(MpieBit) << MieBit) | (1.U << MpieBit)
+    Mux(current(MppShift + 1, MppShift) === 3.U,
+      restored, restored & ~MprvMask.U(32.W))
+  }
+
+  def sret(current: UInt): UInt =
+    ((current & ~TrapSStatusClearMask.U(32.W)) |
+      (current(5) << 1) | (1.U << 5)) & ~MprvMask.U(32.W)
+
   def resetValue: UInt = MachineMpp.U(32.W)
   def legalize(value: UInt, hasU: Boolean = true,
       hasS: Boolean = true, hasF: Boolean = false): UInt = {

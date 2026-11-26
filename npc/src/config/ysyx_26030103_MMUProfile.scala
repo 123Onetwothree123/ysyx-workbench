@@ -2,6 +2,7 @@ package ysyx_26030103.config
 
 import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
+import _root_.ysyx_26030103.common.ysyx_26030103_PMUCSR
 
 /** PTE 字段位置；默认就是标准 RISC-V 32-bit PTE。
   *
@@ -271,10 +272,8 @@ case class ysyx_26030103_MMUProfile(
       (CSREnabled.contains(address) ||
         ysyx_26030103_MMUProfile.EnvcfgFamilyCSRAddresses(xlen).contains(address) ||
         ysyx_26030103_MMUProfile.IdentityCSRAddresses.contains(address) ||
-        (PMPEnabled &&
-          // RV64 只有 pmpcfg0/pmpcfg2，0x3a1/0x3a3 是 RV32 专用编码。
-          ((if (xlen == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)).contains(address) ||
-            (address >= 0x3b0 && address <= 0x3bf))))
+        // RV64只有pmpcfg0/pmpcfg2，0x3a1/0x3a3是RV32专用编码
+        ysyx_26030103_MMUProfile.PMPAddresses(xlen, PMPEnabled).contains(address))
   }
 
   // 当前配置允许的最低特权级：有 U 为 U；否则有 S 为 S；M-only 为 M。
@@ -453,6 +452,52 @@ object ysyx_26030103_MMUProfile {
     */
   def EnvcfgFamilyCSRAddresses(xlen: Int): Set[Int] =
     if (xlen == 32) Set(0x30a, 0x310, 0x31a, 0x10a) else Set(0x30a, 0x10a)
+
+  def UserCounterAddresses(xlen: Int, zihpm: Boolean, count: Int): Seq[Int] = {
+    val baseAddresses =
+      if (xlen == 32) Seq(0xc00, 0xc01, 0xc02, 0xc80, 0xc81, 0xc82)
+      else Seq(0xc00, 0xc01, 0xc02)
+    baseAddresses ++ ysyx_26030103_PMUCSR.UserAddresses(xlen, zihpm, count)
+  }
+
+  def FPCSRAddresses(useF: Boolean): Seq[Int] =
+    if (useF) Seq(0x001, 0x002, 0x003) else Seq.empty
+
+  def PMPAddresses(xlen: Int, enabled: Boolean): Seq[Int] =
+    if (enabled)
+      (if (xlen == 64) Seq(0x3a0, 0x3a2) else (0x3a0 to 0x3a3)) ++
+        (0x3b0 to 0x3bf)
+    else Seq.empty
+
+  def ImplementedCSRAddresses(
+      xlen: Int,
+      profile: ysyx_26030103_MMUProfile,
+      useF: Boolean,
+      pmuZihpm: Boolean,
+      pmuSscofpmf: Boolean,
+      counterCount: Int
+  ): Seq[Int] = {
+    val envcfgFamilyAddresses = EnvcfgFamilyCSRAddresses(xlen).toSeq
+    val userCounterAddresses =
+      UserCounterAddresses(xlen, pmuZihpm, counterCount)
+    val fpcsrAddresses = FPCSRAddresses(useF)
+    val pmuMachineAddresses =
+      ysyx_26030103_PMUCSR.MachineAddresses(
+        xlen, pmuZihpm, pmuSscofpmf, counterCount)
+    val envcfgAddresses =
+      envcfgFamilyAddresses.filter(a => profile.csrSupported(a))
+    (profile.CSREnabled.toSeq.filterNot(envcfgFamilyAddresses.contains) ++
+      IdentityCSRAddresses.toSeq ++
+      userCounterAddresses ++
+      fpcsrAddresses ++
+      pmuMachineAddresses ++
+      PMPAddresses(xlen, profile.PMPEnabled)
+    ).filter(a => profile.csrSupported(a) || fpcsrAddresses.contains(a) ||
+      userCounterAddresses.contains(a) || pmuMachineAddresses.contains(a))
+      .distinct.sorted ++
+      envcfgAddresses ++
+      (0x7a0 to 0x7af)
+  }
 
   // 配置生成器未显式给出 CSR 集合时的标准实现集合。
   val DefaultCSRAddresses: Set[Int] = Set(

@@ -23,19 +23,10 @@ class ysyx_26030103_StandardMDU(
   // MDUMaxInflight 至少为 2（MUL 在途槽位 + DIV 一项），无需 1 项 FIFO 特判。
   private val headIsMUL = ownerIsMULQueue(ownerHead)
   val request = io.Request.bits
-  val isMULRequest = request.MDUOp <= ysyx_26030103_MDUOp.MULHU
-  val isDIVRequest = !isMULRequest
-  val mulSignedMode = MuxLookup(
-    request.MDUOp,
-    ysyx_26030103_MULSignedMode.UU
-  )(
-    Seq(
-      ysyx_26030103_MDUOp.MULH -> ysyx_26030103_MULSignedMode.SS,
-      ysyx_26030103_MDUOp.MULHSU -> ysyx_26030103_MULSignedMode.SU,
-      ysyx_26030103_MDUOp.MULHU -> ysyx_26030103_MULSignedMode.UU
-    )
-  )
-  val mulTakeHigh = request.MDUOp =/= ysyx_26030103_MDUOp.MUL
+  val isMULRequest = ysyx_26030103_MDUOp.IsMul(request.MDUOp)
+  val isDIVRequest = ysyx_26030103_MDUOp.IsDiv(request.MDUOp)
+  val mulSignedMode = ysyx_26030103_MDUOp.MulSignedMode(request.MDUOp)
+  val mulTakeHigh = ysyx_26030103_MDUOp.TakeHigh(request.MDUOp)
   mulUnit.IO.Flush := io.Flush
   mulUnit.IO.Request.bits.LHS := request.LHS
   mulUnit.IO.Request.bits.RHS := request.RHS
@@ -45,11 +36,9 @@ class ysyx_26030103_StandardMDU(
   divUnit.IO.Request.bits.LHS := request.LHS
   divUnit.IO.Request.bits.RHS := request.RHS
   divUnit.IO.Request.bits.Signed :=
-    request.MDUOp === ysyx_26030103_MDUOp.DIV ||
-      request.MDUOp === ysyx_26030103_MDUOp.REM
+    ysyx_26030103_MDUOp.IsSignedDiv(request.MDUOp)
   divUnit.IO.Request.bits.TakeRemainder :=
-    request.MDUOp === ysyx_26030103_MDUOp.REM ||
-      request.MDUOp === ysyx_26030103_MDUOp.REMU
+    ysyx_26030103_MDUOp.IsRemainder(request.MDUOp)
   val selectedResponseValid = Mux(
     headIsMUL,
     mulUnit.IO.Response.valid,

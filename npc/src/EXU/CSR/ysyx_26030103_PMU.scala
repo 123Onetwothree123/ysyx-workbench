@@ -14,13 +14,9 @@ class ysyx_26030103_PMU(
     val XLEN: Int = ysyx_26030103_KconfigDefaults.NpcXlen,
     val EnableSscofpmf: Boolean = true
 ) extends Module {
-  require(XLEN == 32 || XLEN == 64, s"PMU XLEN 非法: $XLEN")
+  ysyx_26030103_XLENRequire(XLEN, "PMU")
   private val counterCount = ysyx_26030103_PMUEventID.CounterCount
   private val eventBusWidth = ysyx_26030103_PMUEventID.BusWidth
-  private val counterBase = 0xb03
-  private val counterHighBase = 0xb83
-  private val eventBase = 0x323
-  private val countOvf = 0xda0
   private val ofBit = XLEN - 1
   private val minhBit = XLEN - 2
   private val sinhBit = XLEN - 3
@@ -49,11 +45,12 @@ class ysyx_26030103_PMU(
   val readData = WireDefault(0.U(XLEN.W))
   val overflowBits = WireDefault(VecInit(Seq.fill(counterCount)(false.B)))
   for (index <- 0 until counterCount) {
-    val lowAddress = (counterBase + index).U(12.W)
-    val highAddress = (counterHighBase + index).U(12.W)
-    val userLowAddress = (0xc03 + index).U(12.W)
-    val userHighAddress = (0xc83 + index).U(12.W)
-    val eventAddress = (eventBase + index).U(12.W)
+    val lowAddress = (ysyx_26030103_PMUCSR.CounterBase + index).U(12.W)
+    val highAddress = (ysyx_26030103_PMUCSR.CounterHighBase + index).U(12.W)
+    val userLowAddress = (ysyx_26030103_PMUCSR.UserCounterBase + index).U(12.W)
+    val userHighAddress =
+      (ysyx_26030103_PMUCSR.UserCounterHighBase + index).U(12.W)
+    val eventAddress = (ysyx_26030103_PMUCSR.EventBase + index).U(12.W)
     val eventWrite = io.CSRWriteEnable && io.CSRAddress === eventAddress
     val lowWrite = io.CSRWriteEnable && io.CSRAddress === lowAddress
     val highWrite =
@@ -120,7 +117,7 @@ class ysyx_26030103_PMU(
   val scountovfWide =
     if (XLEN == 32) visibleScountovf
     else Cat(0.U((XLEN - 32).W), visibleScountovf)
-  when(io.CSRAddress === countOvf.U(12.W)) {
+  when(io.CSRAddress === ysyx_26030103_PMUCSR.CountOvf.U(12.W)) {
     readData := scountovfWide
   }
   io.readData := readData

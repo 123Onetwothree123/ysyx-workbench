@@ -21,8 +21,6 @@ abstract class ysyx_26030103_FudianFPUBase(
   protected val dExpWidth = 11
   protected val dPrecision = 53
 
-  private val canonicalNaN32 = "h7fc00000".U(32.W)
-  private val allOnes32 = "hffffffff".U(32.W)
   protected val useFMA = Config.FPUProfile.FMA
 
   protected def flipSign(value: UInt, width: Int): UInt =
@@ -30,15 +28,11 @@ abstract class ysyx_26030103_FudianFPUBase(
 
   // F 格式输入的 NaN-boxing 检查：未 box 的输入按规范视为规范 NaN。
   private def unboxS(value: UInt): UInt =
-    if (FLEN == 32) {
-      value
-    } else {
-      Mux(value(63, 32) === allOnes32, value(31, 0), canonicalNaN32)
-    }
+    ysyx_26030103_FPUFormat.unboxS(value, FLEN)
 
   // F 格式结果写回时统一 NaN-box。
   protected def boxS(value: UInt): UInt =
-    if (FLEN == 32) value else Cat(allOnes32, value)
+    ysyx_26030103_FPUFormat.boxS(value, FLEN)
 
   // 把任意宽度结果截断/扩展成响应位宽。
   protected def asResponse(value: UInt): UInt =
