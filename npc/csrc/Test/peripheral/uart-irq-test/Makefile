@@ -60,9 +60,7 @@ $(TEST_BIN): main.cpp $(HARNESS) $(RTL_STAMP)
 	  --top-module riscv32e_npc_SimTop \
 	  --Mdir $(BUILD_DIR)/obj-uart-irq \
 	  -CFLAGS '$(CXXFLAGS)' -o $(abspath $@) \
-	  $(NPC_DIR)/rtl/riscv32e_npc_SimTop.sv \
-	  $(RTL_DIR)/ysyx_26030103_npc.sv \
-	  $(RTL_DIR)/riscv32e_npc_AXIRAM.sv \
+	  $(RTL_DIR)/riscv32e_npc_SimTop.sv \
 	  $(RTL_DIR)/layers-*.sv $<
 
 .PHONY: all test clean

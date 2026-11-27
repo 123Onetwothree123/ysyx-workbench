@@ -37,14 +37,15 @@ SIM_TOP ?= npc
 BIN_NPC = $(BUILD_DIR)/$(TOPNAME)_npc
 NPC_OBJ_DIR = $(BUILD_DIR)/obj_dir_$(TOPNAME)_npc
 NPC_VERILATOR_MK = Vriscv32e_npc_SimTop.mk
-NPC_VSRCS = rtl/riscv32e_npc_SimTop.sv \
-             $(shell find $(BUILD_DIR) -maxdepth 1 \( -name "riscv32e_npc_AXIRAM.sv" -o -name "layers-riscv32e_npc_AXIRAM*.sv" -o -name "ysyx_26030103_npc.sv" -o -name "layers-ysyx_26030103_npc*.sv" -o -name "mem_*.sv" \) 2>/dev/null | sort) \
+# Chisel生成的SimTop文件已包含CPU/AXIRAM的完整层次；再单独加入
+# ysyx_26030103_npc.sv或riscv32e_npc_AXIRAM.sv会让Verilator看到重复模块
+NPC_VSRCS = $(BUILD_DIR)/riscv32e_npc_SimTop.sv \
              $(shell find $(BUILD_DIR)/verification -type f -name "*.sv" 2>/dev/null | sort)
 NPC_VINCDIRS = $(BUILD_DIR) \
                 $(shell find $(BUILD_DIR)/verification -type d 2>/dev/null | sort)
 
 CSRC_DIR=./csrc
-CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -path "$(CSRC_DIR)/tools/dcachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
+CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_DIR)/gsim" -prune -o -path "$(CSRC_DIR)/tools/cachesim" -prune -o -path "$(CSRC_DIR)/tools/branchsim" -prune -o -path "$(CSRC_DIR)/tools/dcachesim" -prune -o -name "*.cpp" -print 2>/dev/null)
 # C++ 侧配置入口是生成的模块，不是头文件。模块只从 .config 派生，
 # 不构成第二配置源；verilator-build.mk 会把它放在模块依赖链最前面。
 NPC_CONFIG_JSON   := $(abspath include/generated/npc_config.json)
@@ -83,14 +84,8 @@ NPC_CONFIG_STAMP  := $(abspath $(BUILD_DIR)/generated/npc_config.stamp)
 # 命令行覆盖；不再提供 SOC_XLEN/CHIPLINK 等裸 Make 变量兼容入口。
 NPC_CONFIG_OVERRIDE_ARGS = $(foreach item,$(filter CONFIG_%,$(MAKEOVERRIDES)),--set '$(item)')
 
-# direct-NPC 顶层 rtl/riscv32e_npc_SimTop.sv 与 riscv32e_npc_AXIRAM
-# 的 AXI 固定为 32 位地址/数据。无论 .config 是 SOC_XLEN=64 还是
-# SOC_XLEN_FOLLOW_CPU=y，构建 direct-NPC 目标时都把生效 SoC 接口
-# 强制投影为 32；完整 SoC 用 Kconfig 的 SOC_XLEN 重新生成 ysyxSoCFull.v。
-NPC_DIRECT_SOC_XLEN := 32
-NPC_DIRECT_SOC_XLEN_OVERRIDE := \
-	--set 'CONFIG_SOC_XLEN_FOLLOW_CPU=n' \
-	--set 'CONFIG_SOC_XLEN=$(NPC_DIRECT_SOC_XLEN)'
+# direct-NPC的SimTop允许32/64位SoC AXI，AXIRAM使用同一宽度直接连接；
+# 完整SoC仍按Kconfig的SOC_XLEN生成
 
 VERILATOR=verilator
 remove_quote = $(patsubst "%",%,$(1))
@@ -169,30 +164,22 @@ npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED
 
 .PHONY: npc-config npc-config-json npc-config-tool
 
-# direct-NPC 的 32 位 AXI 契约。任何生成/复用配置的路径都必须先通过
-# 这个检查；若覆盖逻辑被删掉或 typed JSON 被手工改成 64，就在启动
-# Verilator 之前给出明确错误，而不是靠 WIDTHEXPAND 提示或静默截断。
+# direct-NPC的SoC AXI只允许32/64，CPU master与AXIRAM同宽直连
+# 配置若被手工改成其他宽度，在启动Verilator前报错
 .PHONY: npc-direct-soc-xlen-check
 npc-direct-soc-xlen-check: $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_GEN_BIN)
 	@set -eu; \
 	soc_xlen="$$($(NPC_CONFIG_GEN_BIN) --config-json '$(NPC_CONFIG_EFFECTIVE_JSON)' --get SOC_XLEN_EFFECTIVE)"; \
-	if [ "$$soc_xlen" != "$(NPC_DIRECT_SOC_XLEN)" ]; then \
-		echo "错误：direct-NPC 顶层 riscv32e_npc_SimTop/AXIRAM 固定 32 位 AXI，" >&2; \
-		echo "      但当前 EffectiveSocXLEN=$$soc_xlen。" >&2; \
-		echo "      direct-NPC 不支持 64 位 SoC 接口；请使用 SOC_XLEN=32，" >&2; \
-		echo "      或改用 SIM_TOP=soc 构建完整 SoC。" >&2; \
-		exit 2; \
-	fi
+	case "$$soc_xlen" in \
+		32|64) ;; \
+		*) \
+			echo "错误：direct-NPC只支持32/64位SoC AXI，当前EffectiveSocXLEN=$$soc_xlen。" >&2; \
+			exit 2 ;; \
+	esac
 
-# direct-NPC 相关目标继承强制覆盖；命令行的 CONFIG_SOC_XLEN=64 也会被
-# 后追加的 --set 覆盖，避免用户配置与固定 32 位顶层产生宽度不一致。
-$(BIN_NPC): NPC_CONFIG_OVERRIDE_ARGS += $(NPC_DIRECT_SOC_XLEN_OVERRIDE)
-npc-direct-soc-xlen-check: NPC_CONFIG_OVERRIDE_ARGS += $(NPC_DIRECT_SOC_XLEN_OVERRIDE)
-
-# synth/yosys-sta 在 SIM_TOP!=soc 时综合的正是 direct-NPC RTL，同样强制
-# 32 位并复用上面的检查。SIM_TOP=soc 的完整 SoC 保持 Kconfig 的 SOC_XLEN。
+# synth/yosys-sta在SIM_TOP!=soc时综合direct-NPC CPU RTL，沿用同一检查。
+# SIM_TOP=soc的完整SoC保持Kconfig的SOC_XLEN。
 ifneq ($(SIM_TOP),soc)
-synth yosys-sta: NPC_CONFIG_OVERRIDE_ARGS += $(NPC_DIRECT_SOC_XLEN_OVERRIDE)
 synth yosys-sta: npc-direct-soc-xlen-check
 endif
 
@@ -740,6 +727,60 @@ STDLIB_FLAG = $(call remove_quote,$(CONFIG_STDLIB_FLAG))
 endif
 endif
 
+# GSIM生成的C++使用_BitInt，GCC尚不支持该C++扩展，因此harness
+# 默认用clang++编译，不跟随Kconfig的CONFIG_CC
+GSIM_COMMAND ?= gsim
+ifneq ($(CONFIG_GSIM_COMMAND),)
+GSIM_COMMAND = $(call unquote_config,$(CONFIG_GSIM_COMMAND))
+endif
+GSIM_EXTRA_ARGS ?=
+ifneq ($(CONFIG_GSIM_EXTRA_ARGS),)
+GSIM_EXTRA_ARGS = $(call unquote_config,$(CONFIG_GSIM_EXTRA_ARGS))
+endif
+GSIM_CXX ?= clang++
+GSIM_CXX_STD ?= c++20
+GSIM_OPT_FLAG ?= -O2
+GSIM_DIR := $(abspath $(BUILD_DIR)/gsim)
+GSIM_CHIRRTL := $(abspath $(BUILD_DIR)/riscv32e_npc_SimTop.fir)
+GSIM_MODEL := $(GSIM_DIR)/riscv32e_npc_SimTop0.cpp
+GSIM_BIN := $(abspath $(BUILD_DIR)/ysyx_26030103_gsim)
+GSIM_HARNESS := $(abspath $(CSRC_DIR)/gsim/main.cpp)
+GSIM_SCALA_SOURCES := $(shell find src -type f -name "*.scala" 2>/dev/null | sort)
+
+# GSIM与Verilator共用direct-NPC SimTop，沿用同一32/64位SoC AXI检查
+gsim gsim-run: $(SIM_GUARD) npc-direct-soc-xlen-check
+
+$(GSIM_CHIRRTL): $(GSIM_SCALA_SOURCES) $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON)
+	@mkdir -p $(BUILD_DIR)
+	env NPC_CONFIG_JSON='$(NPC_CONFIG_TYPED_JSON)' \
+		mill -i runMain ysyx_26030103_Elaborate --target-dir $(BUILD_DIR) --emit-chirrtl
+
+$(GSIM_MODEL): $(GSIM_CHIRRTL)
+	@rm -rf $(GSIM_DIR)
+	@mkdir -p $(GSIM_DIR)
+	$(GSIM_COMMAND) --dir $(GSIM_DIR) $(GSIM_EXTRA_ARGS) $(GSIM_CHIRRTL)
+
+$(GSIM_BIN): $(GSIM_MODEL) $(GSIM_HARNESS)
+	@mkdir -p $(BUILD_DIR)
+	$(GSIM_CXX) -std=$(GSIM_CXX_STD) $(GSIM_OPT_FLAG) -I$(GSIM_DIR) \
+		$(GSIM_HARNESS) $(GSIM_DIR)/*.cpp -o $(GSIM_BIN)
+
+.PHONY: gsim gsim-run
+gsim: $(GSIM_BIN)
+	@if [ -n "$(strip $(file))" ]; then \
+		$(GSIM_BIN) $(file); \
+	else \
+		echo "GSIM 仿真器已生成: $(GSIM_BIN)"; \
+		echo "运行: make gsim file=<image.bin>"; \
+	fi
+
+gsim-run: $(GSIM_BIN)
+	@test -n "$(strip $(file))" || { \
+		echo "错误：请用 file=<image.bin> 指定镜像。" >&2; \
+		exit 2; \
+	}
+	$(GSIM_BIN) $(file)
+
 ifeq ($(CONFIG_LIB_HARDENING),y)
 ifeq ($(CONFIG_STDLIB_LIBCXX),y)
 HARDENING_CFLAGS = -D_LIBCPP_HARDENING_MODE=$(call remove_quote,$(CONFIG_LIB_HARDENING_MODE))
@@ -1069,15 +1110,26 @@ $(BIN): $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERIL
 		default
 $(BIN_NPC): $(SIM_GUARD) $(NVBOARD_DIRECT_GUARD) npc-direct-soc-xlen-check $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
 	@set -eu; \
+	soc_xlen="$$($(NPC_CONFIG_GEN_BIN) --config-json '$(NPC_CONFIG_EFFECTIVE_JSON)' --get SOC_XLEN_EFFECTIVE)"; \
+	addr_msb=$$((soc_xlen - 1)); \
+	strb_msb=$$((soc_xlen / 8 - 1)); \
 	npc_rtl="$(BUILD_DIR)/ysyx_26030103_npc.sv"; \
-	if ! grep -Eq 'output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[31:0\][[:space:]]+io_master_awaddr' "$$npc_rtl" || \
-	   ! grep -Eq 'output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[31:0\][[:space:]]+io_master_araddr' "$$npc_rtl" || \
-	   ! grep -Eq 'output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[31:0\][[:space:]]+io_master_wdata' "$$npc_rtl" || \
-	   ! grep -Eq 'input[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[31:0\][[:space:]]+io_master_rdata' "$$npc_rtl" || \
-	   ! grep -Eq 'output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\[3:0\][[:space:]]+io_master_wstrb' "$$npc_rtl"; then \
-		echo "错误：$$npc_rtl 的 master AXI 不是 32 位地址/数据/4 位 WSTRB。" >&2; \
-		echo "      direct-NPC 的 riscv32e_npc_SimTop/AXIRAM 固定 32 位，" >&2; \
-		echo "      请重新运行 make build/ysyx_26030103_npc，不要复用 64 位 SoC 的 RTL。" >&2; \
+	ram_rtl="$(BUILD_DIR)/riscv32e_npc_AXIRAM.sv"; \
+	if ! grep -Eq "output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$addr_msb:0\\][[:space:]]+io_master_awaddr" "$$npc_rtl" || \
+	   ! grep -Eq "output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$addr_msb:0\\][[:space:]]+io_master_araddr" "$$npc_rtl" || \
+	   ! grep -Eq "output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$addr_msb:0\\][[:space:]]+io_master_wdata" "$$npc_rtl" || \
+	   ! grep -Eq "input[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$addr_msb:0\\][[:space:]]+io_master_rdata" "$$npc_rtl" || \
+	   ! grep -Eq "output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$strb_msb:0\\][[:space:]]+io_master_wstrb" "$$npc_rtl"; then \
+		echo "错误：$$npc_rtl 的 master AXI 宽度与 EffectiveSocXLEN=$$soc_xlen 不一致。" >&2; \
+		echo "      请重新运行 make build/ysyx_26030103_npc，不要复用其他配置的 RTL。" >&2; \
+		exit 2; \
+	fi; \
+	if ! grep -Eq "input[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$addr_msb:0\\][[:space:]]+io_AXI_AW_AWADDR" "$$ram_rtl" || \
+	   ! grep -Eq "input[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$addr_msb:0\\][[:space:]]+io_AXI_W_WDATA" "$$ram_rtl" || \
+	   ! grep -Eq "input[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$strb_msb:0\\][[:space:]]+io_AXI_W_WSTRB" "$$ram_rtl" || \
+	   ! grep -Eq "output[[:space:]]+(logic[[:space:]]+|wire[[:space:]]+)?\\[$$addr_msb:0\\][[:space:]]+io_AXI_R_RDATA" "$$ram_rtl"; then \
+		echo "错误：$$ram_rtl 的 AXIRAM 下游 AXI 宽度与 EffectiveSocXLEN=$$soc_xlen 不一致。" >&2; \
+		echo "      AWADDR/WDATA/RDATA 应为 $$soc_xlen 位，WSTRB 应为 $$((soc_xlen / 8)) 位。" >&2; \
 		exit 2; \
 	fi
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(SAVABLE_VERILATOR_FLAG) $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
@@ -1116,7 +1168,10 @@ else
 NPC_BATCH_FLAG =
 endif
 
-ifeq ($(CONFIG_PGO_AUTO),y)
+ifeq ($(CONFIG_SIM_BACKEND_GSIM),y)
+# GSIM后端直接复用gsim-run；不再进入Verilator的BIN/BIN_NPC依赖链
+run: $(SIM_GUARD) gsim-run
+else ifeq ($(CONFIG_PGO_AUTO),y)
 # PGO_AUTO（自动一步到位）：make run 等价于 make pgo file=镜像
 # 内部完成 插桩编译→收集profile→优化编译→运行最终程序
 ifeq ($(SIM_TOP),soc)

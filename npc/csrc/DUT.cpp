@@ -182,7 +182,9 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
     constexpr std::size_t RamBytes{npc::MSize};
     // 只清零镜像加 64KiB 边距，避免初始化整个 RAM。
     constexpr std::size_t ZeroMarginBytes{64U * 1024U};
-    constexpr std::size_t WordBytes{sizeof(std::uint32_t)};
+    // direct-NPC的host写口宽度跟随SoC字宽；最后一个不完整word补零后
+    // 仍要写入，避免镜像尾部残留在旧内容上
+    constexpr std::size_t WordBytes{sizeof(npc::SocXWord)};
     if (!ysyx_26030103::ImageFitsWindow(image.size(), 0, RamBytes))
     {
         throw std::length_error{
@@ -194,16 +196,17 @@ void DUT::InitializeMemory(std::span<const std::uint8_t> image)
     dut->ram_init_valid = 1;
     const std::size_t initBytes{
         std::min(RamBytes, image.size() + ZeroMarginBytes)};
-    for (std::size_t wordIndex{0}; wordIndex < initBytes / WordBytes; ++wordIndex)
+    const std::size_t wordCount{(initBytes + WordBytes - 1U) / WordBytes};
+    for (std::size_t wordIndex{0}; wordIndex < wordCount; ++wordIndex)
     {
-        std::uint32_t word{0};
+        npc::SocXWord word{0};
         const auto byteBase{wordIndex * WordBytes};
         for (std::size_t byteIndex{0}; byteIndex < WordBytes; ++byteIndex)
         {
             const auto imageIndex{byteBase + byteIndex};
             if (imageIndex < image.size())
             {
-                word |= static_cast<std::uint32_t>(image[imageIndex]) << (byteIndex * 8U);
+                word |= static_cast<npc::SocXWord>(image[imageIndex]) << (byteIndex * 8U);
             }
         }
         dut->ram_init_index = static_cast<std::uint32_t>(wordIndex);

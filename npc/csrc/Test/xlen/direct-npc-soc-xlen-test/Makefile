@@ -1,9 +1,8 @@
 # direct-NPC SoC 位宽契约回归。
 #
-# riscv32e_npc_SimTop/AXIRAM 固定 32 位 AXI；构建 direct-NPC 时必须把
-# Kconfig 的 SOC_XLEN/FOLLOW_CPU 投影为 EffectiveSocXLEN=32。本测试
-# 故意从命令行传入 64 位配置，验证 Makefile 的 target-specific 覆盖和
-# npc-direct-soc-xlen-check 仍然生效，不需要启动 Verilator。
+# riscv32e_npc_SimTop 与 riscv32e_npc_AXIRAM 使用同一 EffectiveSocXLEN，
+# 32/64 位都直接同宽连接。本测试验证 Makefile 的 npc-direct-soc-xlen-check
+# 接受 32/64，不再把 direct-NPC 强制投影为 32。
 SHELL := /bin/bash
 NPC_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../../..)
 NPC_CONFIG_GEN := $(NPC_DIR)/tools/build/npc_config_gen
@@ -17,10 +16,12 @@ test:
 		exit 2; \
 	}
 	$(MAKE) -C '$(NPC_DIR)' npc-direct-soc-xlen-check \
+		CONFIG_SOC_XLEN_FOLLOW_CPU=n CONFIG_SOC_XLEN=32
+	$(MAKE) -C '$(NPC_DIR)' npc-direct-soc-xlen-check \
 		CONFIG_SOC_XLEN_FOLLOW_CPU=n CONFIG_SOC_XLEN=64
 	$(MAKE) -C '$(NPC_DIR)' npc-direct-soc-xlen-check \
 		CONFIG_XLEN=64 CONFIG_SOC_XLEN_FOLLOW_CPU=y
-	@echo "[PASS] direct-NPC EffectiveSocXLEN 被强制为 32"
+	@echo "[PASS] direct-NPC 接受 EffectiveSocXLEN=32/64"
 
 # 内部 fabric 宽度：FOLLOW=y 时必须等于 XLEN；FOLLOW=n 时必须使用显式值。
 test-internal:

@@ -203,9 +203,9 @@ case class ysyx_26030103_NPCConfig(
       s"收到 INTERNAL_BUS_WIDTH=$InternalBusWidth")
   /** ysyxSoC CPU 侧接口实际生效的 XLEN/地址/数据宽度。
     *
-    * direct-NPC 顶层（riscv32e_npc_SimTop/AXIRAM）固定 32 位 AXI，Makefile 的
-    * direct 目标会强制 SOC_XLEN_FOLLOW_CPU=n、SOC_XLEN=32 并在构建前检查；
-    * 完整 SoC（SIM_TOP=SOC）不受该投影影响。
+    * direct-NPC的riscv32e_npc_SimTop与riscv32e_npc_AXIRAM都使用该
+    * 宽度直接同宽连接；完整SoC（SIM_TOP=SOC）也直接使用同一
+    * EffectiveSocXLEN
     */
   final val EffectiveSocXLEN: Int = if (SOCXLENFollowCPU) XLEN else SocXLEN
   final val EffectiveApbXLEN: Int =

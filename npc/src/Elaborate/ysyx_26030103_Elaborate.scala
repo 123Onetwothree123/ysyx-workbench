@@ -5,5 +5,9 @@ object ysyx_26030103_Elaborate extends App {
   private val config = ysyx_26030103_JsonConfig.load(configJsonPath)
   private val settings = ysyx_26030103_ElaborateConfig.build(config)
   ysyx_26030103_ElaborateReport.print(settings.config, config.source)
-  ysyx_26030103_ElaborateEmitter.emit(settings, targetDir)
+  if (args.contains("--emit-chirrtl")) {
+    ysyx_26030103_ElaborateEmitter.emitCHIRRTL(settings, targetDir)
+  } else {
+    ysyx_26030103_ElaborateEmitter.emit(settings, targetDir)
+  }
 }

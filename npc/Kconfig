@@ -26,7 +26,10 @@ endmenu
 menu "构建与仿真"
   source "kconfig/Kconfig.cpp"      # 编译器与构建选项
   if !NPC_MODE_FPGA_ONLY
-    source "kconfig/Kconfig.verilator"
+    source "kconfig/Kconfig.sim"
+    if SIM_BACKEND_VERILATOR
+      source "kconfig/Kconfig.verilator"
+    endif
   endif
   if NPC_MODE_FPGA_ONLY
     comment "FPGA 模式：Verilator 仿真选项已关闭"
