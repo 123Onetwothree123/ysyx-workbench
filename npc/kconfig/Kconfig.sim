@@ -7,6 +7,7 @@ menu "仿真后端"
       Verilator：完整的 ysyxSoC/direct-NPC 仿真流程。
       GSIM：OpenXiangShan 的 chirrtl 仿真器，直接消费 direct-NPC
       SimTop 的 CHIRRTL，由 make gsim 生成并编译 C++ harness。
+      GSIM 生成的仿真模型运行时固定单线程，--threads 只并行建模阶段。
     config SIM_BACKEND_VERILATOR
       bool "Verilator"
     config SIM_BACKEND_GSIM
@@ -19,12 +20,31 @@ menu "仿真后端"
     default "gsim" if SIM_BACKEND_GSIM
     default "verilator"
 
+  config BUILD_THREADS
+    int "构建线程数，0 = 使用全部核心"
+    default 0
+    help
+      设置并行构建线程数
+      0表示使用所有可用核心
+      超过系统核心数的值将被限制为系统核心数
+      当前用于Verilator生成模型的并行编译；GSIM生成的C++模型
+      由单次clang++调用编译
+
   if SIM_BACKEND_GSIM
     config GSIM_COMMAND
       string "gsim 可执行文件"
       default "gsim"
       help
         GSIM 编译器路径。默认从 PATH 查找 gsim。
+
+    config GSIM_THREADS
+      int "GSIM 建模线程数，0 = 使用全部核心"
+      default 0
+      help
+        传给gsim --threads，只影响CHIRRTL解析和C++生成阶段
+        0表示使用所有可用核心
+        超过系统核心数的值将被限制为系统核心数
+        GSIM生成的仿真模型运行时固定单线程
 
     config GSIM_EXTRA_ARGS
       string "gsim 额外参数"

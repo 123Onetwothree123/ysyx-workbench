@@ -737,6 +737,13 @@ GSIM_EXTRA_ARGS ?=
 ifneq ($(CONFIG_GSIM_EXTRA_ARGS),)
 GSIM_EXTRA_ARGS = $(call unquote_config,$(CONFIG_GSIM_EXTRA_ARGS))
 endif
+# GSIM的--threads只并行CHIRRTL解析和C++生成，生成的模型运行时仍是单线程
+GSIM_THREADS_REQ := 0
+ifneq ($(CONFIG_GSIM_THREADS),)
+GSIM_THREADS_REQ := $(call remove_quote,$(CONFIG_GSIM_THREADS))
+endif
+GSIM_THREADS := $(shell if [ "$(GSIM_THREADS_REQ)" -eq 0 ] 2>/dev/null || [ "$(GSIM_THREADS_REQ)" -gt "$(NPROC_MAX)" ] 2>/dev/null; then echo $(NPROC_MAX); else echo $(GSIM_THREADS_REQ); fi)
+GSIM_THREADS_FLAG := --threads=$(GSIM_THREADS)
 GSIM_CXX ?= clang++
 GSIM_CXX_STD ?= c++20
 GSIM_OPT_FLAG ?= -O2
@@ -758,7 +765,7 @@ $(GSIM_CHIRRTL): $(GSIM_SCALA_SOURCES) $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_J
 $(GSIM_MODEL): $(GSIM_CHIRRTL)
 	@rm -rf $(GSIM_DIR)
 	@mkdir -p $(GSIM_DIR)
-	$(GSIM_COMMAND) --dir $(GSIM_DIR) $(GSIM_EXTRA_ARGS) $(GSIM_CHIRRTL)
+	$(GSIM_COMMAND) --dir $(GSIM_DIR) $(GSIM_THREADS_FLAG) $(GSIM_EXTRA_ARGS) $(GSIM_CHIRRTL)
 
 $(GSIM_BIN): $(GSIM_MODEL) $(GSIM_HARNESS)
 	@mkdir -p $(BUILD_DIR)
