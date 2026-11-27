@@ -1,6 +1,7 @@
 package ysyx_26030103.mmu
 import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
+import _root_.ysyx_26030103.common.ysyx_26030103_RISCVFields
 
 import chisel3._
 import chisel3.util._
@@ -152,6 +153,25 @@ class ysyx_26030103_TLB(
     val u = if (hasU) Some(Bool()) else None
     val a = Bool(); val d = Bool()
   }
+  class SelectedFlags extends Bundle {
+    val r = Bool()
+    val w = Bool()
+    val x = Bool()
+    val u = Bool()
+    val a = Bool()
+    val d = Bool()
+    val ppn = UInt(PPNBits.W)
+  }
+  class PteFlags extends Bundle {
+    val r = Bool()
+    val w = Bool()
+    val x = Bool()
+    val u = Bool()
+    val g = Bool()
+    val a = Bool()
+    val d = Bool()
+    val ppn = UInt(PTEPPNBits.W)
+  }
   private val shiftBits = log2Ceil(XLEN.max(32))
   private val maxShift = pageBits + (levels - 1) * indexBits
   // 填充层级对应的地址 shift；level 超出配置范围时返回最大 shift。
@@ -246,6 +266,18 @@ class ysyx_26030103_TLB(
     if (entryBits == 0) 0.U else (set * ways.U + way)(entryBits - 1, 0)
   private def ptePPNOf(PTE: UInt): UInt =
     PTE(PTEPPNLow + PTEPPNBits - 1, PTEPPNLow)
+  private def UnpackPte(pte: UInt): PteFlags = {
+    val flags = Wire(new PteFlags)
+    flags.r := pte(1)
+    flags.w := pte(2)
+    flags.x := pte(3)
+    flags.u := pte(4)
+    flags.g := pte(5)
+    flags.a := pte(6)
+    flags.d := pte(7)
+    flags.ppn := ptePPNOf(pte)
+    flags
+  }
 
   // 每个查找端口独立做 tag/ASID/权限检查。refill 在本拍末尾写入寄存器，
   // 因而不影响本拍已经组合出来的旧表项结果。
@@ -290,23 +322,43 @@ class ysyx_26030103_TLB(
       }
       Mux1H(superHits, paddrs)
     } else 0.U(addressWidth.W)
-    val selectedR = Mux(superHit, superSelected.r,
-      if (sramStorage) SelectedPTE(1) else selected.r)
-    val selectedW = Mux(superHit, superSelected.w,
-      if (sramStorage) SelectedPTE(2) else selected.w)
-    val selectedX = Mux(superHit, superSelected.x,
-      if (sramStorage) SelectedPTE(3) else selected.x)
-    val selectedU =
-      if (hasU)
-        Mux(superHit, superSelected.u.get,
-          if (sramStorage) SelectedPTE(4) else selected.u.get)
-      else false.B
-    val selectedA = Mux(superHit, superSelected.a,
-      if (sramStorage) SelectedPTE(6) else selected.a)
-    val selectedD = Mux(superHit, superSelected.d,
-      if (sramStorage) SelectedPTE(7) else selected.d)
-    val SelectedPPN = Mux(superHit, 0.U(PPNBits.W),
-      if (sramStorage) ptePPNOf(SelectedPTE)(PPNBits - 1, 0) else selected.PPN)
+    val normalSelected = Wire(new SelectedFlags)
+    if (sramStorage) {
+      val sramFlags = UnpackPte(SelectedPTE)
+      normalSelected.r := sramFlags.r
+      normalSelected.w := sramFlags.w
+      normalSelected.x := sramFlags.x
+      normalSelected.u := (if (hasU) sramFlags.u else false.B)
+      normalSelected.a := sramFlags.a
+      normalSelected.d := sramFlags.d
+      normalSelected.ppn := sramFlags.ppn(PPNBits - 1, 0)
+    } else {
+      normalSelected.r := selected.r
+      normalSelected.w := selected.w
+      normalSelected.x := selected.x
+      normalSelected.u := (if (hasU) selected.u.get else false.B)
+      normalSelected.a := selected.a
+      normalSelected.d := selected.d
+      normalSelected.ppn := selected.PPN
+    }
+    val selectedFlags = Wire(new SelectedFlags)
+    selectedFlags := normalSelected
+    when(superHit) {
+      selectedFlags.r := superSelected.r
+      selectedFlags.w := superSelected.w
+      selectedFlags.x := superSelected.x
+      selectedFlags.u := (if (hasU) superSelected.u.get else false.B)
+      selectedFlags.a := superSelected.a
+      selectedFlags.d := superSelected.d
+      selectedFlags.ppn := 0.U(PPNBits.W)
+    }
+    val selectedR = selectedFlags.r
+    val selectedW = selectedFlags.w
+    val selectedX = selectedFlags.x
+    val selectedU = selectedFlags.u
+    val selectedA = selectedFlags.a
+    val selectedD = selectedFlags.d
+    val SelectedPPN = selectedFlags.ppn
 
     val isFetch = lookup.access === ysyx_26030103_AccessType.Fetch
     val isStore = lookup.access === ysyx_26030103_AccessType.Store
@@ -334,7 +386,7 @@ class ysyx_26030103_TLB(
     // R=0 且 W=1 是保留编码；TLB 中已有的表项也不能绕过该检查。
     val ReservedPTE = !selectedR && selectedW
     val permissionOk = !ReservedPTE && userOk && sumOk && accessOk && adOk
-    val faultCause = Mux(isFetch, 12.U, Mux(isStore, 15.U, 13.U))
+    val faultCause = ysyx_26030103_RISCVFields.PageFaultCause(isFetch, isStore)
 
     when(lookupHit) {
       plruUpdate(lookupSet, hitWay)
@@ -387,6 +439,7 @@ class ysyx_26030103_TLB(
   }
   def doFill(valid: Bool, fillVirtualAddressVal: UInt, FillASIDVal: UInt,
       FillPTEVal: UInt, fillLevelVal: UInt, fillNapotVal: Bool): Unit = {
+    val pteFlags = UnpackPte(FillPTEVal)
     if (superEntryCount > 0) {
       // fillLevel 0 是基础页；1..levels-1 是超级页层级；NATOP 单独标记。
       when(!io.flush && valid &&
@@ -407,19 +460,19 @@ class ysyx_26030103_TLB(
         entry.napot := fillNapotVal
         entry.vaddr := fillVirtualAddressVal
         entry.ASID := FillASIDVal
-        entry.global := (if (globalEnable) FillPTEVal(5) else false.B)
+        entry.global := (if (globalEnable) pteFlags.g else false.B)
         // 与 PTW 的 paddrOf 保持一致：PPN 以基础页为单位，左移 pageBits
         // 得到超级页物理基址，低 shift 位由访问地址提供。只保留能装入
         // 物理地址宽度的低 PPNBits 位；PTW 已拒绝高位非零的 PTE。
         val low4Mask = ((BigInt(1) << 4) - 1).U(PPNBits.W)
         val ppnBase = Mux(fillNapotVal,
-          ptePPNOf(FillPTEVal) & ~low4Mask, ptePPNOf(FillPTEVal))
+          pteFlags.ppn & ~low4Mask, pteFlags.ppn)
         entry.paddrBase := (ppnBase(PPNBits - 1, 0) << pageBits)
           .pad(addressWidth)
-        entry.r := FillPTEVal(1); entry.w := FillPTEVal(2); entry.x := FillPTEVal(3)
+        entry.r := pteFlags.r; entry.w := pteFlags.w; entry.x := pteFlags.x
         // HAS_U=n 时不保存 U 位，避免保留无用的 U 状态。
-        entry.u.foreach { u => u := FillPTEVal(4) }
-        entry.a := FillPTEVal(6); entry.d := FillPTEVal(7)
+        entry.u.foreach { u => u := pteFlags.u }
+        entry.a := pteFlags.a; entry.d := pteFlags.d
         superVec.get(victim) := entry
         superRoundRobin.get := Mux(
           superRoundRobin.get === (superEntryCount - 1).U,
@@ -448,15 +501,15 @@ class ysyx_26030103_TLB(
       fillEntry.valid := true.B
       fillEntry.tag := tagOf(FillVPN)
       fillEntry.ASID := FillASIDVal
-      fillEntry.global := (if (globalEnable) FillPTEVal(5) else false.B)
-      fillEntry.PPN := ptePPNOf(FillPTEVal)(PPNBits - 1, 0)
-      fillEntry.r := FillPTEVal(1)
-      fillEntry.w := FillPTEVal(2)
-      fillEntry.x := FillPTEVal(3)
+      fillEntry.global := (if (globalEnable) pteFlags.g else false.B)
+      fillEntry.PPN := pteFlags.ppn(PPNBits - 1, 0)
+      fillEntry.r := pteFlags.r
+      fillEntry.w := pteFlags.w
+      fillEntry.x := pteFlags.x
       // HAS_U=n 时不保存 U 位。
-      fillEntry.u.foreach { u => u := FillPTEVal(4) }
-      fillEntry.a := FillPTEVal(6)
-      fillEntry.d := FillPTEVal(7)
+      fillEntry.u.foreach { u => u := pteFlags.u }
+      fillEntry.a := pteFlags.a
+      fillEntry.d := pteFlags.d
       entriesVec(index) := fillEntry
       plruUpdate(fillSet, victimWay)
       lruUpdate(fillSet, victimWay)

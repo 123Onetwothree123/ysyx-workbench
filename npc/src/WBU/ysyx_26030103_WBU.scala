@@ -32,14 +32,12 @@ class ysyx_26030103_WBU(val XLEN: Int = 32) extends Module {
   // 指令 Retire=0，都不改变架构状态。仅产生 fflags 的路径由 EXU 提交
   // 时另行置 Dirty。
   io.FPCommit := fpWriteFire
-  // WBSelect 为 2 位，四个取值互斥且穷尽；用 Mux1H 表达，
-  // 不需要先给 wdata 赋一个随后必被覆盖的默认值。
-  io.wdata := Mux1H(
-    Seq(
-      (io.in.bits.WBSelect === "b00".U) -> io.in.bits.ALUResult,
-      (io.in.bits.WBSelect === "b01".U) -> io.in.bits.LoadData,
-      (io.in.bits.WBSelect === "b10".U) -> io.in.bits.snpc,
-      (io.in.bits.WBSelect === "b11".U) -> io.in.bits.CSRReadData
-    )
+  io.wdata := ysyx_26030103_WritebackSource.Select(
+    io.in.bits.WBSelect,
+    io.in.bits.ALUResult,
+    io.in.bits.LoadData,
+    io.in.bits.snpc,
+    io.in.bits.CSRReadData,
+    0.U(XLEN.W)
   )
 }

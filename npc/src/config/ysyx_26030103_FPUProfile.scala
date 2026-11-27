@@ -30,15 +30,19 @@ object ysyx_26030103_FPUImpl {
   val All: Seq[ysyx_26030103_FPUImpl] =
     Seq(None, HardFloat, Fudian, External)
 
-  def FromString(s: String): ysyx_26030103_FPUImpl = s.trim.toLowerCase match {
-    case "none"      => None
-    case "hardfloat" => HardFloat
-    case "fudian"    => Fudian
-    case "external"  => External
-    case other =>
-      throw new IllegalArgumentException(
-        s"未知 FPU_IMPL=$other；只允许 ${All.map(_.Name).mkString("/")}"
+  def FromString(s: String): ysyx_26030103_FPUImpl = {
+    val table: Seq[(String, ysyx_26030103_FPUImpl)] =
+      Seq(
+        "none" -> None,
+        "hardfloat" -> HardFloat,
+        "fudian" -> Fudian,
+        "external" -> External
       )
+    ysyx_26030103_NameEnum.Select(
+      s.trim.toLowerCase,
+      table,
+      other => s"未知 FPU_IMPL=$other；只允许 ${ysyx_26030103_NameEnum.Names(table)}"
+    )
   }
 }
 

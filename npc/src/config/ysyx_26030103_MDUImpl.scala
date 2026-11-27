@@ -47,19 +47,22 @@ object ysyx_26030103_MDUImpl {
   val All: Seq[ysyx_26030103_MDUImpl] =
     Seq(Standard, Rocket, NutShell, Ibex, Cve2, Cv32e40p, PicoRV32, External)
 
-  def FromString(s: String): ysyx_26030103_MDUImpl =
-    s.trim.toLowerCase match {
-      case "standard" => Standard
-      case "rocket" => Rocket
-      case "nutshell" => NutShell
-      case "ibex" => Ibex
-      case "cve2" => Cve2
-      case "cv32e40p" => Cv32e40p
-      case "picorv32" => PicoRV32
-      case "external" => External
-      case other =>
-        throw new IllegalArgumentException(
-          s"未知 MDU_IMPL=$other；只允许 ${All.map(_.Name).mkString("/")}"
-        )
-    }
+  def FromString(s: String): ysyx_26030103_MDUImpl = {
+    val table: Seq[(String, ysyx_26030103_MDUImpl)] =
+      Seq(
+        "standard" -> Standard,
+        "rocket" -> Rocket,
+        "nutshell" -> NutShell,
+        "ibex" -> Ibex,
+        "cve2" -> Cve2,
+        "cv32e40p" -> Cv32e40p,
+        "picorv32" -> PicoRV32,
+        "external" -> External
+      )
+    ysyx_26030103_NameEnum.Select(
+      s.trim.toLowerCase,
+      table,
+      other => s"未知 MDU_IMPL=$other；只允许 ${ysyx_26030103_NameEnum.Names(table)}"
+    )
+  }
 }

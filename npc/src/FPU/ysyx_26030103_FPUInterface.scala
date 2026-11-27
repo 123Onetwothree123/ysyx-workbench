@@ -40,6 +40,13 @@ object ysyx_26030103_FPUOp {
 
   // S <-> D 精度转换（FCVT.S.D / FCVT.D.S）。
   val FCvtFPToFP = 24.U(Width.W)
+
+  def NegateFmaA(op: UInt): Bool =
+    op === FFnma || op === FFnms
+  def NegateFmaC(op: UInt): Bool =
+    op === FFms || op === FFnma
+  def FmaOp2(op: UInt): UInt =
+    Cat(NegateFmaA(op), NegateFmaC(op))
 }
 
 // 浮点格式编码，对应 RISC-V 指令的 fmt 字段。
@@ -71,6 +78,18 @@ object ysyx_26030103_FPUFlags {
   val OF = 2
   val DZ = 3
   val NV = 4
+
+  def Pack(nv: Bool, dz: Bool, of: Bool, uf: Bool, nx: Bool): UInt =
+    Cat(nv, dz, of, uf, nx)
+
+  def Only(bit: Int): UInt =
+    (BigInt(1) << bit).U(Width.W)
+
+  def Only(bit: Int, value: Bool): UInt =
+    Mux(value, Only(bit), 0.U(Width.W))
+
+  def Or(lhs: UInt, rhs: UInt): UInt =
+    lhs | rhs
 }
 
 object ysyx_26030103_FPUFormat {
@@ -92,6 +111,9 @@ object ysyx_26030103_FPUFormat {
   def sext32ToFLEN(value: UInt, flen: Int): UInt =
     if (flen == 64) Cat(Fill(flen - 32, value(31)), value(31, 0))
     else value(31, 0)
+
+  def FlipSign(value: UInt, width: Int): UInt =
+    value ^ (BigInt(1) << (width - 1)).U(width.W)
 }
 
 // rs1/rs2/rs3 为 FLEN 位 IEEE 754 位模式；NaN-boxing 由上层/后端在边界处理。

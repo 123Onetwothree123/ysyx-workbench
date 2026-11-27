@@ -144,30 +144,7 @@ private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
       // 未开启ChipLink时仲裁器的DMA输入不可悬空。
       arbiter.io.DMAAWLock := false.B
       arbiter.io.DMAARLock := false.B
-      arbiter.io.DMA.AW.AWVALID := false.B
-      arbiter.io.DMA.AW.AWADDR := 0.U
-      arbiter.io.DMA.AW.AWID := 0.U
-      arbiter.io.DMA.AW.AWLEN := 0.U
-      arbiter.io.DMA.AW.AWSIZE := 0.U
-      arbiter.io.DMA.AW.AWBURST := 0.U
-      arbiter.io.DMA.AW.AWPROT := 0.U
-      arbiter.io.DMA.AW.AWCACHE := 0.U
-      arbiter.io.DMA.AW.AWQOS := 0.U
-      arbiter.io.DMA.W.WVALID := false.B
-      arbiter.io.DMA.W.WDATA := 0.U
-      arbiter.io.DMA.W.WSTRB := 0.U
-      arbiter.io.DMA.W.WLAST := false.B
-      arbiter.io.DMA.B.BREADY := false.B
-      arbiter.io.DMA.AR.ARVALID := false.B
-      arbiter.io.DMA.AR.ARADDR := 0.U
-      arbiter.io.DMA.AR.ARID := 0.U
-      arbiter.io.DMA.AR.ARLEN := 0.U
-      arbiter.io.DMA.AR.ARSIZE := 0.U
-      arbiter.io.DMA.AR.ARBURST := 0.U
-      arbiter.io.DMA.AR.ARPROT := 0.U
-      arbiter.io.DMA.AR.ARCACHE := 0.U
-      arbiter.io.DMA.AR.ARQOS := 0.U
-      arbiter.io.DMA.R.RREADY := false.B
+      ysyx_26030103_AXI5Idle.MasterOut(arbiter.io.DMA, BeatSize = 0)
     }
     // CLINT 的 io 是 CLINTIO，比 xbar 的 AXI5IO 多出 TimerIRQ/mtime，
     // 整包 <> 会因为多字段失败，只能按通道连。
@@ -184,10 +161,10 @@ private[ysyx_26030103] trait AXIConnect { this: ysyx_26030103 =>
     // full-SoC 的 UART 只接到 io.interrupt（M/S 外部中断直连），否则软件
     // 按 16550/PLIC 语义配置的 source 10 永远看不到中断。
     // 其余 source 保持未连接。
-    val UARTPLICSource = 10
     val PLICSourceBits = (0 until config.MMU.PLICSources).map { sourceIndex =>
-      if (sourceIndex == 1) CLINT.io.TimerIRQ && config.MMU.HasSTimerIRQ.B
-      else if (sourceIndex == UARTPLICSource) io.UARTIRQ
+      if (sourceIndex == ysyx_26030103_MMUProfile.ClintTimerPLICSource)
+        CLINT.io.TimerIRQ && config.MMU.HasSTimerIRQ.B
+      else if (sourceIndex == ysyx_26030103_MMUProfile.UartPLICSource) io.UARTIRQ
       else false.B
     }
     PLIC.sources := Cat(PLICSourceBits.reverse)

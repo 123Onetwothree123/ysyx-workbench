@@ -229,43 +229,19 @@ private[ysyx_26030103] trait MemoryConnect { this: ysyx_26030103 =>
             arbiter.io.LSU.R <> LSU.io.DataBus.R
           }
           // 写 mux 只承载写通道；未使用的 AR/R 输入显式绑定。
-          writeMux.io.a.AR.ARVALID := false.B
-          writeMux.io.a.AR.ARID := 0.U
-          writeMux.io.a.AR.ARADDR := 0.U
-          writeMux.io.a.AR.ARLEN := 0.U
-          writeMux.io.a.AR.ARSIZE := 2.U
-          writeMux.io.a.AR.ARBURST := 0.U
-          writeMux.io.a.AR.ARPROT := 0.U
-          writeMux.io.a.AR.ARCACHE := 0.U
-          writeMux.io.a.AR.ARQOS := 0.U
-          writeMux.io.a.R.RREADY := false.B
+          ysyx_26030103_AXI5Idle.MasterOut(writeMux.io.a, write = false)
           PTWToAXIOpt.get.io.AXIWrite <> writeMux.io.b
           writeMux.io.out.AW <> arbiter.io.LSU.AW
           writeMux.io.out.W <> arbiter.io.LSU.W
           writeMux.io.out.B <> arbiter.io.LSU.B
-          writeMux.io.out.AR.ARREADY := false.B
-          writeMux.io.out.R.RID := 0.U
-          writeMux.io.out.R.RDATA := 0.U
-          writeMux.io.out.R.RRESP := 0.U
-          writeMux.io.out.R.RLAST := false.B
-          writeMux.io.out.R.RVALID := false.B
+          ysyx_26030103_AXI5Idle.SlaveOut(writeMux.io.out, write = false)
         case None =>
           if (config.MMU.PTWPath != "reuse_dcache") {
             arbiter.io.LSU <> LSU.io.DataBus
           }
           // 没有 A/D 写回时 PTW 写端口保持空闲。
           val PTWWrite = PTWToAXIOpt.get.io.AXIWrite
-          PTWWrite.AW.AWREADY := false.B
-          PTWWrite.W.WREADY := false.B
-          PTWWrite.B.BVALID := false.B
-          PTWWrite.B.BID := 0.U
-          PTWWrite.B.BRESP := 0.U
-          PTWWrite.AR.ARREADY := false.B
-          PTWWrite.R.RVALID := false.B
-          PTWWrite.R.RID := 0.U
-          PTWWrite.R.RDATA := 0.U
-          PTWWrite.R.RRESP := 0.U
-          PTWWrite.R.RLAST := false.B
+          ysyx_26030103_AXI5Idle.SlaveOut(PTWWrite)
       }
     } else {
       arbiter.io.LSU <> LSU.io.DataBus

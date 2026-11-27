@@ -1,6 +1,33 @@
 package ysyx_26030103.infra
 
 import chisel3._
+import chisel3.util._
+import chisel3.experimental.BundleLiterals._
+
+class ysyx_26030103_AXI5BurstShape(AddressWidth: Int, IDWidth: Int) extends Bundle {
+  val ID = UInt(IDWidth.W)
+  val address = UInt(AddressWidth.W)
+  val length = UInt(8.W)
+  val size = UInt(3.W)
+  val burst = UInt(2.W)
+  val prot = UInt(3.W)
+  val cache = UInt(4.W)
+  val qos = UInt(4.W)
+}
+
+object ysyx_26030103_AXI5BurstShape {
+  def Default(AddressWidth: Int, IDWidth: Int): ysyx_26030103_AXI5BurstShape =
+    (new ysyx_26030103_AXI5BurstShape(AddressWidth, IDWidth)).Lit(
+      _.ID -> 0.U(IDWidth.W),
+      _.address -> 0.U(AddressWidth.W),
+      _.length -> 0.U(8.W),
+      _.size -> 2.U(3.W),
+      _.burst -> 0.U(2.W),
+      _.prot -> 0.U(3.W),
+      _.cache -> 0.U(4.W),
+      _.qos -> 0.U(4.W)
+    )
+}
 
 object ysyx_26030103_AXI5Burst {
 
@@ -34,5 +61,33 @@ object ysyx_26030103_AXI5Burst {
         alignedWide + beatWide - 1.U
       )
     )
+  }
+
+  def WithinWindow(
+      address: UInt,
+      length: UInt,
+      size: UInt,
+      burst: UInt,
+      base: BigInt,
+      endExclusive: BigInt
+  ): Bool = {
+    val width = address.getWidth + 1
+    val extendedAddress = address.pad(width)
+    val lastAddress = lastByte(address, length, size, burst)
+    extendedAddress >= base.U(width.W) &&
+    lastAddress < endExclusive.U(width.W)
+  }
+
+  def HighBitsSet(
+      address: UInt,
+      length: UInt,
+      size: UInt,
+      burst: UInt,
+      keepWidth: Int
+  ): Bool = {
+    val extendedAddress = Cat(0.U(1.W), address)
+    val lastAddress = lastByte(address, length, size, burst)
+    extendedAddress(address.getWidth, keepWidth).orR ||
+    lastAddress(address.getWidth, keepWidth).orR
   }
 }

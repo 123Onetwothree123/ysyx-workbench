@@ -10,73 +10,78 @@ private[infra] trait AXI5XbarWrite {
       ID: UInt,
       name: String,
       downstream: ysyx_26030103_AXI5IO,
-      reject: (UInt, UInt) => Bool
+      reject: (UInt, UInt) => Bool,
+      deferredResponse: Boolean = false
   )
 
-  private def ForwardWriteRequest(target: WriteTarget): Unit = {
+  private def ForwardWriteRequest(target: WriteTarget, selected: Bool): Unit = {
     val downstream = target.downstream
     // AW 只发一次；首个W beat取自缓存，之后直接ready/valid流过直到WLAST。
     val SendAW = !DownstreamAWDone
     val UseBufferedW = wValidReg
     val StreamW = !wValidReg && !downstreamWDone
 
-    downstream.AW.AWVALID := SendAW
-    downstream.AW.AWID := AWIDReg
-    downstream.AW.AWADDR := AWAddressReg
-    downstream.AW.AWLEN := AWLengthReg
-    downstream.AW.AWSIZE := AWSizeReg
-    downstream.AW.AWBURST := AWBurstReg
-    downstream.AW.AWPROT := AWProtReg
-    downstream.AW.AWCACHE := AWCacheReg
-    downstream.AW.AWQOS := AWQosReg
+    when(selected) {
+      downstream.AW.AWVALID := SendAW
+      downstream.AW.AWID := AWBurstShape.ID
+      downstream.AW.AWADDR := AWBurstShape.address
+      downstream.AW.AWLEN := AWBurstShape.length
+      downstream.AW.AWSIZE := AWBurstShape.size
+      downstream.AW.AWBURST := AWBurstShape.burst
+      downstream.AW.AWPROT := AWBurstShape.prot
+      downstream.AW.AWCACHE := AWBurstShape.cache
+      downstream.AW.AWQOS := AWBurstShape.qos
 
-    downstream.W.WVALID :=
-      Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
-    downstream.W.WDATA := Mux(UseBufferedW, wDataReg, io.in.W.WDATA)
-    downstream.W.WSTRB := Mux(UseBufferedW, wStrobeReg, io.in.W.WSTRB)
-    downstream.W.WLAST := Mux(UseBufferedW, wLastReg, io.in.W.WLAST)
-    inWReady := StreamW && downstream.W.WREADY
+      downstream.W.WVALID :=
+        Mux(UseBufferedW, true.B, StreamW && io.in.W.WVALID)
+      downstream.W.WDATA := Mux(UseBufferedW, wDataReg, io.in.W.WDATA)
+      downstream.W.WSTRB := Mux(UseBufferedW, wStrobeReg, io.in.W.WSTRB)
+      downstream.W.WLAST := Mux(UseBufferedW, wLastReg, io.in.W.WLAST)
+      inWReady := StreamW && downstream.W.WREADY
 
-    val AWFire = SendAW && downstream.AW.AWREADY
-    val BufferedWFire = UseBufferedW && downstream.W.WREADY
-    val StreamWFire = StreamW && io.in.W.WVALID && downstream.W.WREADY
-    val WFire = BufferedWFire || StreamWFire
-    val WLastFire = WFire && Mux(UseBufferedW, wLastReg, io.in.W.WLAST)
+      val AWFire = SendAW && downstream.AW.AWREADY
+      val BufferedWFire = UseBufferedW && downstream.W.WREADY
+      val StreamWFire = StreamW && io.in.W.WVALID && downstream.W.WREADY
+      val WFire = BufferedWFire || StreamWFire
+      val WLastFire = WFire && Mux(UseBufferedW, wLastReg, io.in.W.WLAST)
 
-    when(AWFire) {
-      DownstreamAWDone := true.B
-    }
-    when(BufferedWFire) {
-      wValidReg := false.B
-    }
-    when(WLastFire) {
-      downstreamWDone := true.B
-    }
+      when(AWFire) {
+        DownstreamAWDone := true.B
+      }
+      when(BufferedWFire) {
+        wValidReg := false.B
+      }
+      when(WLastFire) {
+        downstreamWDone := true.B
+      }
 
-    when((DownstreamAWDone || AWFire) && (downstreamWDone || WLastFire)) {
-      writeState := stateWriteResponse
+      when((DownstreamAWDone || AWFire) && (downstreamWDone || WLastFire)) {
+        writeState := stateWriteResponse
+      }
     }
   }
 
-  private def ForwardWriteResponse(target: WriteTarget): Unit = {
+  private def ForwardWriteResponse(target: WriteTarget, selected: Bool): Unit = {
     val downstream = target.downstream
-    io.in.B.BID := downstream.B.BID
-    io.in.B.BVALID := downstream.B.BVALID
-    io.in.B.BRESP := downstream.B.BRESP
-    // B没有地址，BID必须等于本级发出的AWID，错配说明从设备违规。
-    when(downstream.B.BVALID) {
-      assert(
-        downstream.B.BID === AWIDReg,
-        s"${target.name} returned a write response with an unknown ID"
-      )
-    }
+    when(selected) {
+      io.in.B.BID := downstream.B.BID
+      io.in.B.BVALID := downstream.B.BVALID
+      io.in.B.BRESP := downstream.B.BRESP
+      // B没有地址，BID必须等于本级发出的AWID，错配说明从设备违规
+      when(downstream.B.BVALID) {
+        assert(
+          downstream.B.BID === AWBurstShape.ID,
+          s"${target.name} returned a write response with an unknown ID"
+        )
+      }
 
-    when(downstream.B.BVALID && io.in.B.BREADY) {
-      AWValidReg := false.B
-      wValidReg := false.B
-      DownstreamAWDone := false.B
-      downstreamWDone := false.B
-      writeState := stateWriteIdle
+      when(downstream.B.BVALID && io.in.B.BREADY) {
+        AWValidReg := false.B
+        wValidReg := false.B
+        DownstreamAWDone := false.B
+        downstreamWDone := false.B
+        writeState := stateWriteIdle
+      }
     }
   }
 
@@ -99,9 +104,18 @@ private[infra] trait AXI5XbarWrite {
       TargetPLIC,
       "PLIC",
       io.PLIC,
-      (length, _) => length =/= 0.U
+      (length, _) => length =/= 0.U,
+      deferredResponse = true
     )
     val WriteTargets = Seq(SOCBusWriteTarget, CLINTWriteTarget, PLICWriteTarget)
+
+    val writeRequestSelects = WriteTargets.indices.map { index =>
+      val higherSelected =
+        (0 until index).map(source => writeTargetReg === WriteTargets(source).ID)
+          .foldLeft(false.B)(_ || _)
+      !higherSelected && writeTargetReg === WriteTargets(index).ID
+    }
+    val anyWriteRequestSelected = writeRequestSelects.reduce(_ || _)
 
     val AWDecodedTarget = decode(
       io.in.AW.AWADDR,
@@ -111,12 +125,12 @@ private[infra] trait AXI5XbarWrite {
       isWrite = true
     )
     val WriteTargetAfterAW = Mux(InAWFire, AWDecodedTarget, writeTargetReg)
-    val WriteLengthAfterAW = Mux(InAWFire, io.in.AW.AWLEN, AWLengthReg)
+    val WriteLengthAfterAW = Mux(InAWFire, io.in.AW.AWLEN, AWBurstShape.length)
     val AWCollected = AWValidReg || InAWFire
     val wCollected = wValidReg || inWFire
     val firstWLastAfterW = Mux(inWFire, io.in.W.WLAST, wLastReg)
     // CLINT 已支持 AWLEN=1 的 64 位 mtimecmp 两拍写，这里只剩 PLIC 的单拍限制。
-    val AWBurstAfterAW = Mux(InAWFire, io.in.AW.AWBURST, AWBurstReg)
+    val AWBurstAfterAW = Mux(InAWFire, io.in.AW.AWBURST, AWBurstShape.burst)
     val WriteRequestRejected = WriteTargets
       .map { target =>
         WriteTargetAfterAW === target.ID &&
@@ -126,14 +140,14 @@ private[infra] trait AXI5XbarWrite {
     val writeCannotForward = WriteTargetAfterAW === targetInvalid ||
       WriteRequestRejected
     when(InAWFire) {
-      AWIDReg := io.in.AW.AWID
-      AWAddressReg := io.in.AW.AWADDR
-      AWLengthReg := io.in.AW.AWLEN
-      AWSizeReg := io.in.AW.AWSIZE
-      AWBurstReg := io.in.AW.AWBURST
-      AWProtReg := io.in.AW.AWPROT
-      AWCacheReg := io.in.AW.AWCACHE
-      AWQosReg := io.in.AW.AWQOS
+      AWBurstShape.ID := io.in.AW.AWID
+      AWBurstShape.address := io.in.AW.AWADDR
+      AWBurstShape.length := io.in.AW.AWLEN
+      AWBurstShape.size := io.in.AW.AWSIZE
+      AWBurstShape.burst := io.in.AW.AWBURST
+      AWBurstShape.prot := io.in.AW.AWPROT
+      AWBurstShape.cache := io.in.AW.AWCACHE
+      AWBurstShape.qos := io.in.AW.AWQOS
       writeTargetReg := AWDecodedTarget
       AWValidReg := true.B
     }
@@ -150,12 +164,10 @@ private[infra] trait AXI5XbarWrite {
     // BREADY 必须写成“响应态 + 目标 + 上游 ready”的组合条件；放进 B 响应 when
     // 分支会触发 firtool 生成恒假表达式，PLIC 写永远等不到 B 握手。
     val inWriteResponse = writeState === stateWriteResponse
-    io.SoCBus.B.BREADY :=
-      inWriteResponse && writeTargetReg === targetSoCBus && io.in.B.BREADY
-    io.CLINT.B.BREADY :=
-      inWriteResponse && writeTargetReg === TargetCLINT && io.in.B.BREADY
-    io.PLIC.B.BREADY :=
-      inWriteResponse && writeTargetReg === TargetPLIC && io.in.B.BREADY
+    WriteTargets.foreach { target =>
+      target.downstream.B.BREADY :=
+        inWriteResponse && writeTargetReg === target.ID && io.in.B.BREADY
+    }
     // B 通道默认值；各目标分支和下方 PLIC 专用组合逻辑会覆盖它。
     io.in.B.BID := 0.U
     io.in.B.BVALID := false.B
@@ -197,13 +209,10 @@ private[infra] trait AXI5XbarWrite {
     }.elsewhen(writeState === stateWriteCollect) {
       collectWrite(enterCollect = false)
     }.elsewhen(writeState === stateWriteRequest) {
-      when(writeTargetReg === targetSoCBus) {
-        ForwardWriteRequest(SOCBusWriteTarget)
-      }.elsewhen(writeTargetReg === TargetCLINT) {
-        ForwardWriteRequest(CLINTWriteTarget)
-      }.elsewhen(writeTargetReg === TargetPLIC) {
-        ForwardWriteRequest(PLICWriteTarget)
-      }.otherwise {
+      WriteTargets.indices.foreach { index =>
+        ForwardWriteRequest(WriteTargets(index), writeRequestSelects(index))
+      }
+      when(!anyWriteRequestSelected) {
         writeState := Mux(
           wValidReg && wLastReg,
           stateWriteDECERR,
@@ -218,16 +227,19 @@ private[infra] trait AXI5XbarWrite {
       }
     }.elsewhen(writeState === stateWriteResponse) {
       // B响应回来时没有地址，所以要根据之前保存的writeTargetReg选择下游
-      when(writeTargetReg === targetSoCBus) {
-        ForwardWriteResponse(SOCBusWriteTarget)
-      }.elsewhen(writeTargetReg === TargetCLINT) {
-        ForwardWriteResponse(CLINTWriteTarget)
+      WriteTargets.indices.foreach { index =>
+        if (!WriteTargets(index).deferredResponse) {
+          ForwardWriteResponse(
+            WriteTargets(index),
+            inWriteResponse && writeRequestSelects(index)
+          )
+        }
       }
       // PLIC 的 B 在状态机外转发；这里不能写 otherwise->DECERR，否则会在
       // PLIC 的 B 返回前把合法事务判错。
     }.elsewhen(writeState === stateWriteDECERR) {
       // 地址空洞和不支持的burst在CPU内部完成，不访问任何下游设备。
-      io.in.B.BID := AWIDReg
+      io.in.B.BID := AWBurstShape.ID
       io.in.B.BVALID := true.B
       io.in.B.BRESP := DECERR
 
@@ -245,7 +257,7 @@ private[infra] trait AXI5XbarWrite {
     val PLICWriteResponse =
       writeState === stateWriteResponse && writeTargetReg === TargetPLIC
     when(PLICWriteResponse) {
-      ForwardWriteResponse(PLICWriteTarget)
+      ForwardWriteResponse(PLICWriteTarget, true.B)
     }
     // 防御：无效目标本应在进入转发前走 DECERR，不能停在 Response 等 B。
     when(inWriteResponse && writeTargetReg === targetInvalid) {

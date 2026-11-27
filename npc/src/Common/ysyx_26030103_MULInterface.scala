@@ -21,16 +21,15 @@ class ysyx_26030103_MULInstructionRequest(val XLEN: Int = 32) extends Bundle {
   val TakeHigh = Bool() //选择乘积高 XLEN 位
 }
 //MUL指令结果。
-class ysyx_26030103_MULInstructionResponse(val XLEN: Int = 32) extends Bundle {
+class ysyx_26030103_MULInstructionResponse(val XLEN: Int = 32) extends ysyx_26030103_MDUResult(XLEN) {
   ysyx_26030103_XLENRequire(XLEN, "MULInstructionResponse")
-  val Result = UInt(XLEN.W) //指令结果
 }
 //MUL适配层握手接口；Flush取消在途事务。
-class ysyx_26030103_MULAdapterInterface(val XLEN: Int = 32) extends Bundle {
-  val Request = Flipped(Decoupled(new ysyx_26030103_MULInstructionRequest(XLEN))) //输入请求
-  val Response = Decoupled(new ysyx_26030103_MULInstructionResponse(XLEN)) //输出结果
-  val Flush = Input(Bool()) //取消事务
-}
+class ysyx_26030103_MULAdapterInterface(val XLEN: Int = 32)
+    extends ysyx_26030103_MDUHandshake(
+      new ysyx_26030103_MULInstructionRequest(XLEN),
+      new ysyx_26030103_MULInstructionResponse(XLEN)
+    )
 //MUL后端接收的无符号幅值。
 class ysyx_26030103_MULCoreRequest(val Width: Int = 32) extends Bundle {
   val LHSMagnitude = UInt(Width.W) //左幅值
@@ -41,11 +40,11 @@ class ysyx_26030103_MULCoreResponse(val Width: Int = 32) extends Bundle {
   val Product = UInt((2 * Width).W) //原始乘积
 }
 //所有MUL算法后端共用的握手接口。
-class ysyx_26030103_MULCoreInterface(val Width: Int = 32) extends Bundle {
-  val Request = Flipped(Decoupled(new ysyx_26030103_MULCoreRequest(Width))) //输入请求
-  val Response = Decoupled(new ysyx_26030103_MULCoreResponse(Width)) //输出乘积
-  val Flush = Input(Bool()) //取消事务
-}
+class ysyx_26030103_MULCoreInterface(val Width: Int = 32)
+    extends ysyx_26030103_MDUHandshake(
+      new ysyx_26030103_MULCoreRequest(Width),
+      new ysyx_26030103_MULCoreResponse(Width)
+    )
 //MUL适配层辅助函数。
 object ysyx_26030103_MULAdapterUtils {
   def ResultNegative(LHS: UInt, RHS: UInt, SignedMode: UInt): Bool = {

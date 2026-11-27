@@ -28,8 +28,10 @@ trait ysyx_26030103_HardFloatFPUResult {
       Mux(aNaN, bS, Mux(bNaN, aS,
         Mux(bothZero, Cat(zeroSign, 0.U(31.W)), chosen)))
     )
-    val flags = Cat(isSigNaN32(aS) || isSigNaN32(bS),
-      0.U(ysyx_26030103_FPUFlags.NV.W))
+    val flags = ysyx_26030103_FPUFlags.Only(
+      ysyx_26030103_FPUFlags.NV,
+      isSigNaN32(aS) || isSigNaN32(bS)
+    )
     (result, flags)
   }
   private def minMaxD(isMin: Bool): (UInt, UInt) = {
@@ -49,8 +51,10 @@ trait ysyx_26030103_HardFloatFPUResult {
       Mux(aNaN, bD, Mux(bNaN, aD,
         Mux(bothZero, Cat(zeroSign, 0.U(63.W)), chosen)))
     )
-    val flags = Cat(isSigNaN64(aD) || isSigNaN64(bD),
-      0.U(ysyx_26030103_FPUFlags.NV.W))
+    val flags = ysyx_26030103_FPUFlags.Only(
+      ysyx_26030103_FPUFlags.NV,
+      isSigNaN64(aD) || isSigNaN64(bD)
+    )
     (result, flags)
   }
 
@@ -178,8 +182,7 @@ trait ysyx_26030103_HardFloatFPUResult {
         Mux(negInvalidS, 0.U(FLEN.W), intFromS),
         Mux(negInvalidD, 0.U(FLEN.W), intFromD))
       // 非法负数转无符号只保留 NV，不额外报 NX。
-      val nvOnly = (1 << ysyx_26030103_FPUFlags.NV).U(
-        ysyx_26030103_FPUFlags.Width.W)
+      val nvOnly = ysyx_26030103_FPUFlags.Only(ysyx_26030103_FPUFlags.NV)
       fastFlags := Mux(fmtS,
         Mux(negInvalidS, nvOnly, intFlagsS),
         Mux(negInvalidD, nvOnly, intFlagsD))

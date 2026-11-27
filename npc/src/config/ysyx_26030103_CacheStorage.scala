@@ -15,10 +15,13 @@ object ysyx_26030103_CacheStorage {
   case object SRAMNoBypass extends ysyx_26030103_CacheStorage {
     val Name = "sram_nobypass"
   }
-  def FromString(value: String): ysyx_26030103_CacheStorage = value match {
-    case "reg" => Reg
-    case "sram" => SRAM
-    case "sram_nobypass" => SRAMNoBypass
-    case other => throw new IllegalArgumentException(s"这个缓存存储没有实现: $other")
+  def FromString(value: String): ysyx_26030103_CacheStorage = {
+    val table: Seq[(String, ysyx_26030103_CacheStorage)] =
+      Seq("reg" -> Reg, "sram" -> SRAM, "sram_nobypass" -> SRAMNoBypass)
+    ysyx_26030103_NameEnum.Select(
+      value,
+      table,
+      other => s"这个缓存存储没有实现: $other"
+    )
   }
 }

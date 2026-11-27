@@ -13,20 +13,11 @@ class ysyx_26030103_MULUnit(
   // 流水压缩核能够保留的每项在途请求都必须有一项符号/高半部元数据。
   // 仅使用一个Pending位会使原本II=1的Wallace/Dadda核串行化。
   private val metadataDepth = config.MULMaxInflight
-  private val metadataPointerWidth = log2Ceil(metadataDepth).max(1)
-  private val metadataCountWidth = log2Ceil(metadataDepth + 1)
-  private val negativeQueue =
-    RegInit(VecInit(Seq.fill(metadataDepth)(false.B)))
-  private val takeHighQueue =
-    RegInit(VecInit(Seq.fill(metadataDepth)(false.B)))
-  private val metadataHead = RegInit(0.U(metadataPointerWidth.W))
-  private val metadataTail = RegInit(0.U(metadataPointerWidth.W))
-  private val metadataCount = RegInit(0.U(metadataCountWidth.W))
-  private val metadataValid = metadataCount =/= 0.U
-  private val headNegative =
-    if (metadataDepth == 1) negativeQueue(0) else negativeQueue(metadataHead)
-  private val headTakeHigh =
-    if (metadataDepth == 1) takeHighQueue(0) else takeHighQueue(metadataHead)
+  private val MetadataQueue =
+    Module(new ysyx_26030103_RingBuffer(metadataDepth, 2))
+  private val metadataValid = !MetadataQueue.io.Empty
+  private val headNegative = MetadataQueue.io.HeadData(1)
+  private val headTakeHigh = MetadataQueue.io.HeadData(0)
   val requestNegative = ysyx_26030103_MULAdapterUtils.ResultNegative(
     IO.Request.bits.LHS,
     IO.Request.bits.RHS,
@@ -50,7 +41,7 @@ class ysyx_26030103_MULUnit(
   core.IO.Request.bits.RHSMagnitude := coreRHSMagnitude
   core.IO.Response.ready := !IO.Flush && metadataValid && IO.Response.ready
   val coreResponseFire = core.IO.Response.valid && core.IO.Response.ready
-  val metadataHasSpace = metadataCount < metadataDepth.U || coreResponseFire
+  val metadataHasSpace = MetadataQueue.io.HasSpace
   IO.Request.ready := !IO.Flush && metadataHasSpace && core.IO.Request.ready
   core.IO.Request.valid := !IO.Flush && IO.Request.valid && metadataHasSpace
   val coreRequestFire = core.IO.Request.valid && core.IO.Request.ready
@@ -72,16 +63,11 @@ class ysyx_26030103_MULUnit(
     headTakeHigh,
     config.XLEN
   )
-  val nextMetadataHead = Mux(
-    metadataHead === (metadataDepth - 1).U,
-    0.U,
-    metadataHead + 1.U
-  )
-  val nextMetadataTail = Mux(
-    metadataTail === (metadataDepth - 1).U,
-    0.U,
-    metadataTail + 1.U
-  )
+  MetadataQueue.io.Enqueue := coreRequestFire
+  MetadataQueue.io.EnqueueData :=
+    Cat(requestNegative, IO.Request.bits.TakeHigh)
+  MetadataQueue.io.Dequeue := coreResponseFire
+  MetadataQueue.io.Flush := IO.Flush
   when(core.IO.Response.valid && !IO.Flush) {
     assert(metadataValid, "MUL core produced a response without metadata")
   }
@@ -93,29 +79,4 @@ class ysyx_26030103_MULUnit(
     IO.Response.fire === coreResponseFire,
     "MUL response and sign metadata became misaligned"
   )
-  assert(metadataCount <= metadataDepth.U, "MUL metadata FIFO overflow")
-  when(IO.Flush) {
-    metadataHead := 0.U
-    metadataTail := 0.U
-    metadataCount := 0.U
-  }.elsewhen(coreRequestFire || coreResponseFire) {
-    when(coreRequestFire) {
-      if (metadataDepth == 1) {
-        negativeQueue(0) := requestNegative
-        takeHighQueue(0) := IO.Request.bits.TakeHigh
-      } else {
-        negativeQueue(metadataTail) := requestNegative
-        takeHighQueue(metadataTail) := IO.Request.bits.TakeHigh
-      }
-      metadataTail := nextMetadataTail
-    }
-    when(coreResponseFire) {
-      metadataHead := nextMetadataHead
-    }
-    when(coreRequestFire && !coreResponseFire) {
-      metadataCount := metadataCount + 1.U
-    }.elsewhen(!coreRequestFire && coreResponseFire) {
-      metadataCount := metadataCount - 1.U
-    }
-  }
 }

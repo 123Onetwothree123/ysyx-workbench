@@ -28,15 +28,31 @@ private[mem] trait LSUAtomic {
     }
   }
 
-  def finishWideAtomicRead(wideData: UInt, responseBad: Bool): Unit = {
+  private def CompleteTrap(fault: Bool, resp: UInt): Unit = {
+    accessFaultReg := fault
+    accessFaultResponseReg := resp
+    transactionComplete := true.B
+    transactionFault := true.B
+    atomicActive := false.B
+    state := stateIdle
+  }
+
+  private def DrainTrap(resp: UInt): Unit = {
+    accessFaultReg := true.B
+    accessFaultResponseReg := resp
+    state := stateReadDrain
+  }
+
+  def FinishAtomicRead(data: UInt, responseBad: Bool, word: Boolean): Unit = {
+    val value = if (word) atomicSignExtend32(data) else data
     val fault = accessFaultReg || responseBad
     when(fault) {
-      transactionComplete := true.B
-      transactionFault := true.B
-      atomicActive := false.B
-      state := stateIdle
+      CompleteTrap(
+        fault,
+        Mux(responseBad, io.DataBus.R.RRESP, accessFaultResponseReg)
+      )
     }.elsewhen(ysyx_26030103_AtomicOp.IsLr(atomicOpReg)) {
-      loadDataReg := wideData
+      loadDataReg := value
       reservationValid := true.B
       reservationAddress := atomicAddressReg
       atomicActive := false.B
@@ -45,14 +61,26 @@ private[mem] trait LSUAtomic {
     }.elsewhen(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
       finishScRead()
     }.otherwise {
-      atomicResultData := wideData
+      atomicResultData := value
       atomicNewData := ysyx_26030103_AtomicOp.Compute(
-        atomicOpReg, wideData, activeInstruction.StoreData,
-        word = false)
+        atomicOpReg, value, activeInstruction.StoreData,
+        word = word)
       AtomicAWDone := false.B
       atomicWDone := false.B
       atomicWBeat := false.B
       state := stateAtomicWriteRequest
+    }
+  }
+
+  private def FinishWordAtomicBeat(responseBad: Bool): Unit = {
+    when(io.DataBus.R.RLAST) {
+      FinishAtomicRead(
+        SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide),
+        responseBad,
+        true
+      )
+    }.otherwise {
+      DrainTrap(Mux(responseBad, io.DataBus.R.RRESP, 2.U))
     }
   }
 
@@ -83,43 +111,6 @@ private[mem] trait LSUAtomic {
     }
   }
 
-  // 32 位原子读的公共响应处理；XLEN=64 时由 atomicSignExtend32 扩展。
-  def finishWordAtomicRead(rawWord: UInt, responseBad: Bool): Unit = {
-    val wordData = atomicSignExtend32(rawWord)
-    when(io.DataBus.R.RLAST) {
-      val fault = accessFaultReg || responseBad
-      when(fault) {
-        transactionComplete := true.B
-        transactionFault := true.B
-        atomicActive := false.B
-        state := stateIdle
-      }.elsewhen(ysyx_26030103_AtomicOp.IsLr(atomicOpReg)) {
-        // LR 成功：建立 reservation，写回旧值。
-        loadDataReg := wordData
-        reservationValid := true.B
-        reservationAddress := atomicAddressReg
-        atomicActive := false.B
-        transactionComplete := true.B
-        state := stateIdle
-      }.elsewhen(ysyx_26030103_AtomicOp.IsSc(atomicOpReg)) {
-        finishScRead()
-      }.otherwise {
-        atomicResultData := wordData
-        atomicNewData := ysyx_26030103_AtomicOp.Compute(
-          atomicOpReg, wordData, activeInstruction.StoreData,
-          word = true)
-        AtomicAWDone := false.B
-        atomicWDone := false.B
-        atomicWBeat := false.B
-        state := stateAtomicWriteRequest
-      }
-    }.otherwise {
-      accessFaultReg := true.B
-      accessFaultResponseReg := Mux(responseBad, io.DataBus.R.RRESP, 2.U)
-      state := stateReadDrain
-    }
-  }
-
   def atomicReadResponseBody(): Unit = {
     io.DataBus.R.RREADY := true.B
     when(io.DataBus.R.RVALID) {
@@ -131,48 +122,35 @@ private[mem] trait LSUAtomic {
       if (XLEN == 64) {
         when(atomicWide && busWideBit) {
           when(io.DataBus.R.RLAST) {
-            finishWideAtomicRead(io.DataBus.R.RDATA, responseBad)
+            FinishAtomicRead(io.DataBus.R.RDATA, responseBad, false)
           }.otherwise {
-            accessFaultReg := true.B
-            accessFaultResponseReg := Mux(responseBad, io.DataBus.R.RRESP, 2.U)
-            state := stateReadDrain
+            DrainTrap(Mux(responseBad, io.DataBus.R.RRESP, 2.U))
           }
         }.elsewhen(atomicWide) {
           when(atomicReadBeat === 0.U) {
             when(io.DataBus.R.RLAST) {
               // 两拍读在第一个响应就结束：协议错误，按访问故障提交。
-              accessFaultReg := true.B
-              accessFaultResponseReg := Mux(responseBad,
-                io.DataBus.R.RRESP, 2.U)
-              transactionComplete := true.B
-              transactionFault := true.B
-              atomicActive := false.B
-              state := stateIdle
+              CompleteTrap(true.B, Mux(responseBad,
+                io.DataBus.R.RRESP, 2.U))
             }.otherwise {
               atomicReadLow := io.DataBus.R.RDATA
               atomicReadBeat := 1.U
             }
           }.otherwise {
             when(io.DataBus.R.RLAST) {
-              finishWideAtomicRead(
-                Cat(io.DataBus.R.RDATA, atomicReadLow), responseBad)
+              FinishAtomicRead(
+                Cat(io.DataBus.R.RDATA, atomicReadLow), responseBad, false)
             }.otherwise {
               // 超长 burst：继续排空到 RLAST，最终按访问故障提交。
-              accessFaultReg := true.B
-              accessFaultResponseReg := Mux(responseBad,
-                io.DataBus.R.RRESP, 2.U)
-              state := stateReadDrain
+              DrainTrap(Mux(responseBad,
+                io.DataBus.R.RRESP, 2.U))
             }
           }
         }.otherwise {
-          finishWordAtomicRead(
-            SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide),
-            responseBad)
+          FinishWordAtomicBeat(responseBad)
         }
       } else {
-        finishWordAtomicRead(
-          SelectWord(io.DataBus.R.RDATA, atomicAddressReg, busWide),
-          responseBad)
+        FinishWordAtomicBeat(responseBad)
       }
     }
   }

@@ -13,10 +13,6 @@ class ysyx_26030103_EXU(
   private val XLEN = config.XLEN
   private val useF = config.UseF
   // RV64 W 型运算的 32 位结果按 ISA 要求符号扩展到 XLEN。
-  private def sext32(value: UInt): UInt =
-    if (XLEN == 32) value else Cat(Fill(XLEN - 32, value(31)), value)
-  private def zext32(value: UInt): UInt =
-    if (XLEN == 32) value else Cat(0.U((XLEN - 32).W), value)
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(new ysyx_26030103_IDUMessage(XLEN)))
     val out = Decoupled(new ysyx_26030103_EXUMessage(XLEN))
@@ -203,19 +199,19 @@ class ysyx_26030103_EXU(
   val MDUPerfDivEarlyOut = WireDefault(false.B)
   val MDUHiddenWriteMask = WireDefault(0.U(32.W))
   // RV64 W 型 M 扩展指令：MULW/DIVW/REMW 先符号扩展低 32 位操作数，
-  // DIVUW/REMUW 先零扩展；结果再由 sext32 把低 32 位符号扩展回 XLEN。
+  // DIVUW/REMUW先零扩展，结果再由Sext32把低32位符号扩展回XLEN
   val IsWordMDU = ysyx_26030103_MDUOp.IsWordOp(inst.MDUOp)
   val MDUBaseOp = ysyx_26030103_MDUOp.BaseOp(inst.MDUOp)
   val WordMDUUnsigned = IsWordMDU && (MDUBaseOp === ysyx_26030103_MDUOp.DIVU ||
     MDUBaseOp === ysyx_26030103_MDUOp.REMU)
   val MDUWordLHS =
     if (XLEN == 32) inst.ALU_A
-    else Mux(WordMDUUnsigned, zext32(inst.ALU_A(31, 0)),
-      sext32(inst.ALU_A(31, 0)))
+    else Mux(WordMDUUnsigned, ysyx_26030103_Width.Zext32(inst.ALU_A(31, 0), XLEN),
+      ysyx_26030103_Width.Sext32(inst.ALU_A(31, 0), XLEN))
   val MDUWordRHS =
     if (XLEN == 32) inst.ALU_B
-    else Mux(WordMDUUnsigned, zext32(inst.ALU_B(31, 0)),
-      sext32(inst.ALU_B(31, 0)))
+    else Mux(WordMDUUnsigned, ysyx_26030103_Width.Zext32(inst.ALU_B(31, 0), XLEN),
+      ysyx_26030103_Width.Sext32(inst.ALU_B(31, 0), XLEN))
   val MDURequestLHS = if (XLEN == 32) inst.ALU_A
     else Mux(IsWordMDU, MDUWordLHS, inst.ALU_A)
   val MDURequestRHS = if (XLEN == 32) inst.ALU_B
@@ -444,34 +440,34 @@ class ysyx_26030103_EXU(
 
   statusBody()
 
-  io.out.bits.Instruction := activeInst.Instruction
+  val activeWriteEnable =
+    !activeInstructionTrapValid && !CSRUnit.io.IRQCommit && !io.MemTrapCommit
+
+  io.out.bits.FromIDU(activeInst)
   // 同步异常指令不退休；IRQ抢占的指令会从mepc重做，也不退休。
   // load/store先携带退休意图进入MEM，若总线故障则由LSU清除。
-  io.out.bits.Retire := !activeInstructionTrapValid && !activeInst.IsEcall &&
-    !activeInst.IsEbreak && !activeInst.IsSimHalt && !CSRUnit.io.IRQCommit &&
-    !io.MemTrapCommit
+  io.out.bits.Retire := !activeInst.IsEcall && !activeInst.IsEbreak &&
+    !activeInst.IsSimHalt && activeWriteEnable
   // 只有真正提交的 CSR 写才打标记；该指令随后仍可正常退休并计入 PMU。
   io.out.bits.WritesMinstret :=
     instructionCommit && CSRUnit.io.MinstretWriteCommit
-  io.out.bits.PC := activeInst.PC
-  io.out.bits.snpc := activeInst.snpc
   // Pending MDU 不可能是控制转移；其它指令用本拍实际后继 PC，MRET 用 mepc。
   io.out.bits.NextPC :=
     Mux(PendingMDU || FPPending, activeInst.snpc, CommitNextPC)
-  io.out.bits.Rd := activeInst.Rd
   // 带异常标记的指令不得写回GPR;被中断压掉的指令(IrqCommit)也不得写回
-  io.out.bits.RegisterWrite :=
-    activeInst.RegisterWrite && !activeInstructionTrapValid &&
-      !CSRUnit.io.IRQCommit && !io.MemTrapCommit
-  io.out.bits.WBSelect := activeInst.WBSelect
+  io.out.bits.RegisterWrite := activeInst.RegisterWrite && activeWriteEnable
   // RV64 W 型 M 扩展结果只保留低 32 位并按 bit31 符号扩展。
   val MDUResultFinal =
     if (XLEN == 64)
       Mux(ysyx_26030103_MDUOp.IsWordOp(activeInst.MDUOp),
-        sext32(MDUResponseResult(31, 0)), MDUResponseResult)
+        ysyx_26030103_Width.Sext32(MDUResponseResult(31, 0), XLEN),
+        MDUResponseResult)
     else MDUResponseResult
-  io.out.bits.ALUResult := Mux(PendingMDU, MDUResultFinal,
-    Mux(FPPending, FPResponseBits.result(XLEN - 1, 0), ALUUnit.io.result))
+  val pendingExecResult =
+    Mux(PendingMDU, MDUResultFinal, FPResponseBits.result(XLEN - 1, 0))
+  val pendingExecValid = PendingMDU || FPPending
+  io.out.bits.ALUResult :=
+    Mux(pendingExecValid, pendingExecResult, ALUUnit.io.result)
   io.out.bits.VAddress := ALUUnit.io.result
   io.out.bits.LoadData := 0.U(XLEN.W) // 由MEM在访存完成后填写
   io.out.bits.CSRReadData := CSRUnit.io.CSR_rdata
@@ -479,26 +475,13 @@ class ysyx_26030103_EXU(
   io.out.bits.CSRStateMtvec := CSRUnit.io.StateMtvec
   io.out.bits.CSRStateMepc := CSRUnit.io.StateMepc
   io.out.bits.CSRStateMcause := CSRUnit.io.StateMcause
-  io.out.bits.MemoryValid :=
-    activeInst.MemoryValid && !activeInstructionTrapValid &&
-      !CSRUnit.io.IRQCommit && !io.MemTrapCommit
-  io.out.bits.MemoryWrite :=
-    activeInst.MemoryWrite && !activeInstructionTrapValid &&
-      !CSRUnit.io.IRQCommit && !io.MemTrapCommit
-  io.out.bits.WidthSelect := activeInst.WidthSelect
-  io.out.bits.LoadSigned := activeInst.LoadSigned
-  io.out.bits.StoreData := activeInst.StoreData
+  io.out.bits.MemoryValid := activeInst.MemoryValid && activeWriteEnable
+  io.out.bits.MemoryWrite := activeInst.MemoryWrite && activeWriteEnable
   // F/D：FPU 结果直接从这里写入 f 寄存器；FLW/FLD 的 FPWriteData 由
   // LSU 在 load 完成时按 FP64 做 NaN-boxing。
-  io.out.bits.FPRegisterWrite :=
-    activeInst.FPRegisterWrite && !activeInstructionTrapValid &&
-      !CSRUnit.io.IRQCommit && !io.MemTrapCommit
+  io.out.bits.FPRegisterWrite := activeInst.FPRegisterWrite && activeWriteEnable
   io.out.bits.FPWriteData :=
     Mux(FPPending, FPResponseBits.result, activeInst.FPWriteData)
-  io.out.bits.FP64 := activeInst.FP64
-  // A 扩展：把译码得到的原子标记/操作号透传到 LSU。
-  io.out.bits.IsAtomic := activeInst.IsAtomic
-  io.out.bits.AtomicOp := activeInst.AtomicOp
 
   perfBody()
 
@@ -528,27 +511,25 @@ class ysyx_26030103_EXU(
   io.HazardValid := io.in.valid || PendingMDU || FPPending
   io.HazardRd := activeInst.Rd
   // 带异常标记的指令不会真正写回,不应让IDU白白等它;被中断压掉的指令同理
-  io.HazardRegWrite :=
-    activeInst.RegisterWrite && !activeInstructionTrapValid &&
-      !CSRUnit.io.IRQCommit && !io.MemTrapCommit
+  io.HazardRegWrite := activeInst.RegisterWrite && activeWriteEnable
   io.HazardMemOp := activeInst.MemoryValid
   io.HazardMDUHiddenWrites := MDUHiddenWriteMask
   io.PerfIdleNoInput := !io.in.valid && !PendingMDU
   io.PerfTrap := CSRUnit.io.TrapCommit
   // 转发给IDU的最终写回值(与WBU写GPR的值一致): ALU结果/snpc/CSR读出
   // (load数据在EXU阶段不可知,由MEM提供它那一级的转发)
+  val aluWbResult = ysyx_26030103_WritebackSource.Select(
+    activeInst.WBSelect,
+    ALUUnit.io.result,
+    ALUUnit.io.result,
+    activeInst.snpc,
+    CSRUnit.io.CSR_rdata,
+    ALUUnit.io.result
+  )
   io.ForwardData := Mux(
-    PendingMDU,
-    MDUResultFinal,
-    Mux(
-      FPPending,
-      FPResponseBits.result(XLEN - 1, 0),
-      Mux(
-        activeInst.WBSelect === 2.U,
-        activeInst.snpc,
-        Mux(activeInst.WBSelect === 3.U, CSRUnit.io.CSR_rdata, ALUUnit.io.result)
-      )
-    )
+    pendingExecValid,
+    pendingExecResult,
+    aluWbResult
   )
   // 可转发条件: 会写 rd 且不是 load（load 要等 MEM）；FPU 运算必须等响应 valid，
   // 不能把未发射/未返回的占位 ALU 结果前递给紧随其后的分支或整数消费者。
@@ -559,9 +540,7 @@ class ysyx_26030103_EXU(
   // FPU 运算未返回（甚至未发射）时不能声称可转发，否则 IDU 会把占位 FPWriteData(0) 当前递。
   io.HazardFPValid := io.in.valid || PendingMDU || FPPending
   io.HazardFPRd := activeInst.Rd
-  io.HazardFPRegWrite :=
-    activeInst.FPRegisterWrite && !activeInstructionTrapValid &&
-      !CSRUnit.io.IRQCommit && !io.MemTrapCommit
+  io.HazardFPRegWrite := activeInst.FPRegisterWrite && activeWriteEnable
   io.ForwardFPData := Mux(FPPending, FPResponseBits.result, activeInst.FPWriteData)
   io.ForwardFPReady := io.HazardFPValid && io.HazardFPRegWrite &&
     !activeInst.MemoryValid && FPPending && FPResponseValid

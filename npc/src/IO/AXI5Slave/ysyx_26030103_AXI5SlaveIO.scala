@@ -9,6 +9,5 @@ class ysyx_26030103_AXI5SlaveIO(val SocXLEN: Int = 32)
     with ysyx_26030103_SlaveBPorts
     with ysyx_26030103_SlaveARPorts
     with ysyx_26030103_SlaveRPorts {
-  require(SocXLEN == 32 || SocXLEN == 64,
-    s"AXI5SlaveIO SocXLEN 只允许 32 或 64，收到 $SocXLEN")
+  ysyx_26030103_IOParams.requireSocXLEN(SocXLEN, "AXI5SlaveIO")
 }

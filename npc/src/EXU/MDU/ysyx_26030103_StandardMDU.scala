@@ -12,16 +12,10 @@ class ysyx_26030103_StandardMDU(
   // MUL与DIV独立执行，而此FIFO在两者延迟不同时仍保持架构请求顺序。
   // 其容量覆盖MUL的所有流水槽位，以及DIV单元的一项在途请求。
   private val ownerDepth = config.MDUMaxInflight
-  private val ownerPointerWidth = log2Ceil(ownerDepth).max(1)
-  private val ownerCountWidth = log2Ceil(ownerDepth + 1)
-  private val ownerIsMULQueue =
-    RegInit(VecInit(Seq.fill(ownerDepth)(false.B)))
-  private val ownerHead = RegInit(0.U(ownerPointerWidth.W))
-  private val ownerTail = RegInit(0.U(ownerPointerWidth.W))
-  private val ownerCount = RegInit(0.U(ownerCountWidth.W))
-  private val ownerValid = ownerCount =/= 0.U
-  // MDUMaxInflight 至少为 2（MUL 在途槽位 + DIV 一项），无需 1 项 FIFO 特判。
-  private val headIsMUL = ownerIsMULQueue(ownerHead)
+  private val OwnerQueue =
+    Module(new ysyx_26030103_RingBuffer(ownerDepth, 1))
+  private val ownerValid = !OwnerQueue.io.Empty
+  private val headIsMUL = OwnerQueue.io.HeadData.asBool
   val request = io.Request.bits
   val isMULRequest = ysyx_26030103_MDUOp.IsMul(request.MDUOp)
   val isDIVRequest = ysyx_26030103_MDUOp.IsDiv(request.MDUOp)
@@ -57,7 +51,7 @@ class ysyx_26030103_StandardMDU(
   val responseFire = io.Response.valid && io.Response.ready
   io.PerfDivIterations := divUnit.IO.PerfIterations
   io.PerfDivEarlyOut := divUnit.IO.PerfEarlyOut
-  val ownerHasSpace = ownerCount < ownerDepth.U || responseFire
+  val ownerHasSpace = OwnerQueue.io.HasSpace
   val selectedRequestReady = Mux(
     isMULRequest,
     mulUnit.IO.Request.ready,
@@ -69,16 +63,10 @@ class ysyx_26030103_StandardMDU(
   divUnit.IO.Request.valid :=
     !io.Flush && io.Request.valid && ownerHasSpace && isDIVRequest
   val requestFire = io.Request.valid && io.Request.ready
-  val nextOwnerHead = Mux(
-    ownerHead === (ownerDepth - 1).U,
-    0.U,
-    ownerHead + 1.U
-  )
-  val nextOwnerTail = Mux(
-    ownerTail === (ownerDepth - 1).U,
-    0.U,
-    ownerTail + 1.U
-  )
+  OwnerQueue.io.Enqueue := requestFire
+  OwnerQueue.io.EnqueueData := isMULRequest.asUInt
+  OwnerQueue.io.Dequeue := responseFire
+  OwnerQueue.io.Flush := io.Flush
   assert(
     mulUnit.IO.Request.fire === (requestFire && isMULRequest),
     "MDU MUL request and owner metadata became misaligned"
@@ -95,23 +83,4 @@ class ysyx_26030103_StandardMDU(
     !divUnit.IO.Response.fire || (ownerValid && !headIsMUL && responseFire),
     "MDU consumed a DIV response out of owner order"
   )
-  assert(ownerCount <= ownerDepth.U, "MDU owner FIFO overflow")
-  when(io.Flush) {
-    ownerHead := 0.U
-    ownerTail := 0.U
-    ownerCount := 0.U
-  }.elsewhen(requestFire || responseFire) {
-    when(requestFire) {
-      ownerIsMULQueue(ownerTail) := isMULRequest
-      ownerTail := nextOwnerTail
-    }
-    when(responseFire) {
-      ownerHead := nextOwnerHead
-    }
-    when(requestFire && !responseFire) {
-      ownerCount := ownerCount + 1.U
-    }.elsewhen(!requestFire && responseFire) {
-      ownerCount := ownerCount - 1.U
-    }
-  }
 }

@@ -19,15 +19,23 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     // 一拍后暴露给 C++，保证上升沿上的所有更老 GPR 写回已经生效。
     val simHaltCommit = exu.io.SimHaltValid
     io.trap.valid := RegNext(simHaltCommit, false.B)
-    val SimHaltPC =
-      RegEnable(exu.io.SimHaltPC, config.ResetAddress.U(XLEN.W), simHaltCommit)
-    io.trap.PC := SimHaltPC(31, 0)
-    io.trap.PCHi := DebugView.highWord(SimHaltPC, XLEN)
+    DebugView.Snapshot(
+      exu.io.SimHaltPC,
+      io.trap.PC,
+      io.trap.PCHi,
+      simHaltCommit,
+      config.ResetAddress.U(XLEN.W),
+      XLEN
+    )
     // 固定 ABI：关闭动态调试读口时，GPR 模块忽略地址并将这里直连到 a0，
     // 供 custom halt 判定 GOOD/BAD；不会为此保留第三个 32 路读 mux。
     GPR.io.DebugRaddr := io.debug.GPRRaddr
-    io.debug.GPRRdata := GPR.io.DebugReadData(31, 0)
-    io.debug.GPRRdataHi := DebugView.highWord(GPR.io.DebugReadData, XLEN)
+    DebugView.Publish64(
+      io.debug.GPRRdata,
+      io.debug.GPRRdataHi,
+      GPR.io.DebugReadData,
+      XLEN
+    )
     // WBUCommit 与最小架构 PC 不属于可选观测逻辑。异常/中断即使在所有
     // 调试功能关闭时也需要精确的最近架构边界。
     val WBUCommit = wbu.io.in.fire && wbu.io.in.bits.Retire
@@ -57,20 +65,22 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     if (config.EnableRetireTrace) {
       // C++ 在上升沿后看到 commit，此时 GPR 已是该指令提交后的状态。
       io.debug.commit := RegNext(WBUCommit, false.B)
-      val RetirePC = RegEnable(
+      DebugView.Snapshot(
         wbu.io.in.bits.PC,
+        io.debug.PC,
+        io.debug.PCHi,
+        WBUCommit,
         config.ResetAddress.U(XLEN.W),
-        WBUCommit
+        XLEN
       )
-      val RetireNextPC = RegEnable(
+      DebugView.Snapshot(
         wbu.io.in.bits.NextPC,
+        io.debug.NextPC,
+        io.debug.NextPCHi,
+        WBUCommit,
         config.ResetAddress.U(XLEN.W),
-        WBUCommit
+        XLEN
       )
-      io.debug.PC := RetirePC(31, 0)
-      io.debug.PCHi := DebugView.highWord(RetirePC, XLEN)
-      io.debug.NextPC := RetireNextPC(31, 0)
-      io.debug.NextPCHi := DebugView.highWord(RetireNextPC, XLEN)
       io.debug.instructions := RegEnable(
         wbu.io.in.bits.Instruction,
         "h00000013".U(32.W),
@@ -98,38 +108,45 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     when(exu.io.TrapCommit) {
       ArchitecturalPC := exu.io.TrapTarget
     }
-    io.debug.ArchPC := ArchitecturalPC(31, 0)
-    io.debug.ArchPCHi := DebugView.highWord(ArchitecturalPC, XLEN)
+    DebugView.Publish64(
+      io.debug.ArchPC,
+      io.debug.ArchPCHi,
+      ArchitecturalPC,
+      XLEN
+    )
 
     if (config.EnableTrapTrace) {
       io.debug.TrapValid := RegNext(exu.io.TrapCommit, false.B)
-      val TrapPC = RegEnable(
+      DebugView.Snapshot(
         exu.io.TrapPC,
+        io.debug.TrapPC,
+        io.debug.TrapPCHi,
+        exu.io.TrapCommit,
         config.ResetAddress.U(XLEN.W),
-        exu.io.TrapCommit
+        XLEN
       )
-      val trapTarget = RegEnable(
+      DebugView.Snapshot(
         exu.io.TrapTarget,
+        io.debug.TrapTarget,
+        io.debug.TrapTargetHi,
+        exu.io.TrapCommit,
         config.ResetAddress.U(XLEN.W),
-        exu.io.TrapCommit
+        XLEN
       )
-      io.debug.TrapPC := TrapPC(31, 0)
-      io.debug.TrapPCHi := DebugView.highWord(TrapPC, XLEN)
-      io.debug.TrapTarget := trapTarget(31, 0)
-      io.debug.TrapTargetHi := DebugView.highWord(trapTarget, XLEN)
       io.debug.TrapCause := RegEnable(
         exu.io.TrapCause,
         0.U(32.W),
         exu.io.TrapCommit
       )
       // 与 cause 同一拍锁存，保证 DiffTest 看到的是本次 trap 的 tval。
-      val trapTval = RegEnable(
+      DebugView.Snapshot(
         exu.io.CSRStateTval,
+        io.debug.TrapTval,
+        io.debug.TrapTvalHi,
+        exu.io.TrapCommit,
         0.U(XLEN.W),
-        exu.io.TrapCommit
+        XLEN
       )
-      io.debug.TrapTval := trapTval(31, 0)
-      io.debug.TrapTvalHi := DebugView.highWord(trapTval, XLEN)
     } else {
       io.debug.TrapValid := false.B
       io.debug.TrapPC := 0.U
@@ -141,62 +158,70 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       io.debug.TrapTvalHi := 0.U
     }
     if (config.EnableCSRTrace) {
-      val retireMstatus = RegEnable(
+      DebugView.Snapshot(
         wbu.io.in.bits.CSRStateMstatus,
+        io.debug.CSRMstatus,
+        io.debug.CSRMstatusHi,
+        WBUCommit,
         DebugView.mstatusResetValue(XLEN),
-        WBUCommit
+        XLEN
       )
-      val retireMtvec = RegEnable(
+      DebugView.Snapshot(
         wbu.io.in.bits.CSRStateMtvec,
+        io.debug.CSRMtvec,
+        io.debug.CSRMtvecHi,
+        WBUCommit,
         0.U(XLEN.W),
-        WBUCommit
+        XLEN
       )
-      val retireMepc = RegEnable(
+      DebugView.Snapshot(
         wbu.io.in.bits.CSRStateMepc,
+        io.debug.CSRMepc,
+        io.debug.CSRMepcHi,
+        WBUCommit,
         0.U(XLEN.W),
-        WBUCommit
+        XLEN
       )
-      io.debug.CSRMstatus := retireMstatus(31, 0)
-      io.debug.CSRMstatusHi := DebugView.highWord(retireMstatus, XLEN)
-      io.debug.CSRMtvec := retireMtvec(31, 0)
-      io.debug.CSRMtvecHi := DebugView.highWord(retireMtvec, XLEN)
-      io.debug.CSRMepc := retireMepc(31, 0)
-      io.debug.CSRMepcHi := DebugView.highWord(retireMepc, XLEN)
-      val retireMcause = RegEnable(
+      DebugView.Snapshot(
         wbu.io.in.bits.CSRStateMcause,
+        io.debug.CSRMcause,
+        io.debug.CSRMcauseHi,
+        WBUCommit,
         0.U(XLEN.W),
-        WBUCommit
+        XLEN
       )
-      io.debug.CSRMcause := retireMcause(31, 0)
-      io.debug.CSRMcauseHi := DebugView.highWord(retireMcause, XLEN)
-      val trapMstatus = RegEnable(
+      DebugView.Snapshot(
         exu.io.CSRStateMstatus,
+        io.debug.TrapMstatus,
+        io.debug.TrapMstatusHi,
+        exu.io.TrapCommit,
         DebugView.mstatusResetValue(XLEN),
-        exu.io.TrapCommit
+        XLEN
       )
-      val trapMtvec = RegEnable(
+      DebugView.Snapshot(
         exu.io.CSRStateMtvec,
+        io.debug.TrapMtvec,
+        io.debug.TrapMtvecHi,
+        exu.io.TrapCommit,
         0.U(XLEN.W),
-        exu.io.TrapCommit
+        XLEN
       )
-      val trapMepc = RegEnable(
+      DebugView.Snapshot(
         exu.io.CSRStateMepc,
+        io.debug.TrapMepc,
+        io.debug.TrapMepcHi,
+        exu.io.TrapCommit,
         0.U(XLEN.W),
-        exu.io.TrapCommit
+        XLEN
       )
-      io.debug.TrapMstatus := trapMstatus(31, 0)
-      io.debug.TrapMstatusHi := DebugView.highWord(trapMstatus, XLEN)
-      io.debug.TrapMtvec := trapMtvec(31, 0)
-      io.debug.TrapMtvecHi := DebugView.highWord(trapMtvec, XLEN)
-      io.debug.TrapMepc := trapMepc(31, 0)
-      io.debug.TrapMepcHi := DebugView.highWord(trapMepc, XLEN)
-      val trapMcause = RegEnable(
+      DebugView.Snapshot(
         exu.io.CSRStateMcause,
+        io.debug.TrapMcause,
+        io.debug.TrapMcauseHi,
+        exu.io.TrapCommit,
         0.U(XLEN.W),
-        exu.io.TrapCommit
+        XLEN
       )
-      io.debug.TrapMcause := trapMcause(31, 0)
-      io.debug.TrapMcauseHi := DebugView.highWord(trapMcause, XLEN)
     } else {
       io.debug.CSRMstatus := 0.U
       io.debug.CSRMstatusHi := 0.U
@@ -222,35 +247,43 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     if (config.EnableMemoryTrace) {
       val MTraceCommit = WBUCommit && wbu.io.in.bits.MemoryValid
       io.debug.MTraceValid := RegNext(MTraceCommit, false.B)
-      val MTracePC = RegEnable(wbu.io.in.bits.PC, 0.U(XLEN.W), MTraceCommit)
-      val MTraceAddress = RegEnable(
-        wbu.io.in.bits.ALUResult,
+      DebugView.Snapshot(
+        wbu.io.in.bits.PC,
+        io.debug.MTracePC,
+        io.debug.MTracePCHi,
+        MTraceCommit,
         0.U(XLEN.W),
-        MTraceCommit
+        XLEN
       )
-      val MTraceWriteData = RegEnable(
-        wbu.io.in.bits.StoreData,
-        0.U(XLEN.W),
-        MTraceCommit
-      )
-      val MTraceReadData = RegEnable(
-        wbu.io.in.bits.LoadData,
-        0.U(XLEN.W),
-        MTraceCommit
-      )
-      io.debug.MTracePC := MTracePC(31, 0)
-      io.debug.MTracePCHi := DebugView.highWord(MTracePC, XLEN)
       io.debug.MTraceWen := RegEnable(
         wbu.io.in.bits.MemoryWrite,
         false.B,
         MTraceCommit
       )
-      io.debug.MTraceAddress := MTraceAddress(31, 0)
-      io.debug.MTraceAddressHi := DebugView.highWord(MTraceAddress, XLEN)
-      io.debug.MTraceWdata := MTraceWriteData(31, 0)
-      io.debug.MTraceWdataHi := DebugView.highWord(MTraceWriteData, XLEN)
-      io.debug.MTraceRdata := MTraceReadData(31, 0)
-      io.debug.MTraceRdataHi := DebugView.highWord(MTraceReadData, XLEN)
+      DebugView.Snapshot(
+        wbu.io.in.bits.ALUResult,
+        io.debug.MTraceAddress,
+        io.debug.MTraceAddressHi,
+        MTraceCommit,
+        0.U(XLEN.W),
+        XLEN
+      )
+      DebugView.Snapshot(
+        wbu.io.in.bits.StoreData,
+        io.debug.MTraceWdata,
+        io.debug.MTraceWdataHi,
+        MTraceCommit,
+        0.U(XLEN.W),
+        XLEN
+      )
+      DebugView.Snapshot(
+        wbu.io.in.bits.LoadData,
+        io.debug.MTraceRdata,
+        io.debug.MTraceRdataHi,
+        MTraceCommit,
+        0.U(XLEN.W),
+        XLEN
+      )
       io.debug.MTraceWidth := RegEnable(
         wbu.io.in.bits.WidthSelect,
         0.U(2.W),
@@ -278,13 +311,14 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       val iCacheAccessFaultCommit = exu.io.FetchAccessFaultCommit
       val accessFaultCommit = LSUAccessFaultCommit || iCacheAccessFaultCommit
       io.debug.AccessFault := RegNext(accessFaultCommit, false.B)
-      val AccessFaultPC = RegEnable(
+      DebugView.Snapshot(
         Mux(LSUAccessFaultCommit, LSU.io.MemTrapPC, exu.io.FetchAccessFaultPC),
+        io.debug.AccessFaultPC,
+        io.debug.AccessFaultPCHi,
+        accessFaultCommit,
         0.U(XLEN.W),
-        accessFaultCommit
+        XLEN
       )
-      io.debug.AccessFaultPC := AccessFaultPC(31, 0)
-      io.debug.AccessFaultPCHi := DebugView.highWord(AccessFaultPC, XLEN)
       io.debug.AccessFaultResponse := RegEnable(
         Mux(
           LSUAccessFaultCommit,
@@ -309,6 +343,7 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     def perfDicArchUInt(key: String, width: Int)(signal: => UInt): UInt =
       if (config.EnablePerfDicArchCounter(key)) { signal }
       else { 0.U(width.W) }
+    def MmuPerf(perf: => Option[Bool]): Bool = perf.getOrElse(false.B)
     // 架构 PMU 事件总线。事件编号与 ysyx_26030103_PMUEventId 一致；
     // 未打开 PMU 时总线保持 0，综合可以删除全部事件选择逻辑。
     val pmuEventBits =
@@ -336,13 +371,13 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       pmuEventBits(ysyx_26030103_PMUEventID.CSRInstruction) := exu.io.PerfCSROp
       pmuEventBits(ysyx_26030103_PMUEventID.Trap) := exu.io.PerfTrap
       pmuEventBits(ysyx_26030103_PMUEventID.ITLBMiss) :=
-        MMUUnitOpt.map(_.io.perf_itlb_miss).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_itlb_miss))
       pmuEventBits(ysyx_26030103_PMUEventID.DTLBMiss) :=
-        MMUUnitOpt.map(_.io.perf_dtlb_miss).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_dtlb_miss))
       pmuEventBits(ysyx_26030103_PMUEventID.TLBRefill) :=
-        MMUUnitOpt.map(_.io.perf_tlb_refill).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_tlb_refill))
       pmuEventBits(ysyx_26030103_PMUEventID.PTWWalk) :=
-        MMUUnitOpt.map(_.io.perf_ptw_walk).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_ptw_walk))
       pmuEventBits(ysyx_26030103_PMUEventID.AXIRead) :=
         io.master.rvalid && io.master.rready
       pmuEventBits(ysyx_26030103_PMUEventID.AXIWrite) :=
@@ -491,23 +526,23 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       perfDicArchBool("branch_mispredict")(exu.io.PerfBranchMispredict)
     io.perf.itlb_hit :=
       perfDicArchBool("itlb_hit")(
-        MMUUnitOpt.map(_.io.perf_itlb_hit).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_itlb_hit))
       )
     io.perf.itlb_miss :=
       perfDicArchBool("itlb_miss")(
-        MMUUnitOpt.map(_.io.perf_itlb_miss).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_itlb_miss))
       )
     io.perf.dtlb_hit :=
       perfDicArchBool("dtlb_hit")(
-        MMUUnitOpt.map(_.io.perf_dtlb_hit).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_dtlb_hit))
       )
     io.perf.dtlb_miss :=
       perfDicArchBool("dtlb_miss")(
-        MMUUnitOpt.map(_.io.perf_dtlb_miss).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_dtlb_miss))
       )
     io.perf.tlb_refill :=
       perfDicArchBool("tlb_refill")(
-        MMUUnitOpt.map(_.io.perf_tlb_refill).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_tlb_refill))
       )
     io.perf.fpu_req := perfDicArchBool("fpu_req")(exu.io.PerfFPURequest)
     io.perf.fpu_done := perfDicArchBool("fpu_done")(exu.io.PerfFPUDone)
@@ -557,15 +592,15 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
     io.perf.div_active := perfDicArchBool("div_active")(exu.io.PerfDivActive)
     io.perf.ptw_walk :=
       perfDicArchBool("ptw_walk")(
-        MMUUnitOpt.map(_.io.perf_ptw_walk).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_ptw_walk))
       )
     io.perf.ptw_walk_cycle :=
       perfDicArchBool("ptw_walk_cycle")(
-        MMUUnitOpt.map(_.io.perf_ptw_walk_cycle).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_ptw_walk_cycle))
       )
     io.perf.page_fault :=
       perfDicArchBool("page_fault")(
-        MMUUnitOpt.map(_.io.perf_page_fault).getOrElse(false.B)
+        MmuPerf(MMUUnitOpt.map(_.io.perf_page_fault))
       )
     io.perf.ras_miss := perfDicArchBool("ras_miss")(
       fetchPredictFire && JalBTB.io.hit &&
@@ -631,10 +666,10 @@ private[ysyx_26030103] trait ObservabilityConnect { this: ysyx_26030103 =>
       (config.EnablePerfDicArchCounter("div_iterations") ||
         config.EnablePerfDicArchCounter("div_early_out")).B
     io.perf.tlb_superpage_hit := perfDicArchBool("tlb_superpage_hit")(
-      MMUUnitOpt.map(_.io.perf_superpage_hit).getOrElse(false.B)
+      MmuPerf(MMUUnitOpt.map(_.io.perf_superpage_hit))
     )
     io.perf.tlb_asid_hit := perfDicArchBool("tlb_asid_hit")(
-      MMUUnitOpt.map(_.io.perf_asid_hit).getOrElse(false.B)
+      MmuPerf(MMUUnitOpt.map(_.io.perf_asid_hit))
     )
   }
 }

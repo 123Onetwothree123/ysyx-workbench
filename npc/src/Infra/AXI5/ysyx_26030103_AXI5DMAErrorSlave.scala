@@ -11,79 +11,84 @@ class ysyx_26030103_AXI5DMAErrorSlave(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     IDWidth: Int = ysyx_26030103_KconfigDefaults.AXIIDWidth
-) extends Module {
+) extends Module with ysyx_26030103_AXI5ChannelFire {
   val io = IO(new ysyx_26030103_AXI5Slave(AddressWidth, DataWidth, IDWidth))
 
-  private val DECERR = "b11".U(2.W)
+  private val DECERR = ysyx_26030103_AXI5Resp.DECERR
 
   // 写通道：有意分别独立收集AW与W。
-  val AWHeld = RegInit(false.B)
-  val awID = RegInit(0.U(IDWidth.W))
-  val wLastSeen = RegInit(false.B)
-  val bValid = RegInit(false.B)
+  val awRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5AWChannelRegs(AddressWidth, IDWidth))
+  val wRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5WChannelRegs(DataWidth))
+  val bRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5BChannelRegs)
+  val arRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5ARChannelRegs(AddressWidth, IDWidth))
+  val rRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5RChannelRegs(DataWidth, IDWidth))
 
-  io.AW.AWREADY := !AWHeld && !bValid
-  io.W.WREADY := !wLastSeen && !bValid
-  io.B.BID := awID
+  io.AW.AWREADY := !awRegs.valid && !bRegs.valid
+  io.W.WREADY := !wRegs.last && !bRegs.valid
+  io.B.BID := awRegs.id
   io.B.BRESP := DECERR
-  io.B.BVALID := bValid
+  io.B.BVALID := bRegs.valid
   // 在独立Verilator回归中保持响应叶节点可见；否则CIRCT可以将这些常量
   // 传播到父模块中。
   dontTouch(io.B.BRESP)
 
-  val AWFire = io.AW.AWVALID && io.AW.AWREADY
-  val wFire = io.W.WVALID && io.W.WREADY
+  val AWFire = AwFire(io.AW.AWVALID, io.AW.AWREADY)
+  val wFire = WFire(io.W.WVALID, io.W.WREADY)
+  val bFire = BFire(io.B.BVALID, io.B.BREADY)
   val wLastFire = wFire && io.W.WLAST
-  val HaveAWAfterThisCycle = AWHeld || AWFire
-  val haveLastWAfterThisCycle = wLastSeen || wLastFire
+  val HaveAWAfterThisCycle = awRegs.valid || AWFire
+  val haveLastWAfterThisCycle = wRegs.last || wLastFire
 
   when(AWFire) {
-    AWHeld := true.B
-    awID := io.AW.AWID
+    awRegs.valid := true.B
+    awRegs.id := io.AW.AWID
   }
   when(wLastFire) {
-    wLastSeen := true.B
+    wRegs.last := true.B
   }
-  when(!bValid && HaveAWAfterThisCycle && haveLastWAfterThisCycle) {
-    bValid := true.B
+  when(!bRegs.valid && HaveAWAfterThisCycle && haveLastWAfterThisCycle) {
+    bRegs.valid := true.B
   }
-  when(io.B.BVALID && io.B.BREADY) {
-    AWHeld := false.B
-    wLastSeen := false.B
-    bValid := false.B
+  when(bFire) {
+    awRegs.valid := false.B
+    wRegs.last := false.B
+    bRegs.valid := false.B
   }
 
   // 读通道：允许一项突发传输在途，在反压下保持响应稳定，并严格返回
   // ARLEN + 1个数据拍。
-  val readActive = RegInit(false.B)
-  val ReadID = RegInit(0.U(IDWidth.W))
-  val ReadLength = RegInit(0.U(8.W))
   val readBeat = RegInit(0.U(8.W))
 
-  io.AR.ARREADY := !readActive
-  io.R.RID := ReadID
+  io.AR.ARREADY := !rRegs.valid
+  io.R.RID := arRegs.id
   io.R.RDATA := 0.U
   io.R.RRESP := DECERR
   // RLAST 属于数据拍的一部分，必须与 RVALID 同步：复位后与突发结束
   // 之后不得脱离 RVALID 断言（与 CLINT 从设备的门控方式保持一致）。
-  io.R.RLAST := readActive && readBeat === ReadLength
-  io.R.RVALID := readActive
+  io.R.RLAST := rRegs.valid &&
+    ysyx_26030103_AXI5Beat.IsLast(readBeat, arRegs.length)
+  io.R.RVALID := rRegs.valid
   dontTouch(io.R.RRESP)
 
-  when(io.AR.ARVALID && io.AR.ARREADY) {
-    readActive := true.B
-    ReadID := io.AR.ARID
-    ReadLength := io.AR.ARLEN
+  when(ArFire(io.AR.ARVALID, io.AR.ARREADY)) {
+    rRegs.valid := true.B
+    arRegs.id := io.AR.ARID
+    arRegs.length := io.AR.ARLEN
     readBeat := 0.U
   }
   // 读拍计数不得越过 ARLEN：越界意味着会多发响应拍。
-  assert(!readActive || readBeat <= ReadLength,
+  assert(!rRegs.valid || readBeat <= arRegs.length,
          "DMA error slave read beat counter exceeded ARLEN")
-  when(io.R.RVALID && io.R.RREADY) {
+  when(RFire(io.R.RVALID, io.R.RREADY)) {
     when(io.R.RLAST) {
-      readActive := false.B
+      rRegs.valid := false.B
     }.otherwise {
-      readBeat := readBeat + 1.U
+      readBeat := ysyx_26030103_AXI5Beat.Next(readBeat)
     }
   }
 

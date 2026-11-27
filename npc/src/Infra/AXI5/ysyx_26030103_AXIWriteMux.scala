@@ -11,9 +11,12 @@ class ysyx_26030103_AXIWriteMux(
     val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth
 ) extends Module {
   val io = IO(new Bundle {
-    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
-    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
-    val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
+    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth,
+      ysyx_26030103_AXIReadID.IDWidth))
+    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth,
+      ysyx_26030103_AXIReadID.IDWidth))
+    val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth,
+      ysyx_26030103_AXIReadID.IDWidth)
   })
   val idle :: aWrite :: bWrite :: aResponse :: bResponse :: Nil = Enum(5)
   val state = RegInit(idle)
@@ -33,57 +36,10 @@ class ysyx_26030103_AXIWriteMux(
     io.out.AR.ARVALID := io.a.AR.ARVALID
     io.a.AR.ARREADY := io.out.AR.ARREADY
     io.a.R <> io.out.R
-  } else {
-    // 只使用写通道；读通道由顶层直接接仲裁器。
-    io.out.AR.ARVALID := false.B
-    io.out.AR.ARID := 0.U
-    io.out.AR.ARADDR := 0.U
-    io.out.AR.ARLEN := 0.U
-    io.out.AR.ARSIZE := 2.U
-    io.out.AR.ARBURST := 0.U
-    io.out.AR.ARPROT := 0.U
-    io.out.AR.ARCACHE := 0.U
-    io.out.AR.ARQOS := 0.U
-    io.a.AR.ARREADY := false.B
-    io.a.R.RVALID := false.B
-    io.a.R.RID := 0.U
-    io.a.R.RDATA := 0.U
-    io.a.R.RRESP := 0.U
-    io.a.R.RLAST := false.B
-    io.out.R.RREADY := false.B
   }
-  io.b.AR.ARREADY := false.B
-  io.b.R.RVALID := false.B
-  io.b.R.RID := 0.U
-  io.b.R.RDATA := 0.U
-  io.b.R.RRESP := 0.U
-  io.b.R.RLAST := false.B
-
-
-    io.out.AW.AWVALID := false.B
-    io.out.AW.AWID := 0.U
-    io.out.AW.AWADDR := 0.U
-    io.out.AW.AWLEN := 0.U
-    io.out.AW.AWSIZE := 2.U
-    io.out.AW.AWBURST := 0.U
-    io.out.AW.AWPROT := 0.U
-    io.out.AW.AWCACHE := 0.U
-    io.out.AW.AWQOS := 0.U
-    io.out.W.WVALID := false.B
-    io.out.W.WDATA := 0.U
-    io.out.W.WSTRB := 0.U
-    io.out.W.WLAST := false.B
-    io.out.B.BREADY := false.B
-    io.a.AW.AWREADY := false.B
-  io.a.W.WREADY := false.B
-  io.a.B.BVALID := false.B
-  io.a.B.BID := 0.U
-  io.a.B.BRESP := 0.U
-  io.b.AW.AWREADY := false.B
-  io.b.W.WREADY := false.B
-  io.b.B.BVALID := false.B
-  io.b.B.BID := 0.U
-  io.b.B.BRESP := 0.U
+  ysyx_26030103_AXI5Idle.MasterOut(io.out, read = !PassRead)
+  ysyx_26030103_AXI5Idle.SlaveOut(io.a, read = !PassRead)
+  ysyx_26030103_AXI5Idle.SlaveOut(io.b)
 
   when(state === idle) {
     val aRequest = io.a.AW.AWVALID || io.a.W.WVALID

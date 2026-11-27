@@ -81,25 +81,22 @@ class ysyx_26030103_PMU(
       events(index) := events(index) & ~ofMask
     }
 
-    when(lowWrite) {
-      if (XLEN == 64) {
-        counters(index) := io.CSRWriteData
-      } else {
-        counters(index) := Cat(counters(index)(63, 32), io.CSRWriteData(31, 0))
-      }
-    }.elsewhen(highWrite) {
-      counters(index) := Cat(io.CSRWriteData(31, 0), counters(index)(31, 0))
-    }.elsewhen(increment) {
-      counters(index) := counters(index) + 1.U
-    }
+    counters(index) := ysyx_26030103_Counter64.UpdateValue(
+      counters(index),
+      io.CSRWriteData,
+      XLEN,
+      highWrite,
+      lowWrite,
+      highWrite,
+      increment
+    )
 
     when(io.CSRAddress === lowAddress || io.CSRAddress === userLowAddress) {
-      readData := (if (XLEN == 64) counters(index)
-                   else counters(index)(31, 0))
+      readData := ysyx_26030103_Counter64.ReadWord(counters(index), XLEN)
     }
     if (XLEN == 32) {
       when(io.CSRAddress === highAddress || io.CSRAddress === userHighAddress) {
-        readData := counters(index)(63, 32)
+        readData := ysyx_26030103_Counter64.ReadHalf(counters(index), true.B)
       }
     }
     when(io.CSRAddress === eventAddress) {

@@ -22,6 +22,26 @@ private[mem] trait LSURead {
     }
   }
 
+  private def FinishDirectRead(): Unit = {
+    val finalData = directLoadData
+    when(!(accessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
+      loadDataReg := finalData
+    }
+    loadForwardValid := true.B
+    loadForwardData := finalData
+    loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+    transactionComplete := true.B
+    transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
+    state := stateIdle
+  }
+
+  private def DrainReadOnBadBeat(): Unit = {
+    accessFaultReg := true.B
+    accessFaultResponseReg := Mux(
+      io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
+    state := stateReadDrain
+  }
+
   def readResponseBody(): Unit = {
     if (DCacheEnable) {
       when(dataCacheRequestActive) {
@@ -65,59 +85,23 @@ private[mem] trait LSURead {
               }
             }.otherwise {
               when(io.DataBus.R.RLAST) {
-                val finalData = directLoadData
-                when(!(accessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-                  loadDataReg := finalData
-                }
-                loadForwardValid := true.B
-                loadForwardData := finalData
-                loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
-                transactionComplete := true.B
-                transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
-                state := stateIdle
+                FinishDirectRead()
               }.otherwise {
-                accessFaultReg := true.B
-                accessFaultResponseReg := Mux(
-                  io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-                state := stateReadDrain
+                DrainReadOnBadBeat()
               }
             }
           }.otherwise {
             when(io.DataBus.R.RLAST) {
-              val finalData = directLoadData
-              when(!(accessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-                loadDataReg := finalData
-              }
-              loadForwardValid := true.B
-              loadForwardData := finalData
-              loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
-              transactionComplete := true.B
-              transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
-              state := stateIdle
+              FinishDirectRead()
             }.otherwise {
-              accessFaultReg := true.B
-              accessFaultResponseReg := Mux(
-                io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-              state := stateReadDrain
+              DrainReadOnBadBeat()
             }
           }
         } else {
           when(io.DataBus.R.RLAST) {
-            val finalData = directLoadData
-            when(!(accessFaultReg || io.DataBus.R.RRESP =/= 0.U)) {
-              loadDataReg := finalData
-            }
-            loadForwardValid := true.B
-            loadForwardData := finalData
-            loadForwardFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            transactionComplete := true.B
-            transactionFault := accessFaultReg || io.DataBus.R.RRESP =/= 0.U
-            state := stateIdle
+            FinishDirectRead()
           }.otherwise {
-            accessFaultReg := true.B
-            accessFaultResponseReg := Mux(
-              io.DataBus.R.RRESP =/= 0.U, io.DataBus.R.RRESP, 2.U)
-            state := stateReadDrain
+            DrainReadOnBadBeat()
           }
         }
       }

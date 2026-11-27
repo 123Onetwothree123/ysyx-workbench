@@ -5,6 +5,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_PMARegion
 import _root_.ysyx_26030103.common.ysyx_26030103_PMAOptions
 import _root_.ysyx_26030103.common.ysyx_26030103_PhysicalMemoryMap
 import _root_.ysyx_26030103.common.{ysyx_26030103_KconfigDefaults => KconfigDefaults}
+import _root_.ysyx_26030103.common.{ysyx_26030103_Validation => Validation}
 
 // NPC 的全部 elaboration 期配置：字段对应 Kconfig/环境变量，构造时统一 require 并派生开关。
 case class ysyx_26030103_NPCConfig(
@@ -112,27 +113,7 @@ case class ysyx_26030103_NPCConfig(
     // 性能计数器细分：仅在DicArchCounterEnable打开时有意义。关闭的组在顶层
     // 输出常量，未被读取的叶模块信号会被综合展平/常量传播优化掉，
     // 仿真侧也不再逐拍采样，从而同时节省面积与编译产物。
-    PerfDicArchCounterBasic: Boolean = true,
-    PerfDicArchCounterOpClass: Boolean = true,
-    PerfDicArchCounterMDU: Boolean = true,
-    PerfDicArchCounterIFUStall: Boolean = true,
-    PerfDicArchCounterICache: Boolean = true,
-    PerfDicArchCounterDCache: Boolean = true,
-    PerfDicArchCounterEXUStall: Boolean = true,
-    PerfDicArchCounterLSU: Boolean = true,
-    PerfDicArchCounterIDUStall: Boolean = true,
-    PerfDicArchCounterTrap: Boolean = true,
-    PerfDicArchCounterBranchPred: Boolean = true,
-    PerfDicArchCounterMMU: Boolean = true,
-    PerfDicArchCounterFPU: Boolean = true,
-    PerfDicArchCounterAXI: Boolean = true,
-    PerfDicArchCounterInstMix: Boolean = true,
-    PerfDicArchCounterCacheDetail: Boolean = true,
-    PerfDicArchCounterInterrupt: Boolean = true,
-    PerfDicArchCounterWBuf: Boolean = true,
-    PerfDicArchCounterCSR: Boolean = true,
-    PerfDicArchCounterMDUDetail: Boolean = true,
-    PerfDicArchCounterQueue: Boolean = true,
+    PerfDicArchCounterGroupFlags: Map[String, Boolean] = Map.empty,
     // 架构 PMU：Zicntr 基础计数器始终存在；Zihpm/Sscofpmf 由这里控制。
     RISCVArchPMU: Boolean = false,
     RiscvArchPMUZihpm: Boolean = true,
@@ -148,7 +129,7 @@ case class ysyx_26030103_NPCConfig(
     IDUDecodeMinimizer: ysyx_26030103_IDUDecodeMinimizer =
       ysyx_26030103_IDUDecodeMinimizer.QMC
 ) {
-  require(XLEN == 32 || XLEN == 64,
+  Validation.RequireXLEN(XLEN, "NPCConfig",
     s"XLEN 只允许 32 或 64，收到 XLEN=$XLEN")
   // 是否存在 8 字节架构访存：RV64 的 LD/SD，或 RV32D 的 FLD/FSD。
   // LSU/DCache 的宽访存数据通路、写缓冲高字和 cache line 几何都由
@@ -238,8 +219,7 @@ case class ysyx_26030103_NPCConfig(
   // 非对齐拆分粒度：2 的幂，且不超过总线字节数与 cache line。
   require(!MisalignedSupport || MisalignedGranuleBytes > 0,
     s"MISALIGNED_GRANULE_BYTES 必须为正，收到 $MisalignedGranuleBytes")
-  require(!MisalignedSupport ||
-      (MisalignedGranuleBytes & (MisalignedGranuleBytes - 1)) == 0,
+  require(!MisalignedSupport || Validation.IsPowerOfTwo(MisalignedGranuleBytes),
     s"MISALIGNED_GRANULE_BYTES 必须是 2 的幂，收到 $MisalignedGranuleBytes")
   require(!MisalignedSupport ||
       MisalignedGranuleBytes <= (1 << DCacheBlockSizeLog2),
@@ -255,11 +235,6 @@ case class ysyx_26030103_NPCConfig(
     s"MMU profile XLEN(${MMU.xlen}) 与 NPC XLEN($XLEN) 不一致")
   require(XLEN == 32 || !MMU.enabled || AddressWidth == 64,
     "XLEN=64 HAS_MMU=y 要求 AddressWidth=64")
-  require(XLEN == 32 || !MMU.enabled ||
-      MMU.customGeometry || MMU.standardSv39 || MMU.standardSv48,
-    "XLEN=64 HAS_MMU=y 只支持标准 Sv39/Sv48，或显式 MMU_GEOMETRY_MODE=custom")
-  require(XLEN == 32 || !MMU.enabled || !MMU.customGeometry || MMU.customSatpModeLegal,
-    "XLEN=64 CUSTOM MMU 必须使用 satp MODE 10..15，不能复用标准 8/9")
   // 8 字节访存（RV64 LD/SD 或 RV32D FLD/FSD）要求 DCache 一行
   // 至少容纳两个相邻 32 位 word；LSU/DCache 以 DataWidth=64 处理宽访问。
   require(!HasWideMemAccess || !DCacheEnable || DCacheBlockSizeLog2 >= 3,
@@ -274,61 +249,57 @@ case class ysyx_26030103_NPCConfig(
       "物理地址，Cache 会永远等不到翻译结果；请设置 HAS_MMU=y 或改用 " +
       "MMU_CACHE_MODE=pipt")
   val viptCacheEnabled = MMU.enabled && MMU.cacheMode == "vipt"
+  private case class CacheGeo(
+      name: String,
+      blockLog2: Int,
+      indexBits: Int,
+      enable: Boolean
+  ) {
+    final val AliasGeometry: Boolean = indexBits + blockLog2 > MMU.pageBits
+    final val LineExceedsPage: Boolean = enable && blockLog2 > MMU.pageBits
+    // 只有几何真的会alias时才生成扫描/失效硬件；页内安全几何即使打开该选项也不需要额外逻辑（同物理行必然同index）
+    final val VIPTAliasHardware: Boolean =
+      viptCacheEnabled && enable && MMU.cacheVIPTAliasSafe && AliasGeometry
+  }
+  private val iCacheGeo =
+    CacheGeo("ICache", ICacheBlockSizeLog2, ICacheIndexBits, ICacheEnable)
+  private val dCacheGeo =
+    CacheGeo("DCache", DCacheBlockSizeLog2, DCacheIndexBits, DCacheEnable)
+  private val CacheGeometries = Seq(iCacheGeo, dCacheGeo)
   // VIPT 用虚拟地址选 index，line 必须落在同一虚拟页内：跨页行的不同字节来自
   // 两个可能不连续的物理页，无法用单个物理行 refill，因此即使打开 alias 安全
   // 模式也必须拒绝，并提示改用 PIPT。PIPT 的 index/refill 全来自物理地址，
   // 允许 line > page；物理地址不会被截断到页内偏移。
-  require(
-    !viptCacheEnabled || !ICacheEnable ||
-      ICacheBlockSizeLog2 <= MMU.pageBits,
-    s"VIPT ICache 非法：cache line(${1 << ICacheBlockSizeLog2}B) 大于页大小" +
-      s"(${1 << MMU.pageBits}B)，会跨越虚拟页；VIPT 无法用单个物理行回填。" +
-      s"请改用 MMU_CACHE_MODE=pipt（PIPT 允许 line > page），或增大 " +
-      s"MMU_PAGE_SIZE_BYTES / 减小 ICacheBlockSizeLog2" +
-      s"（ICacheBlockSizeLog2($ICacheBlockSizeLog2), MMU_PAGE_SIZE_BYTES(${1 << MMU.pageBits})）"
-  )
-  require(
-    !viptCacheEnabled || !DCacheEnable ||
-      DCacheBlockSizeLog2 <= MMU.pageBits,
-    s"VIPT DCache 非法：cache line(${1 << DCacheBlockSizeLog2}B) 大于页大小" +
-      s"(${1 << MMU.pageBits}B)，会跨越虚拟页；VIPT 无法用单个物理行回填。" +
-      s"请改用 MMU_CACHE_MODE=pipt（PIPT 允许 line > page），或增大 " +
-      s"MMU_PAGE_SIZE_BYTES / 减小 DCacheBlockSizeLog2" +
-      s"（DCacheBlockSizeLog2($DCacheBlockSizeLog2), MMU_PAGE_SIZE_BYTES(${1 << MMU.pageBits})）"
-  )
   // index 含 VPN 位时，不同 VA 可把同一物理行映射到不同 set。默认仍按
   // 原策略拒绝；显式打开 MMU_CACHE_VIPT_ALIAS_SAFE 后由 Cache 在 refill
   // 安装和 store 完成时扫描 tag 阵列，失效同物理行的其他 set 副本。
-  private val iCacheAliasGeometry =
-    ICacheIndexBits + ICacheBlockSizeLog2 > MMU.pageBits
-  private val dCacheAliasGeometry =
-    DCacheIndexBits + DCacheBlockSizeLog2 > MMU.pageBits
-  require(
-    !viptCacheEnabled || !ICacheEnable || !iCacheAliasGeometry ||
-      MMU.cacheVIPTAliasSafe,
-    s"VIPT ICache 非法：ICacheIndexBits($ICacheIndexBits)+" +
-      s"ICacheBlockSizeLog2($ICacheBlockSizeLog2) 超过页内偏移位数" +
-      s"(${MMU.pageBits})，同一物理行可能出现在不同 set。请显式设置 " +
-      "MMU_CACHE_VIPT_ALIAS_SAFE=y 启用物理行 alias 失效，或增大 " +
-      "MMU_PAGE_SIZE_BYTES / 减小 Cache 索引/块大小，或改用 MMU_CACHE_MODE=pipt"
-  )
-  require(
-    !viptCacheEnabled || !DCacheEnable || !dCacheAliasGeometry ||
-      MMU.cacheVIPTAliasSafe,
-    s"VIPT DCache 非法：DCacheIndexBits($DCacheIndexBits)+" +
-      s"DCacheBlockSizeLog2($DCacheBlockSizeLog2) 超过页内偏移位数" +
-      s"(${MMU.pageBits})，同一物理行可能出现在不同 set。请显式设置 " +
-      "MMU_CACHE_VIPT_ALIAS_SAFE=y 启用物理行 alias 失效，或增大 " +
-      "MMU_PAGE_SIZE_BYTES / 减小 Cache 索引/块大小，或改用 MMU_CACHE_MODE=pipt"
-  )
-  // 只有几何真的会 alias 时才生成扫描/失效硬件；页内安全几何即使打开
-  // 选项也不需要额外逻辑（同物理行必然同 index）。
-  final val ICacheVIPTAliasHardware: Boolean =
-    viptCacheEnabled && ICacheEnable && MMU.cacheVIPTAliasSafe &&
-      iCacheAliasGeometry
-  final val DCacheVIPTAliasHardware: Boolean =
-    viptCacheEnabled && DCacheEnable && MMU.cacheVIPTAliasSafe &&
-      dCacheAliasGeometry
+  CacheGeometries.foreach { geo =>
+    require(
+      !viptCacheEnabled || !geo.enable || geo.blockLog2 <= MMU.pageBits,
+      s"VIPT ${geo.name} 非法：cache line(${1 << geo.blockLog2}B) 大于页大小" +
+        s"(${1 << MMU.pageBits}B)，会跨越虚拟页；VIPT 无法用单个物理行回填。" +
+        s"请改用 MMU_CACHE_MODE=pipt（PIPT 允许 line > page），或增大 " +
+        s"MMU_PAGE_SIZE_BYTES / 减小 ${geo.name}BlockSizeLog2" +
+        s"（${geo.name}BlockSizeLog2(${geo.blockLog2}), MMU_PAGE_SIZE_BYTES(${1 << MMU.pageBits})）"
+    )
+    require(
+      !viptCacheEnabled || !geo.enable || !geo.AliasGeometry ||
+        MMU.cacheVIPTAliasSafe,
+      s"VIPT ${geo.name} 非法：${geo.name}IndexBits(${geo.indexBits})+" +
+        s"${geo.name}BlockSizeLog2(${geo.blockLog2}) 超过页内偏移位数" +
+        s"(${MMU.pageBits})，同一物理行可能出现在不同 set。请显式设置 " +
+        "MMU_CACHE_VIPT_ALIAS_SAFE=y 启用物理行 alias 失效，或增大 " +
+        "MMU_PAGE_SIZE_BYTES / 减小 Cache 索引/块大小，或改用 MMU_CACHE_MODE=pipt"
+    )
+    require(geo.blockLog2 >= 2, s"${geo.name} block必须至少容纳1个32位字")
+    require(geo.indexBits >= 1, s"${geo.name}必须至少包含2个set")
+    require(
+      geo.indexBits + geo.blockLog2 < AddressWidth,
+      s"${geo.name}索引位+块内偏移必须小于地址宽度"
+    )
+  }
+  final val ICacheVIPTAliasHardware: Boolean = iCacheGeo.VIPTAliasHardware
+  final val DCacheVIPTAliasHardware: Boolean = dCacheGeo.VIPTAliasHardware
   // alias 扫描/目录参数只对真正生成 alias 维护硬件的 Cache 生效。
   // parallel_n 的配置宽度在每个 Cache 内按实际 set 数截断：Kconfig 的
   // 静态 range 无法知道 ICache/DCache 各自的 set 数，因此这里给出实际
@@ -337,22 +308,23 @@ case class ysyx_26030103_NPCConfig(
       mode: String,
       configured: Int,
       sets: Int
-  ): Int =
+  ): Int = {
+    if (!ysyx_26030103_MMUProfile.AliasScanModes.contains(mode)) {
+      throw new IllegalArgumentException(
+        s"未知 MMU_CACHE_VIPT_ALIAS_SCAN_MODE: $mode")
+    }
     mode match {
       case "all_sets" => sets
       case "serial" | "directory" => 1
-      case "parallel_n" =>
+      case _ =>
         if (configured <= 0) math.min(KconfigDefaults.MMUCacheVIPTAliasScanWidth, sets)
         else math.min(configured, sets)
-      case other =>
-        throw new IllegalArgumentException(
-          s"未知 MMU_CACHE_VIPT_ALIAS_SCAN_MODE: $other")
     }
+  }
   private def aliasDirectoryEntriesFor(configured: Int, sets: Int): Int = {
     val entries = if (configured <= 0) sets else math.min(configured, sets)
-    require(entries >= 1 && (entries & (entries - 1)) == 0,
+    Validation.RequirePowerOfTwo(entries,
       s"VIPT alias 目录项数($entries) 必须是 2 的幂")
-    entries
   }
   final val ICacheVIPTAliasScanMode: String = MMU.cacheVIPTAliasScanMode
   final val DCacheVIPTAliasScanMode: String = MMU.cacheVIPTAliasScanMode
@@ -378,10 +350,8 @@ case class ysyx_26030103_NPCConfig(
     )
   final val DCacheVIPTAliasEventQueueDepth: Int =
     MMU.cacheVIPTAliasEventQueueDepth
-  final val ICacheLineExceedsPage: Boolean =
-    ICacheEnable && ICacheBlockSizeLog2 > MMU.pageBits
-  final val DCacheLineExceedsPage: Boolean =
-    DCacheEnable && DCacheBlockSizeLog2 > MMU.pageBits
+  final val ICacheLineExceedsPage: Boolean = iCacheGeo.LineExceedsPage
+  final val DCacheLineExceedsPage: Boolean = dCacheGeo.LineExceedsPage
   // PIPT 下 line > page 是受支持配置：索引与 refill 都使用物理地址。
   final val PiptCacheLineExceedsPage: Boolean =
     MMU.enabled && MMU.cacheMode == "pipt" &&
@@ -398,18 +368,6 @@ case class ysyx_26030103_NPCConfig(
   )
   require(BlockSizeLog2 >= 2, "Cache block必须至少容纳1个32位字")
   require(IndexBits >= 1, "Cache必须至少包含2个set")
-  require(ICacheBlockSizeLog2 >= 2, "ICache block必须至少容纳1个32位字")
-  require(ICacheIndexBits >= 1, "ICache必须至少包含2个set")
-  require(
-    ICacheIndexBits + ICacheBlockSizeLog2 < AddressWidth,
-    "ICache索引位+块内偏移必须小于地址宽度"
-  )
-  require(DCacheBlockSizeLog2 >= 2, "DCache block必须至少容纳1个32位字")
-  require(DCacheIndexBits >= 1, "DCache必须至少包含2个set")
-  require(
-    DCacheIndexBits + DCacheBlockSizeLog2 < AddressWidth,
-    "DCache索引位+块内偏移必须小于地址宽度"
-  )
   require(
     IndexBits + BlockSizeLog2 < AddressWidth,
     "Cache地址几何必须留出至少1位tag"
@@ -441,7 +399,7 @@ case class ysyx_26030103_NPCConfig(
   )
   require(PMARegions.nonEmpty, "物理地址图不能为空")
   require(
-    PMARegions.exists(r => ResetAddress >= r.Base && ResetAddress < r.EndExclusive && r.Executable),
+    PMARegions.exists(r => r.Contains(BigInt(ResetAddress)) && r.Executable),
     "ResetAddr必须位于可执行PMA区域"
   )
   require(AXIArbCpuResponseQueueDepth >= 2 && AXIArbCpuResponseQueueDepth <= 16,
@@ -485,8 +443,7 @@ case class ysyx_26030103_NPCConfig(
   final val DMAWindowPresent: Boolean =
     PMARegions.exists { region =>
       region.Readable && region.Writable &&
-      BigInt(region.Base) <= BigInt(DMAWindowBase) &&
-      BigInt(region.EndExclusive) >= BigInt(DMAWindowEnd)
+      region.Covers(DMAWindowBase, ChipLinkMemorySize)
     }
   /** DMA 地址级 snoop 需要 ICache/DCache 生成行失效硬件；没有 DMA 窗口
     * 时仲裁器根本不会收到入站写，直接不生成额外比较/握手逻辑。
@@ -494,8 +451,8 @@ case class ysyx_26030103_NPCConfig(
   final val DMAHardwareSnoop: Boolean =
     DMACoherence == ysyx_26030103_DMACoherence.HardwareSnoop &&
       DMAWindowPresent
-  require(
-    Integer.bitCount(WBufDepth) == 1,
+  Validation.RequirePowerOfTwo(
+    WBufDepth,
     "WBufDepth必须是2的幂(1/2/4/8/16)"
   )
   require(MDUImpl != ysyx_26030103_MDUImpl.External,
@@ -513,7 +470,7 @@ case class ysyx_26030103_NPCConfig(
   require(
     ALUProfile.Adder != ysyx_26030103_ALUAdderImpl.CarrySelect ||
       (ALUProfile.AdderParams.CarrySelectGroup >= 2 &&
-        Integer.bitCount(ALUProfile.AdderParams.CarrySelectGroup) == 1 &&
+        Validation.IsPowerOfTwo(ALUProfile.AdderParams.CarrySelectGroup) &&
         XLEN % ALUProfile.AdderParams.CarrySelectGroup == 0),
     "ALU_CARRY_SELECT_GROUP 必须是能整除 XLEN 的 2 的幂" +
       s"（收到 ${ALUProfile.AdderParams.CarrySelectGroup}，XLEN=$XLEN）"
@@ -529,7 +486,7 @@ case class ysyx_26030103_NPCConfig(
     "MULRadix必须是大于等于2的2的幂"
   )
   require(
-    mulParams.Width >= 32 && Integer.bitCount(mulParams.Width) == 1,
+    mulParams.Width >= 32 && Validation.IsPowerOfTwo(mulParams.Width),
     "MULWidth必须是不小于32的2的幂(32/64/128/... )"
   )
   // 乘法器内部操作数宽度至少覆盖架构 XLEN。RV32 时与 MULWidth 完全一致；
@@ -578,29 +535,11 @@ case class ysyx_26030103_NPCConfig(
     SDBEnable || DiffTestEnable || MemoryTraceEnable
 
   // 性能计数器分组总开关。
-  private val perfDicArchCounterGroupFlags: Map[String, Boolean] = Map(
-    "basic" -> PerfDicArchCounterBasic,
-    "opclass" -> PerfDicArchCounterOpClass,
-    "mdu" -> PerfDicArchCounterMDU,
-    "ifu_stall" -> PerfDicArchCounterIFUStall,
-    "icache" -> PerfDicArchCounterICache,
-    "dcache" -> PerfDicArchCounterDCache,
-    "exu_stall" -> PerfDicArchCounterEXUStall,
-    "lsu" -> PerfDicArchCounterLSU,
-    "idu_stall" -> PerfDicArchCounterIDUStall,
-    "trap" -> PerfDicArchCounterTrap,
-    "branch_pred" -> PerfDicArchCounterBranchPred,
-    "mmu" -> PerfDicArchCounterMMU,
-    "fpu" -> PerfDicArchCounterFPU,
-    "axi" -> PerfDicArchCounterAXI,
-    "inst_mix" -> PerfDicArchCounterInstMix,
-    "cache_detail" -> PerfDicArchCounterCacheDetail,
-    "interrupt" -> PerfDicArchCounterInterrupt,
-    "wbuf" -> PerfDicArchCounterWBuf,
-    "csr" -> PerfDicArchCounterCSR,
-    "mdu_detail" -> PerfDicArchCounterMDUDetail,
-    "queue" -> PerfDicArchCounterQueue
-  )
+  private val perfDicArchCounterGroupFlags: Map[String, Boolean] =
+    ysyx_26030103_PerfDicArchCounterCatalog.PerfDicArchCounterGroups.map {
+      case (group, _) =>
+        group -> PerfDicArchCounterGroupFlags.getOrElse(group, true)
+    }.toMap
   // 单计数器实际生效集合 = 主开关 ∩ 组总开关 ∩ 单计数器开关。
   final val EnabledPerfDicArchCounters: Set[String] = {
     if (!DicArchCounterEnable) { Set.empty }
@@ -629,10 +568,6 @@ case class ysyx_26030103_NPCConfig(
     EnablePerfDicArchCounter("execution_active") ||
       Seq("alu_op", "mem_op", "csr_op", "branch_op").exists(EnablePerfDicArchCounter)
   final val EnableAnyObservability: Boolean = EnableRetireTrace
-  private def onOff(flag: Boolean): String = {
-    if (flag) { "on" }
-    else { "off" }
-  }
   def ISAString: String = {
     val mExt = if (UseM) { "M" }
     else { "" }
@@ -659,13 +594,63 @@ case class ysyx_26030103_NPCConfig(
       s"$groupText(${EnabledPerfDicArchCounters.size}/${ysyx_26030103_PerfDicArchCounterCatalog.AllPerfDicArchCounters.size})"
     }
   }
+  def PiptLineReport: Option[String] =
+    if (!PiptCacheLineExceedsPage) { None }
+    else {
+      Some(
+        "PIPT cache line 大于 MMU 页大小：" +
+          "索引与 refill 使用完整物理地址，不按页内偏移截断；" +
+          "VIPT 下该几何会在 elaboration 期被拒绝。"
+      )
+    }
+  def VIPTAliasReport: Option[String] = {
+    if (!ICacheVIPTAliasHardware && !DCacheVIPTAliasHardware) { None }
+    else {
+      val mode = MMU.cacheVIPTAliasScanMode
+      val detail = mode match {
+        case "parallel_n" =>
+          s"ICache=$ICacheVIPTAliasScanWidth/" +
+            s"DCache=$DCacheVIPTAliasScanWidth set/拍；"
+        case "directory" =>
+          s"目录项 ICache=$ICacheVIPTAliasDirectoryEntries/" +
+            s"DCache=$DCacheVIPTAliasDirectoryEntries；"
+        case "serial" => "serial 模式在扫描期间反压新请求；"
+        case _ => ""
+      }
+      Some(
+        s"VIPT alias 维护已生成：scan_mode=$mode；$detail" +
+          "refill/store/snoop 在旧副本清理完成前不交付新请求。"
+      )
+    }
+  }
+  def ICacheCoherenceReport: String =
+    s"ICache 一致性: ${ICacheCoherence.Name}" +
+      (if (ICacheCoherence == ysyx_26030103_ICacheCoherence.HardwareSnoop) {
+         if (ICacheEnable) "（store B 完成时失效对应行；仍需 fence.i）"
+         else "（未生效：ICACHE=n）"
+       } else "（标准语义：store 后需执行 fence.i）")
+  def DMACoherenceReport: String =
+    s"DMA 一致性: ${DMACoherence.Name}" +
+      (if (DMACoherence == ysyx_26030103_DMACoherence.Uncached) {
+         if (DMAWindowPresent)
+           "（ChipLink DMA 窗口在 CPU 侧不可缓存，绕过 DCache/ICache）"
+         else "（未生效：当前 PMA 没有可代理的 DMA 窗口，CHIPLINK=n？）"
+       } else if (DMACoherence == ysyx_26030103_DMACoherence.HardwareSnoop) {
+         if (!DMAWindowPresent)
+           "（未生效：当前 PMA 没有可代理的 DMA 窗口，CHIPLINK=n？）"
+         else if (!ICacheEnable && !DCacheEnable)
+           "（未生效：ICACHE=n 且 DCACHE=n，没有可失效的缓存）"
+         else
+           "（DMA 写 B 到达后按物理字节范围失效对应行，B 等待失效完成；" +
+             "DMA 读不产生动作，已取入流水线的旧指令仍需 fence.i）"
+       } else "（保持 DMA 写 B 完成时失效 DCache；软件负责 DMA 完成顺序）")
   def Describe: String = {
     val isa = ISAString
-    val mOff = onOff(UseM)
-    val aOff = onOff(UseA)
-    val cOff = onOff(UseC)
-    val fOff = onOff(UseF)
-    val dOff = onOff(UseD)
+    val mOff = Validation.OnOff(UseM)
+    val aOff = Validation.OnOff(UseA)
+    val cOff = Validation.OnOff(UseC)
+    val fOff = Validation.OnOff(UseF)
+    val dOff = Validation.OnOff(UseD)
     val iCacheDesc =
       if (ICacheEnable) {
         s"${1 << ICacheBlockSizeLog2}B/${1 << ICacheIndexBits}sets"
@@ -691,7 +676,7 @@ case class ysyx_26030103_NPCConfig(
             s"(entries=${ICacheVIPTAliasDirectoryEntries}/" +
               s"${DCacheVIPTAliasDirectoryEntries})"
           } else { "" }
-        s",vipt_alias_safe=${onOff(MMU.cacheVIPTAliasSafe)}$active" +
+        s",vipt_alias_safe=${Validation.OnOff(MMU.cacheVIPTAliasSafe)}$active" +
           s",vipt_alias_scan=${MMU.cacheVIPTAliasScanMode}$scanDetail$dirDetail"
       }
     // PIPT 是唯一允许 line > page 的模式；把它显式打印出来，避免出现
@@ -750,17 +735,17 @@ case class ysyx_26030103_NPCConfig(
       s"iter=${mulParams.ShiftAdd.IterBits}, " +
       s"pipeline=${mulParams.Compression.Pipeline}, " +
       s"split=${mulParams.ShiftAdd.Split}, " +
-      s"mul_early_out=${onOff(mulParams.ShiftAdd.EarlyOut)}, " +
-      s"div_early_out=${onOff(MDUProfile.DIV.For(DIVImpl).EarlyOut)}, " +
+      s"mul_early_out=${Validation.OnOff(mulParams.ShiftAdd.EarlyOut)}, " +
+      s"div_early_out=${Validation.OnOff(MDUProfile.DIV.For(DIVImpl).EarlyOut)}, " +
       s"ICache=$iCacheDesc, DCache=$dCacheDesc$viptAliasDesc$largeLineDesc, " +
       s"icache_coherence=$iCacheCoherenceDesc, dma_coherence=$DMACoherenceDesc, " +
       s"icache_storage=${ICacheStorage.Name}, dcache_storage=${DCacheStorage.Name}, WBuf=$WBufDepth, " +
       s"BTB=${1 << BTBBits}x$BTBWays, JalBTB=${1 << JalBTBBits}x$JalBTBWays, " +
-      s"RAS=${1 << RASBits}, observe=${onOff(EnableAnyObservability)}, " +
-      s"gpr_debug=${onOff(EnableDynamicGPRDebug)}, dic_arch_counter=${onOff(DicArchCounterEnable)}, " +
-      s"riscv_arch_pmu=${onOff(RISCVArchPMU)}, " +
-      s"riscv_arch_pmu_zihpm=${onOff(RiscvArchPMUZihpm)}, " +
-      s"riscv_arch_pmu_sscofpmf=${onOff(RiscvArchPMUSscofpmf)}, " +
+      s"RAS=${1 << RASBits}, observe=${Validation.OnOff(EnableAnyObservability)}, " +
+      s"gpr_debug=${Validation.OnOff(EnableDynamicGPRDebug)}, dic_arch_counter=${Validation.OnOff(DicArchCounterEnable)}, " +
+      s"riscv_arch_pmu=${Validation.OnOff(RISCVArchPMU)}, " +
+      s"riscv_arch_pmu_zihpm=${Validation.OnOff(RiscvArchPMUZihpm)}, " +
+      s"riscv_arch_pmu_sscofpmf=${Validation.OnOff(RiscvArchPMUSscofpmf)}, " +
       s"dic_arch_counter_events=${PerfDicArchCounterList}, " +
       s"mmu=${MMU.describe}, " +
       s"reset=0x${ResetAddress.toHexString}"

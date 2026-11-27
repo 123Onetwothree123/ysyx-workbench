@@ -22,45 +22,17 @@ class ysyx_26030103_PTWToAXI(
     AXIReadSlots <= ysyx_26030103_AXIReadID.PTWSlots,
     "PTWToAXI AXI 读槽位数必须在 1..13（ID 3..15）")
   private val busWide = DataWidth == 64
+  private val ReadIDWidth = ysyx_26030103_AXIReadID.IDWidth
   val io = IO(new Bundle {
     val request = Flipped(Decoupled(new ysyx_26030103_PTEBusRequest(AddressWidth)))
     val response = Decoupled(new ysyx_26030103_PTEBusResponse)
-    val AXI = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
-    val AXIWrite = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
+    val AXI = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, ReadIDWidth)
+    val AXIWrite = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, ReadIDWidth)
   })
 
-  private val ReadBaseID = ysyx_26030103_AXIReadID.PTWBase.U(4.W)
+  private val ReadBaseID = ysyx_26030103_AXIReadID.PTWBase.U(ReadIDWidth.W)
   private val ReadLastID =
     (ysyx_26030103_AXIReadID.PTWBase + AXIReadSlots).U
-
-  def tieOffWrite(m: ysyx_26030103_AXI5IO): Unit = {
-    m.AW.AWVALID := false.B
-    m.AW.AWID := 0.U
-    m.AW.AWADDR := 0.U
-    m.AW.AWLEN := 0.U
-    m.AW.AWSIZE := 2.U
-    m.AW.AWBURST := 0.U
-    m.AW.AWPROT := 0.U
-    m.AW.AWCACHE := 0.U
-    m.AW.AWQOS := 0.U
-    m.W.WVALID := false.B
-    m.W.WDATA := 0.U
-    m.W.WSTRB := 0.U
-    m.W.WLAST := false.B
-    m.B.BREADY := false.B
-  }
-  def tieOffRead(m: ysyx_26030103_AXI5IO): Unit = {
-    m.AR.ARVALID := false.B
-    m.AR.ARID := 0.U
-    m.AR.ARADDR := 0.U
-    m.AR.ARLEN := 0.U
-    m.AR.ARSIZE := 2.U
-    m.AR.ARBURST := 0.U
-    m.AR.ARPROT := 0.U
-    m.AR.ARCACHE := 0.U
-    m.AR.ARQOS := 0.U
-    m.R.RREADY := false.B
-  }
 
   // 读/写分流，避免一笔 A/D 写回挡住后续页表读。
   val readQueue = Module(new Queue(new ysyx_26030103_PTEBusRequest(AddressWidth), busDepth,
@@ -74,14 +46,13 @@ class ysyx_26030103_PTWToAXI(
   io.request.ready := Mux(io.request.bits.write,
     writeQueue.io.enq.ready, readQueue.io.enq.ready)
 
-  tieOffWrite(io.AXI)
-  tieOffRead(io.AXIWrite)
+  ysyx_26030103_AXI5Idle.MasterOut(io.AXI, read = false)
+  ysyx_26030103_AXI5Idle.MasterOut(io.AXIWrite, write = false)
 
-  class ReadSlot extends Bundle {
+  class ReadSlot
+      extends ysyx_26030103_AXI5BurstShape(AddressWidth, ReadIDWidth) {
     val busy = Bool()
     val done = Bool()
-    val OrigID = UInt(4.W)
-    val address = UInt(AddressWidth.W)
     val data = UInt(32.W)
     val fault = Bool()
   }
@@ -101,7 +72,7 @@ class ysyx_26030103_PTWToAXI(
   val freeIndex = Mux(ARPending, ARSlotReg,
     PriorityEncoder(slotFree))
   val readIssue = readQueue.io.deq.valid && (ARPending || anySlotFree)
-  val freeAXIID = (ReadBaseID + freeIndex.pad(4))(3, 0)
+  val freeAXIID = (ReadBaseID + freeIndex.pad(ReadIDWidth))(ReadIDWidth - 1, 0)
 
   io.AXI.AR.ARVALID := readIssue
   io.AXI.AR.ARID := freeAXIID
@@ -124,7 +95,7 @@ class ysyx_26030103_PTWToAXI(
   when(readQueue.io.deq.fire) {
     readSlot(freeIndex).busy := true.B
     readSlot(freeIndex).done := false.B
-    readSlot(freeIndex).OrigID := readQueue.io.deq.bits.ID
+    readSlot(freeIndex).ID := readQueue.io.deq.bits.ID
     readSlot(freeIndex).address := readQueue.io.deq.bits.address
     readSlot(freeIndex).data := 0.U
     readSlot(freeIndex).fault := false.B
@@ -163,7 +134,7 @@ class ysyx_26030103_PTWToAXI(
   val AWDone = RegInit(false.B)
   val wDone = RegInit(false.B)
   val writeDone = RegInit(false.B)
-  val WriteOrigID = RegInit(0.U(4.W))
+  val WriteOrigID = RegInit(0.U(ReadIDWidth.W))
   val writeFault = RegInit(false.B)
   val writeHead = writeQueue.io.deq.bits
 
@@ -222,7 +193,7 @@ class ysyx_26030103_PTWToAXI(
   val anyReadDone = doneVec.reduce(_ || _)
   val doneIndex = PriorityEncoder(doneVec)
   io.response.valid := writeDone || anyReadDone
-  io.response.bits.ID := Mux(writeDone, WriteOrigID, readSlot(doneIndex).OrigID)
+  io.response.bits.ID := Mux(writeDone, WriteOrigID, readSlot(doneIndex).ID)
   io.response.bits.data := Mux(writeDone, 0.U, readSlot(doneIndex).data)
   io.response.bits.fault := Mux(writeDone, writeFault, readSlot(doneIndex).fault)
   when(io.response.fire) {

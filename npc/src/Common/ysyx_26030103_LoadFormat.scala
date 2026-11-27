@@ -32,8 +32,8 @@ object ysyx_26030103_LoadFormat {
       if (ResultWidth == bits) {
         value
       } else {
-        Mux(signed, Cat(Fill(ResultWidth - bits, value(bits - 1)), value),
-          Cat(0.U((ResultWidth - bits).W), value))
+        Mux(signed, ysyx_26030103_Width.Sext(value, bits, ResultWidth),
+          ysyx_26030103_Width.Zext(value, bits, ResultWidth))
       }
     val byteResult = extend(byteData, 8)
     val halfResult = extend(halfData, 16)

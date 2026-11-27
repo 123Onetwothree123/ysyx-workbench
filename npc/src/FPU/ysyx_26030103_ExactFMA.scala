@@ -226,13 +226,8 @@ class ysyx_26030103_ExactFMA(
     0.U((totalWidth - 1).W)
   )
   private val exactResult = Mux(dZero, cancelZero, exactBits)
-  private val exactFlags = {
-    val width = ysyx_26030103_FPUFlags.Width
-    val zero = 0.U(width.W)
-    Mux(exactOf, (1 << ysyx_26030103_FPUFlags.OF).U(width.W), zero) |
-      Mux(exactUf, (1 << ysyx_26030103_FPUFlags.UF).U(width.W), zero) |
-      Mux(exactNx, (1 << ysyx_26030103_FPUFlags.NX).U(width.W), zero)
-  }
+  private val exactFlags =
+    ysyx_26030103_FPUFlags.Pack(false.B, false.B, exactOf, exactUf, exactNx)
 
   // 特殊值结果
   private val canonicalNaN = Cat(
@@ -270,7 +265,7 @@ class ysyx_26030103_ExactFMA(
   )
   private val flags = Mux(
     nanResult,
-    Cat(nv, 0.U(ysyx_26030103_FPUFlags.NV.W)),
+    ysyx_26030103_FPUFlags.Only(ysyx_26030103_FPUFlags.NV, nv),
     Mux(
       prodInf || cInf || prodZero,
       0.U(ysyx_26030103_FPUFlags.Width.W),

@@ -1,5 +1,6 @@
 package ysyx_26030103.exu
 import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
+import _root_.ysyx_26030103.common.ysyx_26030103_Counter64
 import chisel3._
 import chisel3.util._
 // 64 位周期计数器。RV32 通过 mcycle/mcycleh 访问高低半部；
@@ -17,20 +18,15 @@ class ysyx_26030103_mcycle(val XLEN: Int = 32) extends Module {
     val rdataFull = Output(UInt(64.W))
   })
   val counter = withClockAndReset(io.clock, io.reset) { RegInit(0.U(64.W)) }
-  when(io.Enable) {
-    counter := counter + 1.U
-  }
-  when(io.wen) {
-    if (XLEN == 64) {
-      counter := io.wdata
-    } else {
-      when(io.SelectHigh) {
-        counter := Cat(io.wdata, counter(31, 0))
-      }.otherwise {
-        counter := Cat(counter(63, 32), io.wdata)
-      }
-    }
-  }
-  io.rdata := Mux(io.SelectHigh, counter(63, 32), counter(31, 0))
+  counter := ysyx_26030103_Counter64.UpdateValue(
+    counter,
+    io.wdata,
+    XLEN,
+    io.SelectHigh,
+    io.wen && !io.SelectHigh,
+    io.wen && io.SelectHigh,
+    io.Enable
+  )
+  io.rdata := ysyx_26030103_Counter64.ReadHalf(counter, io.SelectHigh)
   io.rdataFull := counter
 }

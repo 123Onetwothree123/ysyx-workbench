@@ -23,14 +23,14 @@ object ysyx_26030103_ALUImpl {
 
   val All: Seq[ysyx_26030103_ALUImpl] = Seq(Standard, Compact, External)
 
-  def FromString(value: String): ysyx_26030103_ALUImpl = value.trim.toLowerCase match {
-    case "standard" => Standard
-    case "compact"  => Compact
-    case "external" => External
-    case other =>
-      throw new IllegalArgumentException(
-        s"未知 ALU_IMPL=$other；只允许 ${All.map(_.Name).mkString("/")}"
-      )
+  def FromString(value: String): ysyx_26030103_ALUImpl = {
+    val table: Seq[(String, ysyx_26030103_ALUImpl)] =
+      Seq("standard" -> Standard, "compact" -> Compact, "external" -> External)
+    ysyx_26030103_NameEnum.Select(
+      value.trim.toLowerCase,
+      table,
+      other => s"未知 ALU_IMPL=$other；只允许 ${ysyx_26030103_NameEnum.Names(table)}"
+    )
   }
 }
 
@@ -59,19 +59,23 @@ object ysyx_26030103_ALUAdderImpl {
   val All: Seq[ysyx_26030103_ALUAdderImpl] =
     Seq(Native, Ripple, CarrySelect, CarryLookahead, Elau)
 
-  def FromString(value: String): ysyx_26030103_ALUAdderImpl =
-    value.trim.toLowerCase match {
-      case "native"          => Native
-      case "ripple"          => Ripple
-      case "carry_select"    => CarrySelect
-      case "carry_lookahead" => CarryLookahead
-      case "elau"            => Elau
-      case other =>
-        throw new IllegalArgumentException(
-          s"未知 ALU_ADDER_IMPL=$other；只允许 " +
-            All.map(_.Name).mkString("/")
-        )
-    }
+  def FromString(value: String): ysyx_26030103_ALUAdderImpl = {
+    val table: Seq[(String, ysyx_26030103_ALUAdderImpl)] =
+      Seq(
+        "native" -> Native,
+        "ripple" -> Ripple,
+        "carry_select" -> CarrySelect,
+        "carry_lookahead" -> CarryLookahead,
+        "elau" -> Elau
+      )
+    ysyx_26030103_NameEnum.Select(
+      value.trim.toLowerCase,
+      table,
+      other =>
+        s"未知 ALU_ADDER_IMPL=$other；只允许 " +
+          ysyx_26030103_NameEnum.Names(table)
+    )
+  }
 }
 
 // ELAU AddC 的 speed：上游 lau_pkg::speed_e 为 SLOW=0/MEDIUM=1/FAST=2；
@@ -97,15 +101,15 @@ object ysyx_26030103_ElauSpeed {
 
   val All: Seq[ysyx_26030103_ElauSpeed] = Seq(Slow, Medium, Fast)
 
-  def FromString(value: String): ysyx_26030103_ElauSpeed =
-    value.trim.toLowerCase match {
-      case "slow"   => Slow
-      case "medium" => Medium
-      case "fast"   => Fast
-      case other =>
-        throw new IllegalArgumentException(
-          s"未知 ALU_ELAU_SPEED=$other；只允许 " +
-            All.map(_.Name).mkString("/")
-        )
-    }
+  def FromString(value: String): ysyx_26030103_ElauSpeed = {
+    val table: Seq[(String, ysyx_26030103_ElauSpeed)] =
+      Seq("slow" -> Slow, "medium" -> Medium, "fast" -> Fast)
+    ysyx_26030103_NameEnum.Select(
+      value.trim.toLowerCase,
+      table,
+      other =>
+        s"未知 ALU_ELAU_SPEED=$other；只允许 " +
+          ysyx_26030103_NameEnum.Names(table)
+    )
+  }
 }

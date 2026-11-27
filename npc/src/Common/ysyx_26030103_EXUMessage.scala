@@ -1,7 +1,28 @@
 package ysyx_26030103.common
 import chisel3._
 
-class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
+trait ysyx_26030103_DecodedToMem {
+  def Instruction: UInt
+  def Rd: UInt
+  def RegisterWrite: Bool
+  def WBSelect: UInt
+  def MemoryValid: Bool
+  def MemoryWrite: Bool
+  def WidthSelect: UInt
+  def LoadSigned: Bool
+  def StoreData: UInt
+  def IsAtomic: Bool
+  def AtomicOp: UInt
+  def FPRegisterWrite: Bool
+  def FPWriteData: UInt
+  def FP64: Bool
+  def PC: UInt
+  def snpc: UInt
+}
+
+class ysyx_26030103_EXUMessage(val XLEN: Int = 32)
+    extends Bundle
+    with ysyx_26030103_DecodedToMem {
   ysyx_26030103_XLENRequire(XLEN, "EXUMessage")
   // 与提交记录同行传递，供退休级调试/trace精确对齐。
   // Instruction 保留原始编码（16 位压缩指令零扩展）。
@@ -50,4 +71,24 @@ class ysyx_26030103_EXUMessage(val XLEN: Int = 32) extends Bundle {
   val FP64 = Bool()
 
   val PC = UInt(XLEN.W)
+
+  def FromIDU(in: ysyx_26030103_IDUMessage): Unit = {
+    this := 0.U.asTypeOf(new ysyx_26030103_EXUMessage(XLEN))
+    Instruction := in.Instruction
+    Rd := in.Rd
+    RegisterWrite := in.RegisterWrite
+    WBSelect := in.WBSelect
+    MemoryValid := in.MemoryValid
+    MemoryWrite := in.MemoryWrite
+    WidthSelect := in.WidthSelect
+    LoadSigned := in.LoadSigned
+    StoreData := in.StoreData
+    IsAtomic := in.IsAtomic
+    AtomicOp := in.AtomicOp
+    FPRegisterWrite := in.FPRegisterWrite
+    FPWriteData := in.FPWriteData
+    FP64 := in.FP64
+    PC := in.PC
+    snpc := in.snpc
+  }
 }

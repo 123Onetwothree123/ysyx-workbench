@@ -1,5 +1,6 @@
 package ysyx_26030103.exu
 import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
+import _root_.ysyx_26030103.common.ysyx_26030103_Width
 import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction._
@@ -28,12 +29,6 @@ class ysyx_26030103_ALUResultSelect(val XLEN: Int = 32) extends Module {
     val sraw = Input(UInt(32.W))
     val result = Output(UInt(XLEN.W))
   })
-  private def sextWord(value: UInt): UInt =
-    if (XLEN == 32) {
-      value
-    } else {
-      Cat(Fill(XLEN - 32, value(31)), value)
-    }
   // deepseek真是个蠢材啊，复查代码，居然还是用muxlookup
   // 我现在复查加重写，先把控制码译成之前Verilog时候的one-hot的结构，
   // 再用Mux1H做成AND和OR选择，避免MuxLookup的优先级版本的一大堆mux，
@@ -44,11 +39,11 @@ class ysyx_26030103_ALUResultSelect(val XLEN: Int = 32) extends Module {
   private val wordMappings =
     if (XLEN == 64) {
       Seq(
-        select(ADDW) -> sextWord(io.addw),
-        select(SUBW) -> sextWord(io.subw),
-        select(SLLW) -> sextWord(io.sllw),
-        select(SRLW) -> sextWord(io.srlw),
-        select(SRAW) -> sextWord(io.sraw)
+        select(ADDW) -> ysyx_26030103_Width.Sext32(io.addw, XLEN),
+        select(SUBW) -> ysyx_26030103_Width.Sext32(io.subw, XLEN),
+        select(SLLW) -> ysyx_26030103_Width.Sext32(io.sllw, XLEN),
+        select(SRLW) -> ysyx_26030103_Width.Sext32(io.srlw, XLEN),
+        select(SRAW) -> ysyx_26030103_Width.Sext32(io.sraw, XLEN)
       )
     } else {
       Nil

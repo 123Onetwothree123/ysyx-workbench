@@ -1,5 +1,6 @@
 package ysyx_26030103.mmu
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
+import _root_.ysyx_26030103.common.ysyx_26030103_RingBuffer
 
 import chisel3._
 import chisel3.util._
@@ -15,11 +16,7 @@ class ysyx_26030103_TLBMissQueue(
   require(entries >= 1, "TLB miss queue 深度必须 >= 1")
   require(width >= 1, "TLB miss queue 数据宽度必须 >= 1")
 
-  private val pointerBits   = log2Ceil(entries.max(2))
   private val countBits = log2Ceil(entries + 1)
-  // entries=1 时 Vec 动态索引位宽必须为 0，避免无效的 1 位索引告警。
-  private def pointerIndex(pointer: UInt): UInt =
-    if (entries == 1) 0.U(0.W) else pointer
 
   val io = IO(new Bundle {
     val enq       = Flipped(Decoupled(UInt(width.W)))
@@ -29,35 +26,17 @@ class ysyx_26030103_TLBMissQueue(
     val occupancy = Output(UInt(countBits.W))
   })
 
-  val mem           = RegInit(VecInit(Seq.fill(entries)(0.U(width.W))))
-  val head          = RegInit(0.U(pointerBits.W))
-  val tail          = RegInit(0.U(pointerBits.W))
-  val count         = RegInit(0.U(countBits.W))
-  private val full  = count === entries.U
-  private val empty = count === 0.U
+  private val MissQueue = Module(
+    new ysyx_26030103_RingBuffer(entries, width, DequeueBypass = false)
+  )
 
-  io.enq.ready := !full
-  io.deq.valid := !empty
-  io.deq.bits  := mem(pointerIndex(head))
-  io.occupancy := count
+  io.enq.ready := MissQueue.io.HasSpace
+  io.deq.valid := !MissQueue.io.Empty
+  io.deq.bits  := MissQueue.io.HeadData
+  io.occupancy := MissQueue.io.Occupancy
 
-  // enq 与 deq 同拍时 tail/head 各自前进，count 保持不变。由于 deq.bits
-  // 组合读取的是旧 head，而写口只更新 tail，同拍读写同一物理槽位也不会
-  // 把新数据错误地送给本拍出队者。
-  when(io.flush) {
-    head  := 0.U
-    tail  := 0.U
-    count := 0.U
-  }.elsewhen(io.enq.fire && io.deq.fire) {
-    mem(pointerIndex(tail)) := io.enq.bits
-    head                := Mux(head === (entries - 1).U, 0.U, head + 1.U)
-    tail                := Mux(tail === (entries - 1).U, 0.U, tail + 1.U)
-  }.elsewhen(io.enq.fire) {
-    mem(pointerIndex(tail)) := io.enq.bits
-    tail                := Mux(tail === (entries - 1).U, 0.U, tail + 1.U)
-    count               := count + 1.U
-  }.elsewhen(io.deq.fire) {
-    head  := Mux(head === (entries - 1).U, 0.U, head + 1.U)
-    count := count - 1.U
-  }
+  MissQueue.io.Enqueue     := io.enq.fire
+  MissQueue.io.EnqueueData := io.enq.bits
+  MissQueue.io.Dequeue     := io.deq.fire
+  MissQueue.io.Flush       := io.flush
 }

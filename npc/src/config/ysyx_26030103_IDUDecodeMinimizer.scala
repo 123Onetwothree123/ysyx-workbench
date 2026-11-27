@@ -28,18 +28,22 @@ object ysyx_26030103_IDUDecodeMinimizer {
   val All: Seq[ysyx_26030103_IDUDecodeMinimizer] =
     Seq(QMC, Espresso, Auto, None, Bdd, Sat)
 
-  def FromString(value: String): ysyx_26030103_IDUDecodeMinimizer =
-    value.trim.toLowerCase match {
-      case "qmc"      => QMC
-      case "espresso" => Espresso
-      case "auto"     => Auto
-      case "none"     => None
-      case "bdd"      => Bdd
-      case "sat"      => Sat
-      case other =>
-        throw new IllegalArgumentException(
-          s"未知 IDU_DECODE_MINIMIZER=$other；只允许 " +
-            All.map(_.Name).mkString("/")
-        )
-    }
+  def FromString(value: String): ysyx_26030103_IDUDecodeMinimizer = {
+    val table: Seq[(String, ysyx_26030103_IDUDecodeMinimizer)] =
+      Seq(
+        "qmc" -> QMC,
+        "espresso" -> Espresso,
+        "auto" -> Auto,
+        "none" -> None,
+        "bdd" -> Bdd,
+        "sat" -> Sat
+      )
+    ysyx_26030103_NameEnum.Select(
+      value.trim.toLowerCase,
+      table,
+      other =>
+        s"未知 IDU_DECODE_MINIMIZER=$other；只允许 " +
+          ysyx_26030103_NameEnum.Names(table)
+    )
+  }
 }

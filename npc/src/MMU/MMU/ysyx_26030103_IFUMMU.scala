@@ -1,6 +1,7 @@
 package ysyx_26030103.mmu
 import _root_.ysyx_26030103.common.ysyx_26030103_XLENRequire
 import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
+import _root_.ysyx_26030103.common.ysyx_26030103_RISCVFields
 
 import chisel3._
 import chisel3.util._
@@ -45,10 +46,8 @@ class ysyx_26030103_IFUMMU(
   val faultReg = RegInit(false.B)
   val faultCauseReg = RegInit(0.U(4.W))
   val faultVirtualAddressReg = RegInit(0.U(XLEN.W))
-  // RV64 satp.MODE 在 bit 63:60；RV32 在 bit 31。
-  private def satpMode(satp: UInt): UInt =
-    if (XLEN == 32) satp(31) else satp(63, 60)
-  val bypass = satpMode(io.satp) === 0.U || io.privilege === 3.U
+  val bypass = ysyx_26030103_RISCVFields.SatpMode(io.satp, XLEN) === 0.U ||
+    io.privilege === 3.U
 
   io.request.valid := false.B
   io.request.bits := 0.U.asTypeOf(new ysyx_26030103_MMURequest(XLEN, AddressWidth))

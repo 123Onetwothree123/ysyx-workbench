@@ -187,8 +187,7 @@ case class ysyx_26030103_MMUProfile(
   require(Set("in_order", "out_of_order").contains(PTWOrder),
     "MMU_PTW_ORDER 必须是 in_order/out_of_order")
   require(
-    Set("all_sets", "serial", "parallel_n", "directory")
-      .contains(cacheVIPTAliasScanMode),
+    ysyx_26030103_MMUProfile.AliasScanModes.contains(cacheVIPTAliasScanMode),
     "MMU_CACHE_VIPT_ALIAS_SCAN_MODE 必须是 all_sets/serial/parallel_n/directory"
   )
   // parallel_n 的宽度在真正生成硬件的 Cache 内按 sets 截断；这里只校验
@@ -218,8 +217,8 @@ case class ysyx_26030103_MMUProfile(
   require(!enabled || hasS,
     "HAS_MMU=y 需要 HAS_S=y：MMU/Sv32/Sv39/Sv48 依赖 S 模式 satp/页错误入口；请设置 HAS_S=y 或 HAS_MMU=n")
   // source 0 保留，UART 固定使用 source 10，因此至少需要 11 个 source。
-  require(PLICSources > 10 && PLICSources <= 1024,
-    s"PLIC_SOURCES=$PLICSources 必须大于 10（UART source 10）且不超过 1024")
+  require(PLICSources > ysyx_26030103_MMUProfile.UartPLICSource && PLICSources <= 1024,
+    s"PLIC_SOURCES=$PLICSources 必须大于 ${ysyx_26030103_MMUProfile.UartPLICSource}（UART source）且不超过 1024")
   require(PLICPriorityBits >= 1 && PLICPriorityBits <= 8, "PLIC 优先级位宽非法")
   require(PLICMaxPriority >= 0 && PLICMaxPriority < (1 << PLICPriorityBits),
     "PLIC_MAX_PRIORITY 超出优先级位宽")
@@ -436,6 +435,10 @@ object ysyx_26030103_MMUProfile {
     */
   val LevelBits: Int = 3
   val MaxLevels: Int = 1 << LevelBits
+  val UartPLICSource: Int = 10
+  val ClintTimerPLICSource: Int = 1
+  val AliasScanModes: Set[String] =
+    Set("all_sets", "serial", "parallel_n", "directory")
 
   /** 机器 identity CSR：标准只读寄存器，始终随核实现。
     *
@@ -518,21 +521,15 @@ object ysyx_26030103_MMUProfile {
     env(key).filter(_.nonEmpty).getOrElse(fallback)
 
   private def envLong(env: String => Option[String], key: String, fallback: Long): Long =
-    env(key).filter(_.nonEmpty).map { value =>
-      val trimmed = value.trim
-      if (trimmed.startsWith("0x") || trimmed.startsWith("0X"))
-        java.lang.Long.parseLong(trimmed.substring(2), 16)
-      else trimmed.toLong
-    }.getOrElse(fallback)
+    env(key).filter(_.nonEmpty)
+      .map(value => ysyx_26030103_JsonConfig.ParseLongText(value))
+      .getOrElse(fallback)
 
   private def envAddressSet(env: String => Option[String], key: String,
       fallback: Set[Int]): Set[Int] =
     env(key).filter(_.nonEmpty).map { value =>
-      value.split(',').iterator.map(_.trim).filter(_.nonEmpty).map { item =>
-        val text = if (item.startsWith("0x") || item.startsWith("0X"))
-          item.substring(2) else item
-        Integer.parseInt(text, if (item.startsWith("0x") || item.startsWith("0X")) 16 else 10)
-      }.toSet
+      value.split(',').iterator.map(_.trim).filter(_.nonEmpty)
+        .map(item => ysyx_26030103_JsonConfig.ParseIntText(item)).toSet
     }.getOrElse(fallback)
 
   // 根据逐字段 read/write 模式生成 CSR 读掩码、读置位和写掩码。

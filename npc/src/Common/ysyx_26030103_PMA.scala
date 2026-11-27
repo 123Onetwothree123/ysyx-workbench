@@ -1,4 +1,7 @@
 package ysyx_26030103.common
+
+import chisel3._
+
 case class ysyx_26030103_PMARegion(
     Base: Long,
     Size: Long,
@@ -16,6 +19,23 @@ case class ysyx_26030103_PMARegion(
   require(!Cacheable || Readable, "可缓存PMA区域必须可读")
   require(!Executable || Readable, "可执行PMA区域必须可读")
   final val EndExclusive: Long = Base + Size
+  def Contains(address: BigInt): Boolean =
+    BigInt(Base) <= address && address < BigInt(EndExclusive)
+  def Covers(base: Long, size: Long): Boolean =
+    BigInt(Base) <= BigInt(base) &&
+      BigInt(EndExclusive) >= BigInt(base) + BigInt(size)
+}
+object ysyx_26030103_PMAAddress {
+  def InRegion(
+      address: UInt,
+      region: ysyx_26030103_PMARegion,
+      width: Int
+  ): Bool = {
+    val compareWidth = width + 1
+    val extended = address.pad(compareWidth)
+    extended >= region.Base.U(compareWidth.W) &&
+    extended < region.EndExclusive.U(compareWidth.W)
+  }
 }
 final case class ysyx_26030103_PMAOptions(
     CLINTBase: Long,
@@ -126,6 +146,58 @@ final case class ysyx_26030103_PMAOptions(
 object ysyx_26030103_PMAOptions {
   lazy val Default: ysyx_26030103_PMAOptions =
     ysyx_26030103_KconfigDefaults.Pma
+
+  def FromConfig(
+      get: (String, Long) => Long,
+      defaults: ysyx_26030103_PMAOptions
+  ): ysyx_26030103_PMAOptions =
+    ysyx_26030103_PMAOptions(
+      CLINTBase = get("PMA.clint_base", defaults.CLINTBase),
+      CLINTSize = get("PMA.clint_size", defaults.CLINTSize),
+      sramBase = get("PMA.sram_base", defaults.sramBase),
+      sramSize = get("PMA.sram_size", defaults.sramSize),
+      UARTBase = get("PMA.uart_base", defaults.UARTBase),
+      UARTSize = get("PMA.uart_size", defaults.UARTSize),
+      SPIBase = get("PMA.spi_base", defaults.SPIBase),
+      SPISize = get("PMA.spi_size", defaults.SPISize),
+      GPIOBase = get("PMA.gpio_base", defaults.GPIOBase),
+      GPIOSize = get("PMA.gpio_size", defaults.GPIOSize),
+      keyboardBase = get("PMA.keyboard_base", defaults.keyboardBase),
+      keyboardSize = get("PMA.keyboard_size", defaults.keyboardSize),
+      VGABase = get("PMA.vga_base", defaults.VGABase),
+      VGASize = get("PMA.vga_size", defaults.VGASize),
+      mromBase = get("PMA.mrom_base", defaults.mromBase),
+      mromSize = get("PMA.mrom_size", defaults.mromSize),
+      flashBase = get("PMA.flash_base", defaults.flashBase),
+      flashSize = get("PMA.flash_size", defaults.flashSize),
+      psramBase = get("PMA.psram_base", defaults.psramBase),
+      psramSize = get("PMA.psram_size", defaults.psramSize),
+      sdramBase = get("PMA.sdram_base", defaults.sdramBase),
+      sdramSize = get("PMA.sdram_size", defaults.sdramSize),
+      ChipLinkMMIOBase = get("PMA.chiplink_mmio_base", defaults.ChipLinkMMIOBase),
+      ChipLinkMMIOSize = get("PMA.chiplink_mmio_size", defaults.ChipLinkMMIOSize),
+      chipLinkMemBase = get("PMA.chiplink_mem_base", defaults.chipLinkMemBase),
+      chipLinkMemSize = get("PMA.chiplink_mem_size", defaults.chipLinkMemSize),
+      SOCResetAddress = get("PMA.soc_reset_addr", defaults.SOCResetAddress),
+      NpcRAMBase = defaults.NpcRAMBase
+    )
+
+  def ValidateNpcRam(
+      base: Long,
+      size: Long,
+      sizePowerOfTwoMessage: => String,
+      sizeAlignmentMessage: => String,
+      baseMessage: => String,
+      windowMessage: => String
+  ): Unit = {
+    ysyx_26030103_Validation.RequirePowerOfTwo(size, sizePowerOfTwoMessage)
+    require(size % 4L == 0L, sizeAlignmentMessage)
+    require(base >= 0L && base % 4L == 0L, baseMessage)
+    require(
+      BigInt(base) + BigInt(size) <= (BigInt(1) << 32),
+      windowMessage
+    )
+  }
 }
 object ysyx_26030103_PhysicalMemoryMap {
   val DefaultPLICBase: Long = ysyx_26030103_KconfigDefaults.PLICBase

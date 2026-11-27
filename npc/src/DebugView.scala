@@ -9,6 +9,23 @@ object DebugView {
   def highWord(value: UInt, XLEN: Int): UInt =
     if (XLEN == 64) value(63, 32) else 0.U(32.W)
 
+  def Publish64(lo: UInt, hi: UInt, value: UInt, XLEN: Int): Unit = {
+    lo := value(31, 0)
+    hi := highWord(value, XLEN)
+  }
+
+  def Snapshot(
+      src: UInt,
+      lo: UInt,
+      hi: UInt,
+      en: Bool,
+      reset: UInt,
+      XLEN: Int
+  ): Unit = {
+    val snap = RegEnable(src, reset, en)
+    Publish64(lo, hi, snap, XLEN)
+  }
+
   // CSR 退休快照在首条指令退休前也必须与 CSR 读口一致：RV64 的
   // mstatus.SXL/UXL 固定为 2（bit[35:32]=0xA）。
   def mstatusResetValue(XLEN: Int): UInt =

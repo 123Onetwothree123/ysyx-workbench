@@ -16,65 +16,61 @@ private[infra] trait AXI5XbarResponse {
       readTargetReg(downstream.R.RID) === target) ||
       (RequestFire && RequestID === downstream.R.RID)
 
-  private def EnqueueReadResponse(downstream: ysyx_26030103_AXI5IO): Unit = {
-    rQueue.io.enq.valid := true.B
-    rQueue.io.enq.bits.ID := downstream.R.RID
-    rQueue.io.enq.bits.data := downstream.R.RDATA
-    rQueue.io.enq.bits.response := downstream.R.RRESP
-    rQueue.io.enq.bits.last := downstream.R.RLAST
-  }
-
   def responseBody(): Unit = {
     val rBufferPop = rQueue.io.deq.fire
     val rBufferAvailable = rQueue.io.enq.ready || rBufferPop
-    val SOCResponseExpected =
-      ReadResponseExpected(io.SoCBus, targetSoCBus, SOCRequestFire, SOCRequestID)
-    val CLINTResponseExpected =
-      ReadResponseExpected(io.CLINT, TargetCLINT, CLINTRequestFire, CLINTRequestID)
-    val PLICResponseExpected =
-      ReadResponseExpected(io.PLIC, TargetPLIC, PLICRequestFire, PLICRequestID)
-    val SOCResponseValid = io.SoCBus.R.RVALID && SOCResponseExpected
-    val CLINTResponseValid = io.CLINT.R.RVALID && CLINTResponseExpected
-    val PLICResponseValid = io.PLIC.R.RVALID && PLICResponseExpected
+    val ReadResponseExpecteds = ReadTargets.indices.map { Index =>
+      ReadResponseExpected(
+        ReadTargets(Index).downstream,
+        ReadTargets(Index).target,
+        ReadRequestFires(Index),
+        ReadRequestIDs(Index)
+      )
+    }
+    val ReadResponseValids = ReadTargets.indices.map { Index =>
+      ReadTargets(Index).downstream.R.RVALID && ReadResponseExpecteds(Index)
+    }
+    val ReadResponseSelects = ReadTargets.indices.map { Index =>
+      val HigherSelected =
+        (0 until Index).map(Source => ReadResponseValids(Source))
+          .foldLeft(false.B)(_ || _)
+      !HigherSelected && ReadResponseValids(Index)
+    }
 
     val localResponseMask = VecInit((0 until readSlotCount).map { ID =>
       readSlotState(ID) === readSlotDECERR
     }).asUInt
     val localResponseValid = localResponseMask.orR
     val LocalResponseID = PriorityEncoder(localResponseMask)
-    val localResponseLast =
-      readDECERRBeatReg(LocalResponseID) === ARLengthReg(LocalResponseID)
+    val localResponseLast = ysyx_26030103_AXI5Beat.IsLast(
+      readDECERRBeatReg(LocalResponseID),
+      ARBurstShapes(LocalResponseID).length)
 
     // AXI突发长度有限，固定源优先级安全；仲裁失败的源RREADY为低并保持载荷。
-    val selectSoC = SOCResponseValid
-    val SelectCLINT = !selectSoC && CLINTResponseValid
-    val SelectPLIC = !selectSoC && !SelectCLINT && PLICResponseValid
-    val selectLocal = !selectSoC && !SelectCLINT && !SelectPLIC && localResponseValid
-    io.SoCBus.R.RREADY := rBufferAvailable && selectSoC
-    io.CLINT.R.RREADY := rBufferAvailable && SelectCLINT
-    io.PLIC.R.RREADY := rBufferAvailable && SelectPLIC
-    val captureSoC = io.SoCBus.R.RVALID && io.SoCBus.R.RREADY
-    val CaptureCLINT = io.CLINT.R.RVALID && io.CLINT.R.RREADY
-    val CapturePLIC = io.PLIC.R.RVALID && io.PLIC.R.RREADY
-    val captureLocal = rBufferAvailable && selectLocal
+    val RemoteSelected = ReadResponseSelects.reduce(_ || _)
+    val SelectLocal = !RemoteSelected && localResponseValid
+    ReadTargets.indices.foreach { Index =>
+      ReadTargets(Index).downstream.R.RREADY :=
+        rBufferAvailable && ReadResponseSelects(Index)
+    }
+    val CaptureLocal = rBufferAvailable && SelectLocal
+    val AllSelects = ReadResponseSelects :+ SelectLocal
+    val AllIDs = ReadTargets.map(_.downstream.R.RID) :+ LocalResponseID
+    val AllData = ReadTargets.map(_.downstream.R.RDATA) :+ 0.U(DataWidth.W)
+    val AllResponses = ReadTargets.map(_.downstream.R.RRESP) :+ DECERR
+    val AllLasts = ReadTargets.map(_.downstream.R.RLAST) :+ localResponseLast
 
-    when(captureSoC) {
-      EnqueueReadResponse(io.SoCBus)
-    }.elsewhen(CaptureCLINT) {
-      EnqueueReadResponse(io.CLINT)
-    }.elsewhen(CapturePLIC) {
-      EnqueueReadResponse(io.PLIC)
-    }.elsewhen(captureLocal) {
-      rQueue.io.enq.valid := true.B
-      rQueue.io.enq.bits.ID := LocalResponseID
-      rQueue.io.enq.bits.data := 0.U
-      rQueue.io.enq.bits.response := DECERR
-      rQueue.io.enq.bits.last := localResponseLast
+    rQueue.io.enq.valid := rBufferAvailable && AllSelects.reduce(_ || _)
+    rQueue.io.enq.bits.ID := Mux1H(AllSelects, AllIDs)
+    rQueue.io.enq.bits.data := Mux1H(AllSelects, AllData)
+    rQueue.io.enq.bits.response := Mux1H(AllSelects, AllResponses)
+    rQueue.io.enq.bits.last := Mux1H(AllSelects, AllLasts)
+    when(CaptureLocal) {
       when(localResponseLast) {
         readSlotState(LocalResponseID) := readSlotLocalLast
       }.otherwise {
         readDECERRBeatReg(LocalResponseID) :=
-          readDECERRBeatReg(LocalResponseID) + 1.U
+          ysyx_26030103_AXI5Beat.Next(readDECERRBeatReg(LocalResponseID))
       }
     }
 
@@ -85,14 +81,13 @@ private[infra] trait AXI5XbarResponse {
       readSlotState(rQueue.io.deq.bits.ID) := readSlotFree
     }
 
-    when(io.SoCBus.R.RVALID) {
-      assert(SOCResponseExpected, "SoCBus returned an inactive or misrouted RID")
-    }
-    when(io.CLINT.R.RVALID) {
-      assert(CLINTResponseExpected, "CLINT returned an inactive or misrouted RID")
-    }
-    when(io.PLIC.R.RVALID) {
-      assert(PLICResponseExpected, "PLIC returned an inactive or misrouted RID")
+    ReadTargets.indices.foreach { Index =>
+      when(ReadTargets(Index).downstream.R.RVALID) {
+        assert(
+          ReadResponseExpecteds(Index),
+          s"${ReadTargets(Index).name} returned an inactive or misrouted RID"
+        )
+      }
     }
   }
 }

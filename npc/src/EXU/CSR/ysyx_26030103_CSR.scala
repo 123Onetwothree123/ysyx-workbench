@@ -402,9 +402,14 @@ class ysyx_26030103_CSR(
   val stvecReadData = stvecOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
   val sepcReadData = sepcOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
   val scauseReadData = scauseOpt.map(_.io.rdata).getOrElse(0.U(XLEN.W))
-  // RV64 的 mcycle 直接返回完整 64 位；RV32 继续按 mcycle/mcycleh 选择。
-  val mcycleReadData = if (XLEN == 64) mcycle.io.rdataFull else mcycle.io.rdata
-  val mcyclehReadData = mcycle.io.rdataFull(63, 32)
+  val mcycleReadData =
+    if (XLEN == 64) mcycle.io.rdataFull
+    else ysyx_26030103_Counter64.ReadHalf(
+      mcycle.io.rdataFull,
+      isCSRAddress(CSRMcycleh)
+    )
+  val mcyclehReadData =
+    ysyx_26030103_Counter64.ReadHalf(mcycle.io.rdataFull, true.B)
   // CSR 指令在 EXU 执行前会等更老的指令离开 MEM 级，但 WBU 里仍可能有
   // 一条更老的指令在本拍退休。它的自增要到本拍时钟沿才写入 minstret，
   // 组合读口若直接返回寄存器值就会少算这一条。该退休事件已过滤掉写
@@ -414,13 +419,16 @@ class ysyx_26030103_CSR(
     io.MinstretRetireCommit && !mcountinhibit(2)
   val MinstretReadValue = minstret + MinstretRetireIncrement.asUInt
   val minstretReadData =
-    if (XLEN == 64) MinstretReadValue else MinstretReadValue(31, 0)
-  val minstrethReadData = MinstretReadValue(63, 32)
+    ysyx_26030103_Counter64.ReadWord(MinstretReadValue, XLEN)
+  val minstrethReadData =
+    ysyx_26030103_Counter64.ReadHalf(MinstretReadValue, true.B)
   // TIME 来自 CLINT 的 mtime；TM=1 时改用保持寄存器，使 time 停止递增。
   // RV64 直接返回完整 64 位；RV32 的 time 返回低 32 位，timeh 返回高 32 位。
   val timeValue = Mux(mcountinhibit(1), timeCounter, io.Mtime)
-  val timeReadData = if (XLEN == 64) timeValue else timeValue(31, 0)
-  val timehReadData = timeValue(63, 32)
+  val timeReadData =
+    ysyx_26030103_Counter64.ReadWord(timeValue, XLEN)
+  val timehReadData =
+    ysyx_26030103_Counter64.ReadHalf(timeValue, true.B)
   // misa.MXL: 1=RV32, 2=RV64；I 始终置位，A/C/F/D 随配置置位，
   // S/U 分别随 HAS_S/HAS_U 置位。位编号按 RISC-V 规范：
   // bit0=A，bit2=C，bit3=D，bit5=F，bit8=I，bit12=M，bit18=S，bit20=U。
@@ -677,7 +685,7 @@ class ysyx_26030103_CSR(
     CSRWriteEnable && (isCSRAddress(CSRFflags) || isCSRAddress(CSRFrm) ||
       isCSRAddress(CSRFcsr))
   val fsDirtyData = fsDirtyValue
-  val mstatusWriteDataSelect = Seq(
+  val MstatusNextSelect = Seq(
     exceptionCommit -> mstatusExceptionData,
     mretCommit -> mstatusMretData
   ) ++ (if (hasS) Seq(sretCommit -> mstatusSretStateData) else Seq.empty) ++ Seq(
@@ -689,7 +697,7 @@ class ysyx_26030103_CSR(
   mstatus.io.wen := mstatusWriteEnable || exceptionCommit || mretCommit ||
     (if (hasS && profile.CSRViewMode == "bound") sretCommit else false.B) ||
     sstatusFsWriteEnable || FPCSRWriteIntent || fsDirtyCommit
-  mstatus.io.wdata := MuxCase(MstatusCSRData, mstatusWriteDataSelect)
+  mstatus.io.wdata := MuxCase(MstatusCSRData, MstatusNextSelect)
   if (hasS && profile.CSRViewMode == "independent") {
     // 独立 sstatus 视图下 SRET 不写 mstatus 的 S 字段，但 MPRV 属于
     // mstatus，返回 S/U 时仍必须清零；这里只覆盖 MPRV 位。SRET 被中断
@@ -767,8 +775,7 @@ class ysyx_26030103_CSR(
       Mux(io.TrapTvalValid, io.TrapTval, io.PC))
   // IALIGN=16 时 mepc/sepc 只清 bit0；IALIGN=32 清低两位。
   private def alignEPC(value: UInt): UInt =
-    if (UseC) Cat(value(XLEN - 1, 1), 0.U(1.W))
-    else Cat(value(XLEN - 1, 2), 0.U(2.W))
+    ysyx_26030103_mepc.Align(value, UseC, XLEN)
   if (hasS) {
     val stval = stvalOpt.get
     when(exceptionCommit && trapToS) {
@@ -871,13 +878,17 @@ class ysyx_26030103_CSR(
     if (XLEN == 64) {
       minstret := CSRWriteData(MinstretReadValue)
     } else {
-      // RV32 的 minstreth 是 64 位计数器的独立高半字；CSRRS/CSRRC 必须
-      // 以高半字作为 old value 计算，不能复用低半字。
-      val writtenLow = CSRWriteData(MinstretReadValue(31, 0))
-      val writtenHigh = CSRWriteData(MinstretReadValue(63, 32))
-      minstret := Cat(
-        Mux(isCSRAddress(CSRMinstreth), writtenHigh(31, 0), minstret(63, 32)),
-        Mux(isCSRAddress(CSRMinstret), writtenLow(31, 0), minstret(31, 0))
+      val SelectHigh = isCSRAddress(CSRMinstreth)
+      val writtenLow = CSRWriteData(
+        ysyx_26030103_Counter64.ReadHalf(MinstretReadValue, false.B)
+      )
+      val writtenHigh = CSRWriteData(
+        ysyx_26030103_Counter64.ReadHalf(MinstretReadValue, true.B)
+      )
+      minstret := ysyx_26030103_Counter64.WriteHalf(
+        minstret,
+        Mux(SelectHigh, writtenHigh, writtenLow),
+        SelectHigh
       )
     }
   }.elsewhen(io.MinstretRetireCommit && !mcountinhibit(2)) {
@@ -1168,18 +1179,10 @@ class ysyx_26030103_CSR(
 
   // 退休级快照表示本指令执行后的 CSR 状态。高半区也要带上 RV64
   // mstatus.SXL/UXL，保证 DiffTest 的 CSR 视图与 CSR 读口一致。
-  io.StateMstatus := mstatusArchValue(MuxCase(mstatusReadData,
-    Seq(
-      exceptionCommit -> mstatusExceptionData,
-      mretCommit -> mstatusMretData
-    ) ++ (if (hasS) Seq(sretCommit -> mstatusSretStateData) else Seq.empty) ++
-      Seq(mstatusWriteEnable -> MstatusCSRData, sstatusFsWriteEnable -> sstatusFsWriteData,
-        FPCSRWriteIntent -> fsDirtyValue,
-        fsDirtyCommit -> fsDirtyValue)))
+  io.StateMstatus := mstatusArchValue(MuxCase(mstatusReadData, MstatusNextSelect))
   val MtvecCSRData = CSRWriteData(mtvecReadData)
-  val mtvecLegalMode = Mux(MtvecCSRData(1, 0) === 1.U, 1.U(2.W), 0.U(2.W))
   io.StateMtvec := Mux(CSRWriteEnable && isCSRAddress(CSRMtvec),
-    Cat(MtvecCSRData(XLEN - 1, 2), mtvecLegalMode), mtvecReadData)
+    ysyx_26030103_mtvec.Legalize(MtvecCSRData, XLEN), mtvecReadData)
   io.StateMepc := Mux(exceptionCommit && !trapToS,
     alignEPC(io.PC),
     Mux(mepcWriteEnable, alignEPC(CSRWriteData(mepcReadData)), mepcReadData))

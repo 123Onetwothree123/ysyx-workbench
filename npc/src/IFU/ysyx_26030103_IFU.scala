@@ -99,6 +99,17 @@ class ysyx_26030103_IFU(
     // 避免同一个故障 PC 反复灌入流水线。
     val faultHeld = RegInit(false.B)
 
+    def SeqNext(step: Int): UInt =
+      ysyx_26030103_NextPCSelect(
+        PCReg + step.U(XLEN.W),
+        false.B,
+        0.U(XLEN.W),
+        false.B,
+        0.U(XLEN.W),
+        savedPredTaken,
+        savedPredTarget
+      )
+
     val redirect = io.Redirect || io.ExceptionTaken
     val redirectTarget =
       Mux(io.ExceptionTaken, io.ExceptionTarget, io.RedirectTarget)
@@ -148,7 +159,7 @@ class ysyx_26030103_IFU(
         emitInstr := true.B
         outInstruction := Cat(io.ResponseData(15, 0), firstHalf)
         outIsCompressed := false.B
-        NextPC := Mux(savedPredTaken, savedPredTarget, PCReg + 4.U)
+        NextPC := SeqNext(4)
         outPredTaken := savedPredTaken
         outPredTarget := savedPredTarget
       }.elsewhen(responseIsFirstHalf) {
@@ -157,7 +168,7 @@ class ysyx_26030103_IFU(
         emitInstr := true.B
         outInstruction := io.ResponseData
         outIsCompressed := false.B
-        NextPC := Mux(savedPredTaken, savedPredTarget, PCReg + 4.U)
+        NextPC := SeqNext(4)
         outPredTaken := savedPredTaken
         outPredTarget := savedPredTarget
       }.otherwise {
@@ -165,7 +176,7 @@ class ysyx_26030103_IFU(
         emitInstr := true.B
         outInstruction := Cat(0.U(16.W), halfword)
         outIsCompressed := true.B
-        NextPC := Mux(savedPredTaken, savedPredTarget, PCReg + 2.U)
+        NextPC := SeqNext(2)
         outPredTaken := savedPredTaken
         outPredTarget := savedPredTarget
       }

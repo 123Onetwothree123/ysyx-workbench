@@ -6,6 +6,7 @@ import chisel3._
 import chisel3.util._
 import _root_.ysyx_26030103.common.ysyx_26030103_EXUMessage
 import _root_.ysyx_26030103.common.ysyx_26030103_AtomicOp
+import _root_.ysyx_26030103.common.ysyx_26030103_RISCVFields
 
 /** EXU 虚拟访存地址翻译。PIPT 下翻译完成后才把指令交给 LSU，故障无总线副作用；
   * VIPT（ParallelVIPT=true）下 load/store 先以 VA 交给 LSU（DCache 用 VA 选
@@ -70,9 +71,8 @@ class ysyx_26030103_LSUMMU(
   val faultCauseReg = RegInit(0.U(32.W))
   val faultTvalReg = RegInit(0.U(XLEN.W))
   val FaultPCReg = RegInit(0.U(XLEN.W))
-  private def satpMode(satp: UInt): UInt =
-    if (XLEN == 32) satp(31) else satp(63, 60)
-  val bypass = satpMode(io.satp) === 0.U || io.privilege === 3.U
+  val bypass = ysyx_26030103_RISCVFields.SatpMode(io.satp, XLEN) === 0.U ||
+    io.privilege === 3.U
   val isMem = io.in.bits.MemoryValid
   // AMO/LR/SC 的自然对齐必须在翻译前判定，避免页错误/访问故障抢先
   val AtomicAddressMisaligned = io.in.bits.IsAtomic &&
@@ -139,6 +139,54 @@ class ysyx_26030103_LSUMMU(
   io.memPhysicalAddressVirtualAddress := physicalAddressVirtualAddressReg
   io.memKill := false.B
 
+  private def CommitFault(cause: UInt, tval: UInt, pc: UInt): Unit = {
+    faultReg := true.B
+    faultCauseReg := cause
+    faultTvalReg := tval
+    FaultPCReg := pc
+  }
+
+  private def IssueTranslation(va: UInt, id: UInt): Unit = {
+    io.request.valid := true.B
+    io.request.bits.ID := id
+    io.request.bits.vaddr := va
+    io.request.bits.access := Mux(MessageReg.MemoryWrite,
+      ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)
+    io.request.bits.privilege := io.privilege
+    io.request.bits.sum := io.sum
+    io.request.bits.mxr := io.mxr
+    io.request.bits.satp := io.satp
+  }
+
+  private def HandleTranslationResponse(reqVa: UInt, nextState: UInt,
+      onSuccessExtra: => Unit): Unit = {
+    when(io.response.valid && io.response.bits.tval === reqVa) {
+      when(io.response.bits.fault) {
+        CommitFault(io.response.bits.cause, MessageReg.ALUResult, MessageReg.PC)
+        state := fault
+      }.elsewhen(io.PMPFault) {
+        // 页表翻译成功但物理地址被PMP拒绝：load=5，store/AMO=7
+        CommitFault(ysyx_26030103_RISCVFields.AccessFaultCause(MessageReg.MemoryWrite),
+          MessageReg.ALUResult, MessageReg.PC)
+        state := fault
+      }.otherwise {
+        physicalAddressReg := io.response.bits.paddr
+        physicalAddressVirtualAddressReg := reqVa
+        onSuccessExtra
+        state := nextState
+      }
+    }
+  }
+
+  when(state === translationRequest) {
+    IssueTranslation(MessageReg.ALUResult, 1.U)
+    when(io.request.fire) { state := xwait }
+  }
+  when(state === extraRequest) {
+    IssueTranslation(msgPage1Va, 1.U)
+    when(io.request.fire) { state := extraWait }
+  }
+
   if (!ParallelVIPT) {
     // 原有 PIPT 路径：翻译完成后才发 LSU
     when(state === idle) {
@@ -150,20 +198,16 @@ class ysyx_26030103_LSUMMU(
       }.elsewhen(io.in.valid && AtomicAddressMisaligned) {
         // 对齐检查失败：不翻译、不进入 LSU
         when(io.in.fire) {
-          faultReg := true.B
-          faultCauseReg := Mux(io.in.bits.MemoryWrite, 6.U, 4.U)
-          faultTvalReg := io.in.bits.ALUResult
-          FaultPCReg := io.in.bits.PC
+          CommitFault(ysyx_26030103_RISCVFields.MisalignedCause(io.in.bits.MemoryWrite),
+            io.in.bits.ALUResult, io.in.bits.PC)
           state := fault
         }
       }.elsewhen(bypass) {
         // Bare/M 模式没有页表翻译，但 PMP 仍必须检查。必须用 in.fire 而不是
         // valid：LSU 忙时请求尚未被受理，不能提前锁存/提交 PMP 故障。
         when(io.in.fire && io.PMPFault) {
-          faultReg := true.B
-          faultCauseReg := Mux(io.in.bits.MemoryWrite, 7.U, 5.U)
-          faultTvalReg := io.in.bits.ALUResult
-          FaultPCReg := io.in.bits.PC
+          CommitFault(ysyx_26030103_RISCVFields.AccessFaultCause(io.in.bits.MemoryWrite),
+            io.in.bits.ALUResult, io.in.bits.PC)
           state := fault
         }.otherwise {
           io.out.valid := io.in.valid
@@ -176,43 +220,9 @@ class ysyx_26030103_LSUMMU(
         }
       }
     }
-    when(state === translationRequest) {
-      io.request.valid := true.B
-      io.request.bits.ID := 1.U // LSU
-      io.request.bits.vaddr := MessageReg.ALUResult
-      io.request.bits.access := Mux(MessageReg.MemoryWrite,
-        ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)
-      io.request.bits.privilege := io.privilege
-      io.request.bits.sum := io.sum
-      io.request.bits.mxr := io.mxr
-      io.request.bits.satp := io.satp
-      when(io.request.fire) { state := xwait }
-    }
     when(state === xwait) {
-      when(io.response.valid) {
-        // 同 IFU：只接受 tval 与当前请求 VA 一致的响应，迟到旧响应必须丢弃。
-        when(io.response.bits.tval =/= MessageReg.ALUResult) {
-          // 丢弃迟到响应。
-        }.elsewhen(io.response.bits.fault) {
-          faultReg := true.B
-          faultCauseReg := io.response.bits.cause
-          faultTvalReg := MessageReg.ALUResult
-          FaultPCReg := MessageReg.PC
-          state := fault
-        }.elsewhen(io.PMPFault) {
-          // 页表翻译成功，但物理地址被 PMP 拒绝：load=5，store/AMO=7。
-          // PIPT 下请求尚未交给 LSU，因此不会产生任何总线副作用。
-          faultReg := true.B
-          faultCauseReg := Mux(MessageReg.MemoryWrite, 7.U, 5.U)
-          faultTvalReg := MessageReg.ALUResult
-          FaultPCReg := MessageReg.PC
-          state := fault
-        }.otherwise {
-          physicalAddressReg := io.response.bits.paddr
-          physicalAddressVirtualAddressReg := MessageReg.ALUResult
-          state := done
-        }
-      }
+      // 同IFU：只接受tval与当前请求VA一致的响应，迟到旧响应丢弃；PIPT下请求尚未交给LSU，故障无总线副作用
+      HandleTranslationResponse(MessageReg.ALUResult, done, ())
     }
     when(state === done) {
       // done 拍正把已翻译的访存指令送给 LSU；MessageReg 仍被占用，同拍不能再
@@ -225,41 +235,10 @@ class ysyx_26030103_LSUMMU(
         state := Mux(msgCrossPage, extraRequest, idle)
       }
     }
-    when(state === extraRequest) {
-      io.request.valid := true.B
-      io.request.bits.ID := 1.U
-      io.request.bits.vaddr := msgPage1Va
-      io.request.bits.access := Mux(MessageReg.MemoryWrite,
-        ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)
-      io.request.bits.privilege := io.privilege
-      io.request.bits.sum := io.sum
-      io.request.bits.mxr := io.mxr
-      io.request.bits.satp := io.satp
-      when(io.request.fire) { state := extraWait }
-    }
     when(state === extraWait) {
-      when(io.response.valid) {
-        when(io.response.bits.tval =/= msgPage1Va) {
-          // 丢弃迟到响应。
-        }.elsewhen(io.response.bits.fault) {
-          faultReg := true.B
-          faultCauseReg := io.response.bits.cause
-          faultTvalReg := MessageReg.ALUResult
-          FaultPCReg := MessageReg.PC
-          state := fault
-        }.elsewhen(io.PMPFault) {
-          faultReg := true.B
-          faultCauseReg := Mux(MessageReg.MemoryWrite, 7.U, 5.U)
-          faultTvalReg := MessageReg.ALUResult
-          FaultPCReg := MessageReg.PC
-          state := fault
-        }.otherwise {
-          physicalAddressReg := io.response.bits.paddr
-          physicalAddressVirtualAddressReg := msgPage1Va
-          physicalAddressValidReg := true.B
-          state := extraDone
-        }
-      }
+      HandleTranslationResponse(msgPage1Va, extraDone, {
+        physicalAddressValidReg := true.B
+      })
     }
     when(state === extraDone) {
       // 第二页 PA 保持到 LSU 排空。
@@ -293,18 +272,14 @@ class ysyx_26030103_LSUMMU(
         // 缓冲登记，不会发 AW/W；PA 由翻译结果带标签返回。
         when(AtomicAddressMisaligned) {
           // 对齐检查失败：不转发、不翻译
-          faultReg := true.B
-          faultCauseReg := Mux(io.in.bits.MemoryWrite, 6.U, 4.U)
-          faultTvalReg := io.in.bits.ALUResult
-          FaultPCReg := io.in.bits.PC
+          CommitFault(ysyx_26030103_RISCVFields.MisalignedCause(io.in.bits.MemoryWrite),
+            io.in.bits.ALUResult, io.in.bits.PC)
           state := fault
         }.elsewhen(bypass && io.PMPFault) {
           // Bare/M 模式没有翻译，但 PMP 必须先生效；不要进入 fwd，
           // 否则故障 load/store 会被 LSU 当成正常请求接收。
-          faultReg := true.B
-          faultCauseReg := Mux(io.in.bits.MemoryWrite, 7.U, 5.U)
-          faultTvalReg := io.in.bits.ALUResult
-          FaultPCReg := io.in.bits.PC
+          CommitFault(ysyx_26030103_RISCVFields.AccessFaultCause(io.in.bits.MemoryWrite),
+            io.in.bits.ALUResult, io.in.bits.PC)
           state := fault
         }.otherwise {
           MessageReg := io.in.bits
@@ -329,91 +304,23 @@ class ysyx_26030103_LSUMMU(
           .otherwise { state := translationRequest }
       }
     }
-    when(state === translationRequest) {
-      io.request.valid := true.B
-      io.request.bits.ID := 1.U
-      io.request.bits.vaddr := MessageReg.ALUResult
-      io.request.bits.access := Mux(MessageReg.MemoryWrite,
-        ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)
-      io.request.bits.privilege := io.privilege
-      io.request.bits.sum := io.sum
-      io.request.bits.mxr := io.mxr
-      io.request.bits.satp := io.satp
-      when(io.request.fire) { state := xwait }
-    }
     when(state === xwait) {
-      when(io.response.valid) {
-        when(io.response.bits.tval =/= MessageReg.ALUResult) {
-          // 丢弃迟到的旧翻译响应；当前请求继续等待自己的响应。
-        }.elsewhen(io.response.bits.fault) {
-          // load 已经进入 LSU。先撤销它和 DCache 的等待请求，
-          // 下一拍 faultReg 作为精确 page fault 提交给 EXU/CSR。
-          faultReg := true.B
-          faultCauseReg := io.response.bits.cause
-          faultTvalReg := MessageReg.ALUResult
-          FaultPCReg := MessageReg.PC
-          state := fault
-        }.elsewhen(io.PMPFault) {
-          // 翻译成功但 PMP 拒绝：与 page fault 一样撤销已转发给 LSU/DCache
-          // 的请求，保证故障 load/store 不产生总线副作用。
-          faultReg := true.B
-          faultCauseReg := Mux(MessageReg.MemoryWrite, 7.U, 5.U)
-          faultTvalReg := MessageReg.ALUResult
-          FaultPCReg := MessageReg.PC
-          state := fault
-        }.otherwise {
-          physicalAddressReg := io.response.bits.paddr
-          physicalAddressVirtualAddressReg := MessageReg.ALUResult
+      // 基页PA先交给LSU，跨页时继续补翻第二页
+      HandleTranslationResponse(MessageReg.ALUResult,
+        Mux(msgCrossPage, extraRequest, done), {
           physicalAddressValidReg := true.B
-          // 基页 PA 先交给 LSU；跨页时继续补翻第二页。
-          state := Mux(msgCrossPage, extraRequest, done)
-        }
-      }
-    }
-    when(state === extraRequest) {
-      io.request.valid := true.B
-      io.request.bits.ID := 1.U
-      io.request.bits.vaddr := msgPage1Va
-      io.request.bits.access := Mux(MessageReg.MemoryWrite,
-        ysyx_26030103_AccessType.Store, ysyx_26030103_AccessType.Load)
-      io.request.bits.privilege := io.privilege
-      io.request.bits.sum := io.sum
-      io.request.bits.mxr := io.mxr
-      io.request.bits.satp := io.satp
-      when(io.request.fire) { state := extraWait }
+        })
+      // load已进入LSU；只处理当前请求的故障响应，迟到旧响应和PMP access fault不能误伤新访存
+      io.memKill := io.response.valid && io.response.bits.tval === MessageReg.ALUResult &&
+        (io.response.bits.fault || io.PMPFault)
     }
     when(state === extraWait) {
-      when(io.response.valid) {
-        when(io.response.bits.tval =/= msgPage1Va) {
-          // 丢弃迟到的旧翻译响应。
-        }.elsewhen(io.response.bits.fault) {
-          faultReg := true.B
-          faultCauseReg := io.response.bits.cause
-          faultTvalReg := MessageReg.ALUResult
-          FaultPCReg := MessageReg.PC
-          state := fault
-        }.elsewhen(io.PMPFault) {
-          faultReg := true.B
-          faultCauseReg := Mux(MessageReg.MemoryWrite, 7.U, 5.U)
-          faultTvalReg := MessageReg.ALUResult
-          FaultPCReg := MessageReg.PC
-          state := fault
-        }.otherwise {
-          physicalAddressReg := io.response.bits.paddr
-          physicalAddressVirtualAddressReg := msgPage1Va
-          physicalAddressValidReg := true.B
-          state := done
-        }
-      }
+      HandleTranslationResponse(msgPage1Va, done, {
+        physicalAddressValidReg := true.B
+      })
       // 第二页翻译失败同样撤销已经交给 LSU/DCache 的请求。
       io.memKill := io.response.valid &&
         io.response.bits.tval === msgPage1Va &&
-        (io.response.bits.fault || io.PMPFault)
-    }
-    when(state === xwait) {
-      // 只有属于当前请求的故障响应才能 kill LSU/DCache；迟到旧响应的 fault
-      // 不得误伤新访存，PMP access fault 同样要撤销已进入 LSU 的请求。
-      io.memKill := io.response.valid && io.response.bits.tval === MessageReg.ALUResult &&
         (io.response.bits.fault || io.PMPFault)
     }
     when(io.flush && (state === translationRequest || state === xwait ||

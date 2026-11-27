@@ -1,11 +1,9 @@
 package ysyx_26030103.io.axi5.master
 import chisel3._
 import _root_.ysyx_26030103.ysyx_26030103_IOParams
-private[ysyx_26030103] trait ysyx_26030103_MasterWPorts {
+import _root_.ysyx_26030103.ysyx_26030103_AXI5WPayload
+private[ysyx_26030103] trait ysyx_26030103_MasterWPorts
+    extends ysyx_26030103_AXI5WPayload
+    with ysyx_26030103_MasterPortDirection {
   this: Bundle with ysyx_26030103_IOParams =>
-  val wready = Input(Bool())
-  val wvalid = Output(Bool())
-  val wdata = Output(UInt(SocDataWidth.W))
-  val wstrb = Output(UInt(SocStrobeWidth.W))
-  val wlast = Output(Bool())
 }

@@ -41,8 +41,8 @@ class ysyx_26030103_AXI5WidthBridge(
   private[infra] val downsize = UpstreamDataWidth > DownstreamDataWidth
   private[infra] val upsize = UpstreamDataWidth < DownstreamDataWidth
   private[infra] val addressNarrows = DownstreamAddressWidth < UpstreamAddressWidth
-  private[infra] val OKAY = 0.U(2.W)
-  private[infra] val DECERR = 3.U(2.W)
+  private[infra] val OKAY = ysyx_26030103_AXI5Resp.OKAY
+  private[infra] val DECERR = ysyx_26030103_AXI5Resp.DECERR
 
   val io = IO(new Bundle {
     val in =
@@ -89,11 +89,13 @@ class ysyx_26030103_AXI5WidthBridge(
     if (!addressNarrows) {
       false.B
     } else {
-      val start = Cat(0.U(1.W), address)
-      val lastByte =
-        ysyx_26030103_AXI5Burst.lastByte(address, length, size, burst)
-      start(UpstreamAddressWidth, DownstreamAddressWidth).orR ||
-      lastByte(UpstreamAddressWidth, DownstreamAddressWidth).orR
+      ysyx_26030103_AXI5Burst.HighBitsSet(
+        address,
+        length,
+        size,
+        burst,
+        DownstreamAddressWidth
+      )
     }
   }
 
@@ -192,26 +194,9 @@ class ysyx_26030103_AXI5WidthBridge(
   }
 
   // 默认把所有 VALID 拉低，下面按状态覆盖，避免产生锁存器。
-  io.in.AW.AWREADY := false.B
-  io.in.W.WREADY := false.B
-  io.in.B.BVALID := false.B
-  io.in.B.BID := 0.U
-  io.in.B.BRESP := OKAY
+  ysyx_26030103_AXI5Idle.SlaveOut(io.in, read = false)
 
-  io.out.AW.AWVALID := false.B
-  io.out.AW.AWID := 0.U
-  io.out.AW.AWADDR := 0.U
-  io.out.AW.AWLEN := 0.U
-  io.out.AW.AWSIZE := 2.U
-  io.out.AW.AWBURST := 0.U
-  io.out.AW.AWPROT := 0.U
-  io.out.AW.AWCACHE := 0.U
-  io.out.AW.AWQOS := 0.U
-  io.out.W.WVALID := false.B
-  io.out.W.WDATA := 0.U
-  io.out.W.WSTRB := 0.U
-  io.out.W.WLAST := false.B
-  io.out.B.BREADY := false.B
+  ysyx_26030103_AXI5Idle.MasterOut(io.out, read = false)
 
   connectWrite()
 

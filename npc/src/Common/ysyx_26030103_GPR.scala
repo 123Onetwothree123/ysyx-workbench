@@ -20,25 +20,20 @@ class ysyx_26030103_GPR(
     new ysyx_26030103_RegisterFile(
       ADDR_WIDTH = 5,
       DATA_WIDTH = XLEN,
+      ReadPorts = 2,
+      ZeroReg0 = true,
+      DebugA0Fallback = true,
       EnableDynamicDebug = EnableDynamicDebug
     )
   )
-  val registerFileWriteEnable = Mux(io.WriteSELECT === 0.U, false.B, io.WriteEN)
   registerFile.io.wdata := io.wdata
   registerFile.io.waddr := io.WriteSELECT
-  registerFile.io.wen := registerFileWriteEnable
+  registerFile.io.wen := io.WriteEN
   registerFile.io.raddr1 := io.Read1SELECT
   registerFile.io.raddr2 := io.Read2SELECT
-  io.ReadDATA1 := Mux(
-    io.Read1SELECT === 0.U,
-    0.U(XLEN.W),
-    registerFile.io.rdata1
-  )
-  io.ReadDATA2 := Mux(
-    io.Read2SELECT === 0.U,
-    0.U(XLEN.W),
-    registerFile.io.rdata2
-  )
+  registerFile.io.raddr3 := 0.U
+  io.ReadDATA1 := registerFile.io.rdata1
+  io.ReadDATA2 := registerFile.io.rdata2
   registerFile.io.DebugRaddr := io.DebugRaddr
   io.DebugReadData := registerFile.io.DebugRdata
 }

@@ -18,13 +18,15 @@ object ysyx_26030103_ICacheCoherence {
     val Name = "hardware_snoop"
   }
 
-  def FromString(value: String): ysyx_26030103_ICacheCoherence = value match {
-    case "fence_i"        => FenceI
-    case "hardware_snoop" => HardwareSnoop
-    case other =>
-      throw new IllegalArgumentException(
+  def FromString(value: String): ysyx_26030103_ICacheCoherence = {
+    val table: Seq[(String, ysyx_26030103_ICacheCoherence)] =
+      Seq("fence_i" -> FenceI, "hardware_snoop" -> HardwareSnoop)
+    ysyx_26030103_NameEnum.Select(
+      value,
+      table,
+      other =>
         s"ICACHE_COHERENCE 只支持 fence_i/hardware_snoop，收到: $other"
-      )
+    )
   }
 }
 
@@ -57,13 +59,18 @@ object ysyx_26030103_DMACoherence {
     val Name = "hardware_snoop"
   }
 
-  def FromString(value: String): ysyx_26030103_DMACoherence = value match {
-    case "software_flush" => SoftwareFlush
-    case "uncached"       => Uncached
-    case "hardware_snoop" => HardwareSnoop
-    case other =>
-      throw new IllegalArgumentException(
-        s"DMA_COHERENCE 只支持 software_flush/uncached/hardware_snoop，收到: $other"
+  def FromString(value: String): ysyx_26030103_DMACoherence = {
+    val table: Seq[(String, ysyx_26030103_DMACoherence)] =
+      Seq(
+        "software_flush" -> SoftwareFlush,
+        "uncached" -> Uncached,
+        "hardware_snoop" -> HardwareSnoop
       )
+    ysyx_26030103_NameEnum.Select(
+      value,
+      table,
+      other =>
+        s"DMA_COHERENCE 只支持 software_flush/uncached/hardware_snoop，收到: $other"
+    )
   }
 }

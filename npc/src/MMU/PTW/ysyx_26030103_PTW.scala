@@ -186,124 +186,49 @@ class ysyx_26030103_PTW(
   val fillNapotReg = RegInit(false.B)
   val writeDataReg = RegInit(0.U(PTEWidth.W))
 
-  class CacheEntry extends Bundle {
-    val valid = Bool()
-    val tag = UInt(addressWidth.W)
-    // 保存原始 PTE（8B PTE 的低/高字），命中时再按 PTEConfig 归一化，
-    // 这样自定义 PTE 编码和 A/D 写回都不会因缓存二次归一化而失真。
-    val data = UInt(PTEWidth.W)
-  }
-  private val cacheSets = if (cacheEffective) cacheEntries / cacheWays else 1
-  private val cacheSetBits = if (cacheSets <= 1) 0 else log2Ceil(cacheSets)
-  private val cacheWayBits = log2Ceil(cacheWays.max(2))
-  private val cacheIndexBits = if (cacheEffective) log2Ceil(cacheEntries) else 1
-  private def cacheIndex(set: UInt, way: UInt): UInt =
-    if (!cacheEnable) 0.U
-    else (set * cacheWays.U + way)(cacheIndexBits - 1, 0)
-  val cache = if (cacheEffective)
-    Some(RegInit(VecInit(Seq.fill(cacheEntries)(0.U.asTypeOf(new CacheEntry)))))
-  else None
-  val cacheRoundRobin = if (cacheEffective)
-    Some(RegInit(VecInit(Seq.fill(cacheSets)(0.U(cacheWayBits.W)))))
-  else None
-
-  private def cacheSetOf(address: UInt): UInt =
-    if (cacheSetBits == 0) 0.U else address(cacheSetBits + PTEShift - 1, PTEShift)
-
-  def cacheLookup(address: UInt): (Bool, UInt) = {
-    if (!cacheEffective) (false.B, 0.U(PTEWidth.W))
-    else {
-      val set = cacheSetOf(address)
-      val hits = (0 until cacheWays).map { w =>
-        val entry = cache.get(cacheIndex(set, w.U))
-        entry.valid && entry.tag === address
-      }
-      val data = Mux1H(hits, (0 until cacheWays).map { w =>
-        cache.get(cacheIndex(set, w.U)).data
-      })
-      (hits.reduce(_ || _), data)
-    }
-  }
-
-  def cacheFill(address: UInt, data: UInt): Unit = {
-    if (cacheEffective) {
-      val set = cacheSetOf(address)
-      val index = cacheIndex(set, cacheRoundRobin.get(set))
-      val entry = Wire(new CacheEntry)
-      entry := 0.U.asTypeOf(new CacheEntry)
-      entry.valid := true.B
-      entry.tag := address
-      entry.data := data
-      cache.get(index) := entry
-      cacheRoundRobin.get(set) := Mux(
-        cacheRoundRobin.get(set) === (cacheWays - 1).U,
-        0.U,
-        cacheRoundRobin.get(set) + 1.U
-      )
-    }
-  }
+  private val cache = new ysyx_26030103_PTECache(
+    cacheEffective, cacheEntries, cacheWays, addressWidth, PTEWidth, PTEShift)
 
   when(io.flush) {
-    cache.foreach { c => for (i <- 0 until cacheEntries) { c(i).valid := false.B } }
+    cache.invalidate()
     when(state =/= idle) { discard := true.B }
   }
 
   val isFetch = accessReg === ysyx_26030103_AccessType.Fetch
   val isStore = accessReg === ysyx_26030103_AccessType.Store
-  def causeOf(access: UInt): UInt = {
-    val fetch = access === ysyx_26030103_AccessType.Fetch
-    val store = access === ysyx_26030103_AccessType.Store
-    Mux(fetch, 12.U, Mux(store, 15.U, 13.U))
-  }
+  def causeOf(access: UInt): UInt =
+    ysyx_26030103_PTEDecode.pageFaultCause(access)
   // 页表总线错误不是页错误：取指/load/store 分别报告 1/5/7。
-  def accessCauseOf(access: UInt): UInt = {
-    val fetch = access === ysyx_26030103_AccessType.Fetch
-    val store = access === ysyx_26030103_AccessType.Store
-    Mux(fetch, 1.U, Mux(store, 7.U, 5.U))
-  }
+  def accessCauseOf(access: UInt): UInt =
+    ysyx_26030103_PTEDecode.accessFaultCause(access)
   val pageFaultCause = causeOf(accessReg)
   val accessFaultCause = accessCauseOf(accessReg)
 
   // 把原始 PTE 归一化为内部标准布局：低 8 位标志，PPN 从 PPNLow 开始。
-  private def normalizePTE(PTE: UInt): UInt = {
-    val flags = Cat(
-      PTE(PTEConfig.dBit), PTE(PTEConfig.aBit), PTE(PTEConfig.globalBit),
-      PTE(PTEConfig.userBit), PTE(PTEConfig.executeBit), PTE(PTEConfig.writeBit),
-      PTE(PTEConfig.readBit), PTE(PTEConfig.validBit)
-    )
-    val PPN = PTE(PTEConfig.PPNHigh, PTEConfig.PPNLow)
-    Cat(PPN.pad(PTEWidth - PTEConfig.PPNLow),
-      if (PTEConfig.PPNLow > 8) 0.U((PTEConfig.PPNLow - 8).W) else 0.U,
-      flags)
-  }
+  private def normalizePTE(PTE: UInt): UInt =
+    ysyx_26030103_PTEDecode.normalizePTE(PTE, PTEConfig, PTEWidth)
   private def adRaw(PTE: UInt): UInt =
-    PTE | (1.U << PTEConfig.aBit) |
-      Mux(isStore, 1.U << PTEConfig.dBit, 0.U(PTEWidth.W))
+    ysyx_26030103_PTEDecode.adRaw(PTE, isStore, PTEConfig, PTEWidth)
 
   // 以下函数接收的是 normalizePte 之后的内部 PTE：标志位固定在低 8 位，
   // 只有 PPN 位置仍由 PTEConfig 决定。绝不能再用 PTEConfig 的原始标志
   // 位置去解释归一化结果，否则 CUSTOM 的私有 PTE 布局会被误判。
   def isLeaf(PTE: UInt): Bool =
-    Cat(PTE(2), PTE(1), PTE(3)) =/= 0.U // 归一化 W/R/X = bit2/1/3
+    ysyx_26030103_PTEDecode.isLeaf(PTE)
   // R=0 且 W=1 是保留编码；无论叶子还是非叶子都必须 page fault。
-  def reservedEncoding(PTE: UInt): Bool = !PTE(1) && PTE(2)
-  def leafAllowed: Bool = superpage.B || levelReg === (levels - 1).U
+  def reservedEncoding(PTE: UInt): Bool =
+    ysyx_26030103_PTEDecode.reservedEncoding(PTE)
   // 非叶子 PTE 的保留位（PPN 高位以外）必须为 0。
   def reservedFault(PTE: UInt): Bool =
-    if (PTEConfig.PPNHigh + 1 >= PTEWidth) false.B
-    else PTE(PTEWidth - 1, PTEConfig.PPNHigh + 1) =/= 0.U
+    ysyx_26030103_PTEDecode.reservedFault(PTE, PTEConfig, PTEWidth)
   /** PPN 字段以上的 PTE 位为保留位，非零必须 page fault。
     *
     * 标准 Sv39/Sv48 的 PPN 到 bit53，因此对应 PTE[63:54]；CUSTOM 允许
     * 重新定义 PPN 高位，保留区必须随 PTEConfig 一起移动，不能硬编码 54。
     */
   def rawReservedFault(raw: UInt): Bool =
-    if (XLEN <= 32 || PTEWidth <= 32 || PTEConfig.PPNHigh + 1 >= PTEWidth) false.B
-    else {
-      val high = raw(PTEWidth - 1, PTEConfig.PPNHigh + 1)
-      val highWithoutN = raw(PTEWidth - 2, PTEConfig.PPNHigh + 1)
-      Mux(napotLeaf(raw), highWithoutN =/= 0.U, high =/= 0.U)
-    }
+    ysyx_26030103_PTEDecode.rawReservedFault(raw, PTEConfig, XLEN, PTEWidth,
+      true, napotLeaf(raw))
   // 64KiB Svnapot：N=1、末级、PPN[3:0]=1000、RWX 至少一位
   def napotLeaf(raw: UInt): Bool = {
     if (XLEN <= 32 || PTEWidth <= 32 || pageBits != 12 ||
@@ -317,118 +242,68 @@ class ysyx_26030103_PTW(
     }
   }
   // 超级页 PPN 的低位必须按层级对齐。
-  def superpageMisaligned(PTE: UInt): Bool = {
-    if (levels <= 1) false.B
-    else {
-      val allLowerBits = (levels - 1) * indexBits
-      val shift = levelReg * indexBits.U
-      val mask = ((BigInt(1) << allLowerBits) - 1).U(PTEPPNBits.W) >> shift
-      (PTE(PTEConfig.PPNHigh, PTEConfig.PPNLow) & mask) =/= 0.U
-    }
-  }
+  def superpageMisaligned(PTE: UInt): Bool =
+    ysyx_26030103_PTEDecode.superpageMisaligned(PTE, levelReg, PTEConfig,
+      pageBits, levels, vaBits)
   /** PTE PPN 是否落在物理地址宽度内。
     *
     * pageBits+PPN 超过物理地址宽度时，PPN 字段的高位无法表达；这些位
     * 必须为 0，否则叶子和非叶子 PTE 都会产生 page fault。
     */
-  def ppnFits(PTE: UInt): Bool = {
-    if (PaddrPPNBits >= PTEPPNBits) true.B
-    else PTE(PTEConfig.PPNLow + PTEPPNBits - 1,
-      PTEConfig.PPNLow + PaddrPPNBits) === 0.U
-  }
+  def ppnFits(PTE: UInt): Bool =
+    ysyx_26030103_PTEDecode.ppnFits(PTE, PTEConfig, pageBits, addressWidth)
   // 去掉不可用的 PPN 高位；调用前必须已检查 ppnFits。
   def ppnValue(PTE: UInt): UInt =
-    PTE(PTEConfig.PPNLow + PaddrPPNBits - 1, PTEConfig.PPNLow)
+    ysyx_26030103_PTEDecode.ppnValue(PTE, PTEConfig, pageBits, addressWidth)
   def walkFault(PTE: UInt): Bool =
-    !PTE(0) || !ppnFits(PTE) || reservedFault(PTE) || // 归一化 valid = bit0
-      reservedEncoding(PTE) ||
-      (isLeaf(PTE) && (!leafAllowed || superpageMisaligned(PTE))) ||
-      // 非叶子 PTE 的 D/A/U 是保留位，非零必须 page fault。
-      (!isLeaf(PTE) && (PTE(6) || PTE(7) || PTE(4))) ||
-      (!isLeaf(PTE) && levelReg === (levels - 1).U)
+    ysyx_26030103_PTEDecode.walkFault(PTE, levelReg, PTEConfig, PTEWidth,
+      pageBits, levels, vaBits, addressWidth, superpage)
   def leafFaultOf(PTE: UInt): Bool = {
     // PTE 是归一化 PTE，标志布局固定：V/R/W/X/U/G/A/D = bit0..7。
     // HAS_U=n 时 U 级不存在，U 位与 SUM 检查固定为不适用；
     // R/W/X、A/D 等其余页表权限仍然正常检查。
-    val userFault =
-      if (hasU) privRegOpt.get === 0.U && !PTE(4) else false.B
-    val sumFault =
-      if (hasU) privRegOpt.get === 1.U && PTE(4) && (!sumRegOpt.get || isFetch)
-      else false.B
-    val fetchFault = isFetch && !PTE(3)
-    val readFault = !isFetch && !isStore && !PTE(1) && !(mxrReg && PTE(3))
-    val writeFault = isStore && !PTE(2)
-    val adFault = adMode match {
-      case "fault" => !PTE(6) || (isStore && !PTE(7))
-      case _       => false.B
-    }
-    reservedEncoding(PTE) ||
-      userFault || sumFault || fetchFault || readFault || writeFault || adFault
+    ysyx_26030103_PTEDecode.leafFaultOf(PTE,
+      if (hasU) privRegOpt.get else 0.U(2.W), accessReg,
+      if (hasU) sumRegOpt.get else false.B, mxrReg, adMode, hasU)
   }
-  def needsAdUpdate(PTE: UInt): Bool = adMode match {
-    case "hardware" => PTE(0) && (!PTE(6) || (isStore && !PTE(7)))
-    case _          => false.B
-  }
+  def needsAdUpdate(PTE: UInt): Bool =
+    ysyx_26030103_PTEDecode.needsAdUpdate(PTE, isStore, adMode)
   /** 给 TLB 的填充层级：0=基础页，k=第 k 级超级页。
     *
     * PTW 内部 levelReg 从根(0)递增到叶子；超级页层级按“距离基础页
     * 多少级”编码，TLB 用 pageBits + k*indexBits 计算对应 shift。
     */
-  def fillLevelOf(level: UInt): UInt = (levels - 1).U - level
+  def fillLevelOf(level: UInt): UInt =
+    ysyx_26030103_PTEDecode.fillLevelOf(level, levels)
 
   // 当前级在虚拟地址中的索引；第 0 级是根页表，使用最高 VPN。
-  def vpnIndex(level: UInt): UInt = {
-    MuxLookup(level, virtualAddressReg(vaBits - 1, pageBits))(
-      (0 until levels).map { levelIndex =>
-        val lo = pageBits + (levels - 1 - levelIndex) * indexBits
-        levelIndex.U -> virtualAddressReg(lo + indexBits - 1, lo)
-      }
-    )
-  }
+  def vpnIndex(level: UInt): UInt =
+    ysyx_26030103_PTEDecode.vpnIndex(virtualAddressReg, level, pageBits,
+      levels, vaBits)
   def tableAddress(base: UInt, index: UInt): UInt =
-    base + (index << PTEShift).pad(addressWidth)
+    ysyx_26030103_PTEDecode.tableAddress(base, index, addressWidth, PTEWidth)
 
   def superOffsetBits(level: UInt): UInt =
-    pageBits.U + ((levels - 1).U - level) * indexBits.U
-  def paddrOf(PTE: UInt, level: UInt, napot: Bool = false.B): UInt = {
-    val PPN = ppnValue(PTE)
-    val shift = superOffsetBits(level)
-    val offsetMask = ((BigInt(1) << vaBits) - 1).U(vaBits.W) >> (vaBits.U - shift)
-    val normal = (PPN << pageBits).pad(addressWidth) |
-      (virtualAddressReg & offsetMask).pad(addressWidth)
-    if (XLEN == 32) normal
-    else {
-      // NAPOT 低 4 位 PPN 是尺寸编码，不参与物理地址
-      val lowMask = ((BigInt(1) << 4) - 1).U(PaddrPPNBits.W)
-      val napotBase = ((PPN & ~lowMask) << pageBits).pad(addressWidth)
-      Mux(napot, napotBase | virtualAddressReg(15, 0).pad(addressWidth), normal)
-    }
-  }
+    ysyx_26030103_PTEDecode.superOffsetBits(level, pageBits, levels, vaBits)
+  def paddrOf(PTE: UInt, level: UInt, napot: Bool = false.B): UInt =
+    ysyx_26030103_PTEDecode.paddrOf(PTE, level, virtualAddressReg, napot,
+      true, PTEConfig, pageBits, levels, vaBits, XLEN, addressWidth)
 
   // Sv39/Sv48 的高位必须是指示位的符号扩展。
-  def canonicalOk(virtualAddress: UInt): Bool = {
-    if (vaBits == XLEN) true.B
-    else {
-      val upper = virtualAddress(XLEN - 1, vaBits)
-      val sign = Fill(XLEN - vaBits, virtualAddress(vaBits - 1))
-      upper === sign
-    }
-  }
+  def canonicalOk(virtualAddress: UInt): Bool =
+    ysyx_26030103_PTEDecode.canonicalOk(virtualAddress, vaBits, XLEN)
   def satpPPN(satp: UInt): UInt =
-    if (XLEN == 32) satp(21, 0) else satp(43, 0)
+    ysyx_26030103_PTEDecode.satpPPN(satp, XLEN)
   def satpASID(satp: UInt): UInt =
-    if (XLEN == 32) satp(30, 22) else satp(59, 44)
+    ysyx_26030103_PTEDecode.satpASID(satp, XLEN)
   // satp.PPN 的高位必须能装入物理地址宽度。
-  def satpRootFits(satp: UInt): Bool = {
-    val PPN = satpPPN(satp)
-    if (SatpPPNBits >= (if (XLEN == 32) 22 else 44)) true.B
-    else PPN((if (XLEN == 32) 21 else 43), SatpPPNBits) === 0.U
-  }
+  def satpRootFits(satp: UInt): Bool =
+    ysyx_26030103_PTEDecode.satpRootFits(satp, XLEN, pageBits, addressWidth)
   def tableBaseOf(satp: UInt): UInt =
-    (satpPPN(satp)(SatpPPNBits - 1, 0) << pageBits).pad(addressWidth)
+    ysyx_26030103_PTEDecode.tableBaseOf(satp, XLEN, pageBits, addressWidth)
 
   val NextPTEAddress = tableAddress(tableReg, vpnIndex(levelReg))
-  val (cacheHit, cacheData) = cacheLookup(NextPTEAddress)
+  val (cacheHit, cacheData) = cache.lookup(NextPTEAddress)
   val useBus = state === requestState && !cacheHit
   io.request.ready := state === idle && !io.flush && !discard
   // flush/收尾期间不再发起新的页表事务；requestState/reqHigh/writeState 的
@@ -492,7 +367,7 @@ class ysyx_26030103_PTW(
     // 总线错误的读数据不是有效 PTE，不能写入 cache。flush 当拍或该 walk
     // 已被 flush 丢弃时也不能回填，否则旧 PTE 会跨 sfence 残留。
     when(cacheEffective.B && !busFault && !io.flush && !discard) {
-      cacheFill(PTEAddressReg, raw)
+      cache.fill(PTEAddressReg, raw)
     }
     when(busFault || rawReservedFault(raw) || walkFault(PTE)) {
       // 总线故障是 access fault；保留位/权限/几何错误仍是 page fault。
@@ -625,7 +500,7 @@ class ysyx_26030103_PTW(
           // 写总线出错时不更新 cache，避免缓存未成功写回的表项。
           when(cacheEffective.B && !io.bus.response.bits.fault && !io.flush &&
               !discard) {
-            cacheFill(PTEAddressReg, writeDataReg)
+            cache.fill(PTEAddressReg, writeDataReg)
           }
           responseReg.paddr := paddrOf(written, levelReg)
           responseReg.fault := io.bus.response.bits.fault || leafFaultOf(written)

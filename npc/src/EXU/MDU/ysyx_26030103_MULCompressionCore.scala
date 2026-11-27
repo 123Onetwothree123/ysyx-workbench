@@ -167,6 +167,20 @@ private object ysyx_26030103_MULCompressionUtils {
     reducedColumns.map(_.toIndexedSeq).toIndexedSeq
   }
 
+  def ReduceStage(
+      columns: IndexedSeq[IndexedSeq[Bool]],
+      Target: Int,
+      productWidth: Int,
+      Config: ysyx_26030103_MULGPCConfig,
+      UseDadda: Boolean
+  ): IndexedSeq[IndexedSeq[Bool]] = {
+    if (UseDadda) {
+      daddaReduceColumns(columns, Target, productWidth, Config)
+    } else {
+      wallaceReduceColumns(columns, productWidth, Config)
+    }
+  }
+
   // 仅在最后两行已经形成后才重新拼接成 UInt；中间阶段始终保持稀疏列。
   def columnsToRows(columns: IndexedSeq[IndexedSeq[Bool]], productWidth: Int = 64): IndexedSeq[UInt] = {
     require(columns.length == productWidth)
@@ -325,39 +339,17 @@ abstract class ysyx_26030103_MULCompressionCore(
   IO.Request.ready := pipelineEnable
   IO.Response.valid := valid.last && !IO.Flush
   IO.Response.bits.Product := product
-  private val nextProduct = if (UseDadda) {
+  private val nextProduct = {
     // 中间阶段始终保留稀疏列；只在最终两行形成后重组成 UInt。
     var columns = initialCompressionColumns
     for ((target, step) <- schedule.zipWithIndex) {
       if (columns.map(_.length).max > 2) {
-        columns = ysyx_26030103_MULCompressionUtils.daddaReduceColumns(
+        columns = ysyx_26030103_MULCompressionUtils.ReduceStage(
           columns,
           target,
           productWidth,
-          compressorConfig
-        )
-      }
-      if (boundarySteps.contains(step)) {
-        columns = ysyx_26030103_MULCompressionUtils.registerColumns(
-          columns,
-          pipelineEnable,
-          IO.Flush
-        )
-      }
-    }
-    ysyx_26030103_MULCompressionUtils.finalSum(
-      ysyx_26030103_MULCompressionUtils.columnsToRows(columns, productWidth),
-      productWidth
-    )
-  } else {
-    // Wallace 每一级只消费当前层的 dots，carry 留给下一层。
-    var columns = initialCompressionColumns
-    for ((_, step) <- schedule.zipWithIndex) {
-      if (columns.map(_.length).max > 2) {
-        columns = ysyx_26030103_MULCompressionUtils.wallaceReduceColumns(
-          columns,
-          productWidth,
-          compressorConfig
+          compressorConfig,
+          UseDadda
         )
       }
       if (boundarySteps.contains(step)) {

@@ -13,6 +13,90 @@ import _root_.ysyx_26030103.config._
   * 修改任一实现后必须跑 csrc/Test/rtl/issue-audit-test 全套。
   */
 object ysyx_26030103_DCacheFactory {
+  private def MakeReg(
+      Enable: Boolean,
+      BlockSizeLog2: Int,
+      IndexBits: Int,
+      AddressWidth: Int,
+      DataWidth: Int,
+      BusDataWidth: Int,
+      VIPT: Boolean,
+      VIPTAliasSafe: Boolean,
+      VIPTAliasScanMode: String,
+      DMASnoop: Boolean,
+      VIPTAliasScanWidth: Int,
+      VIPTAliasDirectoryEntries: Int,
+      VIPTAliasEventQueueDepth: Int,
+      CacheableBase: Long,
+      CacheableMask: Long,
+      DrainTimeout: Int,
+      PMARegions: Seq[ysyx_26030103_PMARegion]
+  ): ysyx_26030103_DCacheBase =
+    Module(
+      new ysyx_26030103_DCacheReg(
+        Enable = Enable,
+        BlockSizeLog2 = BlockSizeLog2,
+        IndexBits = IndexBits,
+        AddressWidth = AddressWidth,
+        DataWidth = DataWidth,
+        BusDataWidth = BusDataWidth,
+        VIPT = VIPT,
+        VIPTAliasSafe = VIPTAliasSafe,
+        VIPTAliasScanMode = VIPTAliasScanMode,
+        DMASnoop = DMASnoop,
+        VIPTAliasScanWidth = VIPTAliasScanWidth,
+        VIPTAliasDirectoryEntries = VIPTAliasDirectoryEntries,
+        VIPTAliasEventQueueDepth = VIPTAliasEventQueueDepth,
+        CacheableBase = CacheableBase,
+        CacheableMask = CacheableMask,
+        DrainTimeout = DrainTimeout,
+        PMARegions = PMARegions
+      )
+    )
+
+  private def MakeSram(
+      Enable: Boolean,
+      BlockSizeLog2: Int,
+      IndexBits: Int,
+      AddressWidth: Int,
+      DataWidth: Int,
+      BusDataWidth: Int,
+      VIPT: Boolean,
+      VIPTAliasSafe: Boolean,
+      VIPTAliasScanMode: String,
+      DMASnoop: Boolean,
+      VIPTAliasScanWidth: Int,
+      VIPTAliasDirectoryEntries: Int,
+      VIPTAliasEventQueueDepth: Int,
+      CacheableBase: Long,
+      CacheableMask: Long,
+      DrainTimeout: Int,
+      PMARegions: Seq[ysyx_26030103_PMARegion],
+      bypass: Boolean
+  ): ysyx_26030103_DCacheBase =
+    Module(
+      new ysyx_26030103_DCacheSRAM(
+        Enable = Enable,
+        BlockSizeLog2 = BlockSizeLog2,
+        IndexBits = IndexBits,
+        AddressWidth = AddressWidth,
+        DataWidth = DataWidth,
+        BusDataWidth = BusDataWidth,
+        VIPT = VIPT,
+        VIPTAliasSafe = VIPTAliasSafe,
+        VIPTAliasScanMode = VIPTAliasScanMode,
+        DMASnoop = DMASnoop,
+        VIPTAliasScanWidth = VIPTAliasScanWidth,
+        VIPTAliasDirectoryEntries = VIPTAliasDirectoryEntries,
+        VIPTAliasEventQueueDepth = VIPTAliasEventQueueDepth,
+        CacheableBase = CacheableBase,
+        CacheableMask = CacheableMask,
+        Bypass = bypass,
+        DrainTimeout = DrainTimeout,
+        PMARegions = PMARegions
+      )
+    )
+
   def Create(
       Enable: Boolean = true,
       BlockSizeLog2: Int = ysyx_26030103_KconfigDefaults.NpcDCacheBlockSizeLog2,
@@ -37,72 +121,23 @@ object ysyx_26030103_DCacheFactory {
   ): ysyx_26030103_DCacheBase = {
     Storage match {
       case ysyx_26030103_CacheStorage.Reg =>
-        Module(
-          new ysyx_26030103_DCacheReg(
-            Enable = Enable,
-            BlockSizeLog2 = BlockSizeLog2,
-            IndexBits = IndexBits,
-            AddressWidth = AddressWidth,
-            DataWidth = DataWidth,
-            BusDataWidth = BusDataWidth,
-            VIPT = VIPT,
-            VIPTAliasSafe = VIPTAliasSafe,
-            VIPTAliasScanMode = VIPTAliasScanMode,
-            DMASnoop = DMASnoop,
-            VIPTAliasScanWidth = VIPTAliasScanWidth,
-            VIPTAliasDirectoryEntries = VIPTAliasDirectoryEntries,
-            VIPTAliasEventQueueDepth = VIPTAliasEventQueueDepth,
-            CacheableBase = CacheableBase,
-            CacheableMask = CacheableMask,
-            DrainTimeout = DrainTimeout,
-            PMARegions = PMARegions
-          )
-        )
+        MakeReg(Enable, BlockSizeLog2, IndexBits, AddressWidth, DataWidth,
+          BusDataWidth, VIPT, VIPTAliasSafe, VIPTAliasScanMode, DMASnoop,
+          VIPTAliasScanWidth, VIPTAliasDirectoryEntries,
+          VIPTAliasEventQueueDepth, CacheableBase, CacheableMask,
+          DrainTimeout, PMARegions)
       case ysyx_26030103_CacheStorage.SRAM =>
-        Module(
-          new ysyx_26030103_DCacheSRAM(
-            Enable = Enable,
-            BlockSizeLog2 = BlockSizeLog2,
-            IndexBits = IndexBits,
-            AddressWidth = AddressWidth,
-            DataWidth = DataWidth,
-            BusDataWidth = BusDataWidth,
-            VIPT = VIPT,
-            VIPTAliasSafe = VIPTAliasSafe,
-            VIPTAliasScanMode = VIPTAliasScanMode,
-            DMASnoop = DMASnoop,
-            VIPTAliasScanWidth = VIPTAliasScanWidth,
-            VIPTAliasDirectoryEntries = VIPTAliasDirectoryEntries,
-            VIPTAliasEventQueueDepth = VIPTAliasEventQueueDepth,
-            CacheableBase = CacheableBase,
-            CacheableMask = CacheableMask,
-            DrainTimeout = DrainTimeout,
-            PMARegions = PMARegions
-          )
-        )
+        MakeSram(Enable, BlockSizeLog2, IndexBits, AddressWidth, DataWidth,
+          BusDataWidth, VIPT, VIPTAliasSafe, VIPTAliasScanMode, DMASnoop,
+          VIPTAliasScanWidth, VIPTAliasDirectoryEntries,
+          VIPTAliasEventQueueDepth, CacheableBase, CacheableMask,
+          DrainTimeout, PMARegions, true)
       case ysyx_26030103_CacheStorage.SRAMNoBypass =>
-        Module(
-          new ysyx_26030103_DCacheSRAM(
-            Enable = Enable,
-            BlockSizeLog2 = BlockSizeLog2,
-            IndexBits = IndexBits,
-            AddressWidth = AddressWidth,
-            DataWidth = DataWidth,
-            BusDataWidth = BusDataWidth,
-            VIPT = VIPT,
-            VIPTAliasSafe = VIPTAliasSafe,
-            VIPTAliasScanMode = VIPTAliasScanMode,
-            DMASnoop = DMASnoop,
-            VIPTAliasScanWidth = VIPTAliasScanWidth,
-            VIPTAliasDirectoryEntries = VIPTAliasDirectoryEntries,
-            VIPTAliasEventQueueDepth = VIPTAliasEventQueueDepth,
-            CacheableBase = CacheableBase,
-            CacheableMask = CacheableMask,
-            Bypass = false,
-            DrainTimeout = DrainTimeout,
-            PMARegions = PMARegions
-          )
-        )
+        MakeSram(Enable, BlockSizeLog2, IndexBits, AddressWidth, DataWidth,
+          BusDataWidth, VIPT, VIPTAliasSafe, VIPTAliasScanMode, DMASnoop,
+          VIPTAliasScanWidth, VIPTAliasDirectoryEntries,
+          VIPTAliasEventQueueDepth, CacheableBase, CacheableMask,
+          DrainTimeout, PMARegions, false)
     }
   }
 }

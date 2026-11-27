@@ -24,7 +24,7 @@ abstract class ysyx_26030103_FudianFPUBase(
   protected val useFMA = Config.FPUProfile.FMA
 
   protected def flipSign(value: UInt, width: Int): UInt =
-    value ^ (BigInt(1) << (width - 1)).U(width.W)
+    ysyx_26030103_FPUFormat.FlipSign(value, width)
 
   // F 格式输入的 NaN-boxing 检查：未 box 的输入按规范视为规范 NaN。
   private def unboxS(value: UInt): UInt =
@@ -103,8 +103,10 @@ abstract class ysyx_26030103_FudianFPUBase(
       FloatPoint.defaultNaNUInt(expWidth, precision),
       Mux(DecodeX.isNaN, rhs, Mux(DecodeY.isNaN, lhs, ordered))
     )
-    val fflags = Cat(DecodeX.isSNaN || DecodeY.isSNaN,
-      0.U(ysyx_26030103_FPUFlags.NV.W))
+    val fflags = ysyx_26030103_FPUFlags.Only(
+      ysyx_26030103_FPUFlags.NV,
+      DecodeX.isSNaN || DecodeY.isSNaN
+    )
     (result, fflags)
   }
 
@@ -121,10 +123,6 @@ abstract class ysyx_26030103_FudianFPUBase(
   protected val cD = io.request.bits.rs3
 
   protected val isSub = op === ysyx_26030103_FPUOp.FSub
-  protected val isNegA =
-    op === ysyx_26030103_FPUOp.FFnma || op === ysyx_26030103_FPUOp.FFnms
-  protected val isNegC =
-    op === ysyx_26030103_FPUOp.FFms || op === ysyx_26030103_FPUOp.FFnma
 
   // intWord=true 只用低 32 位，false 用完整 XLEN；RV32 只允许 W/WU。
   private val cvtSigned = op === ysyx_26030103_FPUOp.FCvtFPToInt ||

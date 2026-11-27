@@ -4,7 +4,10 @@ import _root_.ysyx_26030103.common.ysyx_26030103_ALUFunction.CtrlWidth
 import _root_.ysyx_26030103.fpu.{ysyx_26030103_FPUOp, ysyx_26030103_FPUFmt, ysyx_26030103_FPURm}
 
 // 译码级交付给执行级的消息；所有架构数据通路均为 XLEN 位。
-class ysyx_26030103_IDUMessage(val XLEN: Int = 32) extends Bundle {
+class ysyx_26030103_IDUMessage(val XLEN: Int = 32)
+    extends Bundle
+    with ysyx_26030103_FetchContext
+    with ysyx_26030103_DecodedToMem {
   ysyx_26030103_XLENRequire(XLEN, "IDUMessage")
   // 原始指令编码（16 位压缩指令零扩展），用于 trace 和非法指令 mtval。
   val Instruction = UInt(32.W)

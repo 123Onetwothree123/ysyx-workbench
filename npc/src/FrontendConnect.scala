@@ -48,8 +48,8 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
     // 两表项虚拟 PC 队列（仅非 C 路径）：允许响应与下一笔接受同拍发生。
     // C 路径由 IFU 内部串行状态机保存 arch PC，不依赖 ICache 响应级重新
     // 对齐 PC，因此不需要这个队列。
-    val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
-    val fetchTag1 = RegInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
+    val fetchTag0 = RegInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
+    val fetchTag1 = RegInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
     val fetchTagCount = RegInit(0.U(2.W))
     // C 模式没有 fetchTagCount：只有 IFU 当前没有待交付指令、ICache 也没有
     // 更老响应时才注入 PMP 故障，保证故障指令严格排在已取指令之后。
@@ -57,13 +57,13 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
       if (config.UseC)
         PMPFetchFaultValid && !ifu.io.Out.valid && !ICache.io.ResponseValid
       else PMPFetchFaultValid && fetchTagCount === 0.U && !ICache.io.ResponseValid
-    val pushTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
+    val pushTag = WireInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
     // FetchPC 是架构 PC（指令起点）；非 C 时与 FetchAddr 相同。
     pushTag.PC := ifu.io.FetchPC
-    pushTag.predTaken := ifu.io.PredHit
-    pushTag.predTarget := ifu.io.PredTarget
+    pushTag.PredTaken := ifu.io.PredHit
+    pushTag.PredTarget := ifu.io.PredTarget
     val popFetch = ICache.io.ResponseValid && ICache.io.ResponseReady
-    val responseTag = WireInit(0.U.asTypeOf(new ysyx_26030103_FetchTag(XLEN)))
+    val responseTag = WireInit(0.U.asTypeOf(new ysyx_26030103_IFUMessage(XLEN)))
     if (!config.UseC) {
       responseTag := Mux(fetchTagCount === 0.U, pushTag, fetchTag0)
       val pushAndPop = fetchAccept && popFetch
@@ -190,9 +190,9 @@ private[ysyx_26030103] trait FrontendConnect { this: ysyx_26030103 =>
       normalBits.ExceptionCause := 1.U(4.W)
       normalBits.AccessFaultResponse := ICache.io.AccessFaultResponse
       // 取指故障时 tval 必须是发生故障的取指地址，而不是 BTB 预测信息。
-      normalBits.PredTaken := responseTag.predTaken && !ICache.io.ResponseFault
+      normalBits.PredTaken := responseTag.PredTaken && !ICache.io.ResponseFault
       normalBits.PredTarget :=
-        Mux(ICache.io.ResponseFault, responseTag.PC, responseTag.predTarget)
+        Mux(ICache.io.ResponseFault, responseTag.PC, responseTag.PredTarget)
       IFUResponse.valid := fetchFaultInject || ICache.io.ResponseValid
       IFUResponse.bits := Mux(fetchFaultInject, faultBits, normalBits)
       ifu.io.Out.ready := false.B

@@ -65,23 +65,16 @@ class ysyx_26030103_AXI5Arbiter(
   // 与 ysyx_26030103_AXIReadId 保持一致：0=ICache，1=LSU，2=DMA，
   // 3..15=PTW 页表读。IFU/LSU 端口保留各自的局部 ID，仲裁器只把 LSU
   // 局部 ID 0 映射到下游 1，其余 PTW ID 原样透传。
-  private val IFUReadID = ysyx_26030103_AXIReadID.IFU.U(4.W)
-  private val LSUReadID = ysyx_26030103_AXIReadID.LSU.U(4.W)
-  private val DMAReadID = ysyx_26030103_AXIReadID.DMA.U(4.W)
-  private val PTWReadBaseID = ysyx_26030103_AXIReadID.PTWBase.U(4.W)
-  private val PTWReadLastID = ysyx_26030103_AXIReadID.PTWLast.U(4.W)
-  private val DMAWriteID = 2.U(4.W)
+  private val IFUReadID = ysyx_26030103_AXIReadID.IFU.U(IDWidth.W)
+  private val LSUReadID = ysyx_26030103_AXIReadID.LSU.U(IDWidth.W)
+  private val DMAReadID = ysyx_26030103_AXIReadID.DMA.U(IDWidth.W)
+  private val PTWReadBaseID = ysyx_26030103_AXIReadID.PTWBase.U(IDWidth.W)
+  private val PTWReadLastID = ysyx_26030103_AXIReadID.PTWLast.U(IDWidth.W)
+  private val DMAWriteID = ysyx_26030103_AXIReadID.DMA.U(IDWidth.W)
   private val GrantIFU = 0.U(2.W)
   private val GrantLSU = 1.U(2.W)
   private val GrantDMA = 2.U(2.W)
-  private val DECERR = 3.U(2.W)
-
-  private class ReadResponsePayload extends Bundle {
-    val ID = UInt(IDWidth.W)
-    val data = UInt(DataWidth.W)
-    val response = UInt(2.W)
-    val last = Bool()
-  }
+  private val DECERR = ysyx_26030103_AXI5Resp.DECERR
 
   /** CPU slave只代理ChipLink MEM窗口。使用 AddressWidth+1 位末字节计算
     * 同时拒绝越过 4GiB 边界、超出数据总线拍宽以及不支持的 burst 类型。
@@ -94,67 +87,30 @@ class ysyx_26030103_AXI5Arbiter(
       size: UInt,
       burst: UInt
   ): Bool = {
-    val extendedWidth = AddressWidth + 1
-    val extendedAddress = Cat(0.U(1.W), address)
-    val lastByte =
-      ysyx_26030103_AXI5Burst.lastByte(address, length, size, burst)
     val supported = size <= 2.U && (burst === 0.U || burst === 1.U)
-    supported && extendedAddress >= DMAWindowBase.U(extendedWidth.W) &&
-    lastByte < (DMAWindowBase + DMAWindowSize).U(extendedWidth.W)
+    supported && ysyx_26030103_AXI5Burst.WithinWindow(
+      address,
+      length,
+      size,
+      burst,
+      DMAWindowBase,
+      DMAWindowBase + DMAWindowSize
+    )
   }
 
-  io.ifu.AW.AWREADY := false.B
-  io.ifu.W.WREADY := false.B
-  io.ifu.B.BID := 0.U
-  io.ifu.B.BRESP := 0.U
-  io.ifu.B.BVALID := false.B
-  io.ifu.AR.ARREADY := false.B
+  ysyx_26030103_AXI5Idle.SlaveOut(io.ifu)
 
-  io.LSU.AW.AWREADY := false.B
-  io.LSU.W.WREADY := false.B
-  io.LSU.B.BID := 0.U
-  io.LSU.B.BRESP := 0.U
-  io.LSU.B.BVALID := false.B
-  io.LSU.AR.ARREADY := false.B
+  ysyx_26030103_AXI5Idle.SlaveOut(io.LSU)
 
-  io.DMA.AW.AWREADY := false.B
-  io.DMA.W.WREADY := false.B
-  io.DMA.AR.ARREADY := false.B
   // R 通道在 DMAReadLocalError 的两个 when 分支中赋值；Chisel 的
   // initialization check 不把两个 when 视为穷尽，因此保留默认值。
-  io.DMA.R.RID := 0.U
-  io.DMA.R.RDATA := 0.U
-  io.DMA.R.RRESP := 0.U
-  io.DMA.R.RLAST := false.B
-  io.DMA.R.RVALID := false.B
+  ysyx_26030103_AXI5Idle.SlaveOut(io.DMA)
   io.DMAWriteInvalidate := false.B
   io.DMASnoopValid := false.B
   io.DMASnoopStart := 0.U
   io.DMASnoopEnd := 0.U
 
-  io.memory.AW.AWVALID := false.B
-  io.memory.AW.AWID := 0.U
-  io.memory.AW.AWADDR := 0.U
-  io.memory.AW.AWLEN := 0.U
-  io.memory.AW.AWSIZE := 2.U
-  io.memory.AW.AWBURST := 0.U
-  io.memory.AW.AWPROT := 0.U
-  io.memory.AW.AWCACHE := 0.U
-  io.memory.AW.AWQOS := 0.U
-  io.memory.W.WVALID := false.B
-  io.memory.W.WDATA := 0.U
-  io.memory.W.WSTRB := 0.U
-  io.memory.W.WLAST := false.B
-  io.memory.B.BREADY := false.B
-  io.memory.AR.ARVALID := false.B
-  io.memory.AR.ARID := 0.U
-  io.memory.AR.ARADDR := 0.U
-  io.memory.AR.ARLEN := 0.U
-  io.memory.AR.ARSIZE := 2.U
-  io.memory.AR.ARBURST := 0.U
-  io.memory.AR.ARPROT := 0.U
-  io.memory.AR.ARCACHE := 0.U
-  io.memory.AR.ARQOS := 0.U
+  ysyx_26030103_AXI5Idle.MasterOut(io.memory)
 
   // 读地址仲裁和基于ID的响应路由。
   //
@@ -162,13 +118,13 @@ class ysyx_26030103_AXI5Arbiter(
   // 记录。ICache 固定使用 IFU ID 0；PTW 适配器使用 3..15，因此同一个 IFU
   // 端口可以同时容纳 ICache burst 和多笔页表单拍读。LSU 端口在普通路径
   // 只有局部 ID 0，在 reuse_dcache 路径则同时承载 DCache(0) 与 PTW(3..15)。
-  val IFUReadBusy = RegInit(VecInit(Seq.fill(16)(false.B)))
-  val LSUReadBusy = RegInit(VecInit(Seq.fill(16)(false.B)))
-  val IFUReadIngressDone = RegInit(VecInit(Seq.fill(16)(false.B)))
-  val LSUReadIngressDone = RegInit(VecInit(Seq.fill(16)(false.B)))
+  val IFUReadBusy = RegInit(VecInit(Seq.fill(ysyx_26030103_AXIReadID.SlotCount)(false.B)))
+  val LSUReadBusy = RegInit(VecInit(Seq.fill(ysyx_26030103_AXIReadID.SlotCount)(false.B)))
+  val IFUReadIngressDone = RegInit(VecInit(Seq.fill(ysyx_26030103_AXIReadID.SlotCount)(false.B)))
+  val LSUReadIngressDone = RegInit(VecInit(Seq.fill(ysyx_26030103_AXIReadID.SlotCount)(false.B)))
   val DMAReadOutstanding = RegInit(false.B)
   val DMAReadIngressDone = RegInit(false.B)
-  val DMAReadOriginalID = RegInit(0.U(4.W))
+  val DMAReadOriginalID = RegInit(0.U(IDWidth.W))
   val DMAReadLocalError = RegInit(false.B)
   val DMAReadErrorLength = RegInit(0.U(8.W))
   val DMAReadErrorBeat = RegInit(0.U(8.W))
@@ -339,15 +295,15 @@ class ysyx_26030103_AXI5Arbiter(
   // 在途响应，深度覆盖 4-bit ID 的全部槽位，避免 PTW 多 outstanding
   // 时响应在队列口互相阻塞。
   private val IFURQueue = Module(
-    new Queue(new ReadResponsePayload, CpuResponseQueueDepth,
+    new Queue(new ysyx_26030103_AXI5RPayload(IDWidth, DataWidth), CpuResponseQueueDepth,
       pipe = true, flow = false)
   )
   private val LSURQueue = Module(
-    new Queue(new ReadResponsePayload, CpuResponseQueueDepth,
+    new Queue(new ysyx_26030103_AXI5RPayload(IDWidth, DataWidth), CpuResponseQueueDepth,
       pipe = true, flow = false)
   )
   private val DMARQueue = Module(
-    new Queue(new ReadResponsePayload, DMAResponseQueueDepth,
+    new Queue(new ysyx_26030103_AXI5RPayload(IDWidth, DataWidth), DMAResponseQueueDepth,
       pipe = true, flow = false)
   )
   for (queue <- Seq(IFURQueue, LSURQueue, DMARQueue)) {
@@ -417,7 +373,8 @@ class ysyx_26030103_AXI5Arbiter(
     io.DMA.R.RID := DMAReadOriginalID
     io.DMA.R.RDATA := 0.U
     io.DMA.R.RRESP := DECERR
-    io.DMA.R.RLAST := DMAReadErrorBeat === DMAReadErrorLength
+    io.DMA.R.RLAST :=
+      ysyx_26030103_AXI5Beat.IsLast(DMAReadErrorBeat, DMAReadErrorLength)
     io.DMA.R.RVALID := true.B
   }
 
@@ -444,12 +401,12 @@ class ysyx_26030103_AXI5Arbiter(
     DMAReadIngressDone := false.B
   }
   when(DMAReadLocalError && io.DMA.R.RREADY) {
-    when(DMAReadErrorBeat === DMAReadErrorLength) {
+    when(ysyx_26030103_AXI5Beat.IsLast(DMAReadErrorBeat, DMAReadErrorLength)) {
       DMAReadLocalError := false.B
       DMAReadOutstanding := false.B
       DMAReadIngressDone := false.B
     }.otherwise {
-      DMAReadErrorBeat := DMAReadErrorBeat + 1.U
+      DMAReadErrorBeat := ysyx_26030103_AXI5Beat.Next(DMAReadErrorBeat)
     }
   }
   when(io.memory.R.RVALID) {
@@ -475,27 +432,25 @@ class ysyx_26030103_AXI5Arbiter(
   val writeOwner = RegInit(GrantLSU)
   // 初始让LSU在同时请求时先获得写通道，之后在LSU/DMA之间轮转。
   val lastWriteGrant = RegInit(GrantDMA)
-  val DMAWriteOriginalID = RegInit(0.U(4.W))
+  val DMAWriteOriginalID = RegInit(0.U(IDWidth.W))
   val DMAWritePermitted = RegInit(false.B)
   val DMAWriteOutstanding = RegInit(false.B)
-  val DownstreamWriteID = RegInit(0.U(4.W))
+  val DownstreamWriteID = RegInit(0.U(IDWidth.W))
   // DMA AW 载荷快照：B 到达时用 [address, address + beats*bytes - 1] 生成
   // snoop 范围，因此 B 不再需要反查已经推进的 W 通道。
-  val DMAWriteAddress = RegInit(0.U(AddressWidth.W))
-  val DMAWriteLength = RegInit(0.U(8.W))
-  val DMAWriteSize = RegInit(0.U(3.W))
-  val DMAWriteBurst = RegInit(0.U(2.W))
+  val DMAWriteBurstShape = RegInit(
+    0.U.asTypeOf(new ysyx_26030103_AXI5BurstShape(AddressWidth, IDWidth)))
   val DMASnoopPending = RegInit(false.B)
   val DMASnoopStartReg = RegInit(0.U(AddressWidth.W))
   val DMASnoopEndReg = RegInit(0.U(AddressWidth.W))
   // DMA专属B弹性槽。下游B一旦进入此槽，写仲裁器立即可服务LSU；
   // CPU slave的BREADY只控制该槽出队，不再反压共享memory.B。
   val DMABValid = RegInit(false.B)
-  val DMABID = RegInit(0.U(4.W))
+  val DMABID = RegInit(0.U(IDWidth.W))
   val DMABResponse = RegInit(0.U(2.W))
   // hardware_snoop 下下游 B 先进入该槽，等 Cache 失效完成后再搬到
   // DMABValid（对外 BVALID）。软件看到的 B 因此是“失效后”的完成事件。
-  val DMABPendingID = RegInit(0.U(4.W))
+  val DMABPendingID = RegInit(0.U(IDWidth.W))
   val DMABPendingResponse = RegInit(0.U(2.W))
   io.DMA.B.BVALID := DMABValid
   io.DMA.B.BID := DMABID
@@ -509,11 +464,11 @@ class ysyx_26030103_AXI5Arbiter(
   // INCR 按 LEN+1 个 beat 展开；dmaRequestPermitted 已保证不越过 4GiB，
   // 因此 AddressWidth+1 位计算不会回绕。
   private val snoopExtendedWidth = AddressWidth + 1
-  private val DMABeatBytes = 1.U(snoopExtendedWidth.W) << DMAWriteSize
-  private val DMABeats = (DMAWriteLength +& 1.U).pad(snoopExtendedWidth)
+  private val DMABeatBytes = 1.U(snoopExtendedWidth.W) << DMAWriteBurstShape.size
+  private val DMABeats = (DMAWriteBurstShape.length +& 1.U).pad(snoopExtendedWidth)
   private val DMABurstBytes =
-    Mux(DMAWriteBurst === 0.U, DMABeatBytes, DMABeats * DMABeatBytes)
-  private val DMARangeStart = Cat(0.U(1.W), DMAWriteAddress)
+    Mux(DMAWriteBurstShape.burst === 0.U, DMABeatBytes, DMABeats * DMABeatBytes)
+  private val DMARangeStart = Cat(0.U(1.W), DMAWriteBurstShape.address)
   private val DMARangeEnd = DMARangeStart + DMABurstBytes - 1.U
   if (HardwareSnoop) {
     io.DMASnoopValid := DMASnoopPending
@@ -594,10 +549,10 @@ class ysyx_26030103_AXI5Arbiter(
           DMAWriteOriginalID := io.DMA.AW.AWID
           DMAWritePermitted := DMAAWPermitted
           DMAWriteOutstanding := true.B
-          DMAWriteAddress := io.DMA.AW.AWADDR
-          DMAWriteLength := io.DMA.AW.AWLEN
-          DMAWriteSize := io.DMA.AW.AWSIZE
-          DMAWriteBurst := io.DMA.AW.AWBURST
+          DMAWriteBurstShape.address := io.DMA.AW.AWADDR
+          DMAWriteBurstShape.length := io.DMA.AW.AWLEN
+          DMAWriteBurstShape.size := io.DMA.AW.AWSIZE
+          DMAWriteBurstShape.burst := io.DMA.AW.AWBURST
         }
       }
       when(wLastFire) { wDone := true.B }

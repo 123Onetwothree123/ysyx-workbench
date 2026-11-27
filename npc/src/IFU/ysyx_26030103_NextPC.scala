@@ -16,9 +16,30 @@ class ysyx_26030103_NextPC(val XLEN: Int = 32) extends Module {
     val PredHit = Input(Bool())
     val PredTarget = Input(UInt(XLEN.W))
   })
-  io.ysyx_26030103_NextPC := Mux(
+  io.ysyx_26030103_NextPC := ysyx_26030103_NextPCSelect(
+    io.SNPC,
+    io.Redirect,
+    io.RedirectTarget,
     io.ExceptionTaken,
     io.ExceptionTarget,
-    Mux(io.Redirect, io.RedirectTarget, Mux(io.PredHit, io.PredTarget, io.SNPC))
+    io.PredHit,
+    io.PredTarget
   )
+}
+
+object ysyx_26030103_NextPCSelect {
+  def apply(
+      snpc: UInt,
+      redirect: Bool,
+      redirectTarget: UInt,
+      exc: Bool,
+      excTarget: UInt,
+      predHit: Bool,
+      predTarget: UInt
+  ): UInt =
+    Mux(
+      exc,
+      excTarget,
+      Mux(redirect, redirectTarget, Mux(predHit, predTarget, snpc))
+    )
 }

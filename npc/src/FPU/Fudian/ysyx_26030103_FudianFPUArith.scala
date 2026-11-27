@@ -3,6 +3,8 @@ import chisel3._
 import _root_.fudian._
 trait ysyx_26030103_FudianFPUArith {
   this: ysyx_26030103_FudianFPUBase =>
+  private val fmaNegA = ysyx_26030103_FPUOp.NegateFmaA(op)
+  private val fmaNegC = ysyx_26030103_FPUOp.NegateFmaC(op)
   // F扩展的
   protected val sAdd = Module(new FADD(sExpWidth, sPrecision)) // 这是例化单精度加法器
   sAdd.io.a := aS
@@ -15,11 +17,9 @@ trait ysyx_26030103_FudianFPUArith {
   protected val sFma =
     if (useFMA) Some(Module(new FCMA(sExpWidth, sPrecision))) else None
   if (useFMA) {
-    // 忘记了，后面查了下，isNegXXX是看是正数还是负数，看要不要反转A X B的符号
-    sFma.get.io.a := Mux(isNegA, flipSign(aS, 32), aS)
+    sFma.get.io.a := Mux(fmaNegA, flipSign(aS, 32), aS)
     sFma.get.io.b := bS
-    // 看要不要翻转加数C的符号
-    sFma.get.io.c := Mux(isNegC, flipSign(cS, 32), cS)
+    sFma.get.io.c := Mux(fmaNegC, flipSign(cS, 32), cS)
     sFma.get.io.rm := rm
   }
   // 这段纯粹是AI写的，我是真的看不懂了
@@ -28,9 +28,9 @@ trait ysyx_26030103_FudianFPUArith {
     if (!useFMA) Some(Module(new ysyx_26030103_ExactFMA(sExpWidth, sPrecision)))
     else None
   if (!useFMA) {
-    sExactFma.get.io.a := Mux(isNegA, flipSign(aS, 32), aS)
+    sExactFma.get.io.a := Mux(fmaNegA, flipSign(aS, 32), aS)
     sExactFma.get.io.b := bS
-    sExactFma.get.io.c := Mux(isNegC, flipSign(cS, 32), cS)
+    sExactFma.get.io.c := Mux(fmaNegC, flipSign(cS, 32), cS)
     sExactFma.get.io.rm := rm
   }
   protected val sCmp = Module(new FCMP(sExpWidth, sPrecision))
@@ -72,15 +72,15 @@ trait ysyx_26030103_FudianFPUArith {
     dMul.get.io.b := bD
     dMul.get.io.rm := rm
     dFma.foreach { fma =>
-      fma.io.a := Mux(isNegA, flipSign(aD, 64), aD)
+      fma.io.a := Mux(fmaNegA, flipSign(aD, 64), aD)
       fma.io.b := bD
-      fma.io.c := Mux(isNegC, flipSign(cD, 64), cD)
+      fma.io.c := Mux(fmaNegC, flipSign(cD, 64), cD)
       fma.io.rm := rm
     }
     dExactFma.foreach { fma =>
-      fma.io.a := Mux(isNegA, flipSign(aD, 64), aD)
+      fma.io.a := Mux(fmaNegA, flipSign(aD, 64), aD)
       fma.io.b := bD
-      fma.io.c := Mux(isNegC, flipSign(cD, 64), cD)
+      fma.io.c := Mux(fmaNegC, flipSign(cD, 64), cD)
       fma.io.rm := rm
     }
     dCmp.get.io.a := aD

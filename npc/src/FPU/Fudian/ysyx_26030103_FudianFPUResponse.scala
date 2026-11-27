@@ -8,7 +8,8 @@ import _root_.fudian._
 trait ysyx_26030103_FudianFPUResponse {
   this: ysyx_26030103_FudianFPUBase
     with ysyx_26030103_FudianFPUArith
-    with ysyx_26030103_FudianFPUResult =>
+    with ysyx_26030103_FudianFPUResult
+    with ysyx_26030103_FPUResponseShell =>
 
   // FDIV/FSQRT：多周期 valid/ready
   private val isSlowOp =
@@ -72,23 +73,12 @@ trait ysyx_26030103_FudianFPUResponse {
   }
 
   private val busy = RegInit(false.B)
-  private val responseValid = RegInit(false.B)
   private val ActiveDivIsDouble = RegInit(false.B)
   private val activeRm = RegInit(ysyx_26030103_FPURm.RNE)
   // 共享模式提升 F->D 会丢 sNaN，需锁存 signaling 信息，回舍时补 NV。
   private val ActiveSingleSNaN = RegInit(false.B)
   // FDIV 的 out_valid 先拉高、结果下一拍才稳定，故先等一拍再采样。
   private val divSeenValid = RegInit(false.B)
-  private val responseResult = RegInit(0.U(FLEN.W))
-  private val responseFlags = RegInit(0.U(ysyx_26030103_FPUFlags.Width.W))
-
-  private val responsePipe =
-    Module(new ysyx_26030103_FPUResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
-  responsePipe.io.flush := io.flush
-  responsePipe.io.in.valid := responseValid
-  responsePipe.io.in.bits.result := responseResult
-  responsePipe.io.in.bits.fflags := responseFlags
-  io.response <> responsePipe.io.out
 
   private val slowReady: Bool = if (shared) {
     dDiv.get.io.specialIO.in_ready
@@ -131,7 +121,7 @@ trait ysyx_26030103_FudianFPUResponse {
     val of = cvtFlags(ysyx_26030103_FPUFlags.OF) ||
       engineFlags(ysyx_26030103_FPUFlags.OF)
     val uf = cvtFlags(ysyx_26030103_FPUFlags.UF) || (tiny && nx)
-    Cat(
+    ysyx_26030103_FPUFlags.Pack(
       engineFlags(ysyx_26030103_FPUFlags.NV) ||
         cvtFlags(ysyx_26030103_FPUFlags.NV) || ActiveSingleSNaN,
       engineFlags(ysyx_26030103_FPUFlags.DZ),
@@ -185,11 +175,8 @@ trait ysyx_26030103_FudianFPUResponse {
       busy := true.B
       divSeenValid := false.B
       ActiveDivIsDouble := fmtD
-    }.otherwise {
-      responseValid := true.B
-      responseResult := fastResult
-      responseFlags := fastFlags
     }
+    CaptureFastResponse(!isSlowOp)
   }
 
   when(busy && divOutValid) {
@@ -197,18 +184,14 @@ trait ysyx_26030103_FudianFPUResponse {
       divSeenValid := true.B
     }.otherwise {
       busy := false.B
-      responseValid := true.B
-      responseResult := asResponse(divOutResult)
-      responseFlags := divOutFlags
+      PublishResponse(asResponse(divOutResult), divOutFlags)
     }
   }
 
-  when(responseValid && responsePipe.io.in.ready) {
-    responseValid := false.B
-  }
+  ReleaseResponse()
   when(io.flush) {
     busy := false.B
     divSeenValid := false.B
-    responseValid := false.B
+    ClearResponseOnFlush()
   }
 }

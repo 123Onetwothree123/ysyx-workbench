@@ -11,7 +11,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_LoadFormat
   * 命中响应级由 useSramStorage / bypassResponse 两个钩子隔离。
   * 两套存储各自的相对语句顺序、RegInit 初值和 last-connect 顺序保持不变。
   */
-private[cache] trait ysyx_26030103_DCacheCore {
+private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAliasSupport {
   this: ysyx_26030103_DCacheBase =>
 
   // 由实现类以 protected val 提供，保持构造参数名/默认值不变。
@@ -33,6 +33,21 @@ private[cache] trait ysyx_26030103_DCacheCore {
   protected def DrainTimeout: Int
   protected def PMARegions: Seq[ysyx_26030103_PMARegion]
 
+  protected def CacheParamsOf: CacheParams = CacheParams(
+    enable = Enable,
+    blockSizeLog2 = BlockSizeLog2,
+    indexBits = IndexBits,
+    addressWidth = AddressWidth,
+    busDataWidth = BusDataWidth,
+    viptAliasSafe = VIPTAliasSafe,
+    viptAliasScanMode = VIPTAliasScanMode,
+    viptAliasScanWidth = VIPTAliasScanWidth,
+    viptAliasDirectoryEntries = VIPTAliasDirectoryEntries,
+    dmaSnoop = DMASnoop,
+    dmaStartAddress = io.DMASnoopStart,
+    dmaEndAddress = io.DMASnoopEnd
+  )
+
   // 存储/时序钩子：Reg 返回 false/false；SRAM 返回 true 与 Bypass 参数。
   protected def useSramStorage: Boolean
   protected def bypassResponse: Boolean
@@ -41,15 +56,6 @@ private[cache] trait ysyx_26030103_DCacheCore {
   require(BusDataWidth == 32 || BusDataWidth == 64,
     s"$ownerName BusDataWidth 非法: $BusDataWidth")
   ysyx_26030103_VIPTAliasScan.requireMode(VIPTAliasScanMode, ownerName)
-  private val aliasScanActive =
-    VIPTAliasSafe && Enable &&
-      ysyx_26030103_VIPTAliasScan.isScan(VIPTAliasScanMode)
-  private val aliasAllSets =
-    VIPTAliasSafe && Enable &&
-      ysyx_26030103_VIPTAliasScan.isAllSets(VIPTAliasScanMode)
-  private val aliasDirectoryMode =
-    VIPTAliasSafe && Enable &&
-      ysyx_26030103_VIPTAliasScan.isDirectory(VIPTAliasScanMode)
   require(DataWidth == 32 || DataWidth == 64,
     s"DCache DataWidth 非法: $DataWidth")
   require(BlockSizeLog2 >= 2, "DCache line must contain at least one 32-bit word")
@@ -60,39 +66,10 @@ private[cache] trait ysyx_26030103_DCacheCore {
     IndexBits + BlockSizeLog2 < AddressWidth,
     "DCache geometry must leave at least one tag bit"
   )
-  // alias 模式必须比较完整物理行号：index 含 VPN 位时，PA 中与 index
-  // 对应的位并不由 VA index 决定，窄 tag 会让两个只有该位不同的物理行
-  // 在同一 set 中 false hit。
-  private val tagBits =
-    if (VIPTAliasSafe) AddressWidth - BlockSizeLog2
-    else AddressWidth - IndexBits - BlockSizeLog2
-  private def tagOf(address: UInt): UInt =
-    if (VIPTAliasSafe) address(AddressWidth - 1, BlockSizeLog2)
-    else address(AddressWidth - 1, IndexBits + BlockSizeLog2)
-  private val NumberBlocks = 1 << IndexBits
-  private val wordsPerBlock = 1 << (BlockSizeLog2 - 2)
-  private val wordsPerBeat = BusDataWidth / 32
-  private val beatsPerBlock = wordsPerBlock / wordsPerBeat
   private val busBytesLog2 = log2Ceil(BusDataWidth / 8)
-  require(wordsPerBlock % wordsPerBeat == 0,
-    s"DCache line 的 word 数($wordsPerBlock) 必须能被每拍 word 数($wordsPerBeat) 整除")
   private val indexWidth = IndexBits.max(1)
   private val offsetWidth = (BlockSizeLog2 - 2).max(1)
   private val countWidth = log2Ceil(wordsPerBlock).max(1)
-  private val scanWidth =
-    ysyx_26030103_VIPTAliasScan.resolveScanWidth(
-      VIPTAliasScanMode,
-      VIPTAliasScanWidth,
-      NumberBlocks
-    )
-  private val directoryEntries =
-    if (VIPTAliasDirectoryEntries <= 0) NumberBlocks
-    else {
-      require(VIPTAliasDirectoryEntries <= NumberBlocks,
-        s"VIPT alias 目录项数($VIPTAliasDirectoryEntries) 不能超过 set 数($NumberBlocks)")
-      VIPTAliasDirectoryEntries
-    }
-  private val arrayBlocks = if (Enable) NumberBlocks else 1
   // 8 字节访问要求低/高两个相邻 word 同处一行；LD/SD 按 ISA 8 字节对齐，
   // 块内 word 偏移总是偶数，nextOffset 不会越过行尾。
   private def nextOffset(offset: UInt): UInt =
@@ -106,56 +83,12 @@ private[cache] trait ysyx_26030103_DCacheCore {
   // 握手的失效脉冲驱动（ysyx_26030103.scala），dontTouch 保证该端口在
   // 叶模块 elaboration 中不被裁掉。
   dontTouch(io.flush)
-  val valid = RegInit(VecInit(Seq.fill(arrayBlocks)(false.B)))
-  val tag = Reg(Vec(arrayBlocks, UInt(tagBits.W)))
   // Reg 介质的数据阵列；SRAM 实现不生成该寄存器堆。
   private val data: Option[Vec[Vec[UInt]]] =
     if (useSramStorage) None
     else Some(Reg(Vec(arrayBlocks, Vec(wordsPerBlock, UInt(32.W)))))
   private def readDataWord(blockIndex: UInt, wordOffset: UInt): UInt =
     data.get(blockIndex)(wordOffset)
-  // 仅 all_sets 在 refill 安装/store 完成时展开全组 tag 比较；
-  // serial/parallel 由扫描引擎完成，directory 由目录完成。
-  private def invalidateAliasCopies(aliasTag: UInt, targetIndex: UInt): Unit = {
-    if (aliasAllSets) {
-      for (i <- valid.indices) {
-        when(valid(i) && tag(i) === aliasTag && i.U =/= targetIndex) {
-          valid(i) := false.B
-        }
-      }
-    }
-  }
-  private val DMASnoopActive = DMASnoop && Enable
-  // 每个 set 的完整物理行号。alias-safe 的 tag 已含物理行号；普通几何
-  // 需要把 tag 与 set index 拼回去，才能对任意 burst 范围做行号比较。
-  private def dmaLineOfSet(set: Int): UInt =
-    if (VIPTAliasSafe) tag(set)
-    else Cat(tag(set), set.U(IndexBits.W))
-  private val DMAStartLine = io.DMASnoopStart(AddressWidth - 1, BlockSizeLog2)
-  private val DMAEndLine = io.DMASnoopEnd(AddressWidth - 1, BlockSizeLog2)
-  private def dmaLineInRange(line: UInt): Bool =
-    line >= DMAStartLine && line <= DMAEndLine
-  private def DMASnoopHitVec: UInt =
-    if (!DMASnoopActive) 0.U(arrayBlocks.W)
-    else
-      VecInit(valid.indices.map { set =>
-        valid(set) && dmaLineInRange(dmaLineOfSet(set))
-      }).asUInt
-  private val aliasDirectory =
-    if (aliasDirectoryMode) {
-      Some(
-        Module(
-          new ysyx_26030103_VIPTAliasDirectory(
-            LineBits = AddressWidth - BlockSizeLog2,
-            SetBits = IndexBits,
-            NumSets = NumberBlocks,
-            Entries = directoryEntries
-          )
-        )
-      )
-    } else {
-      None
-    }
   // 同步读 SRAM：读口在受理拍给地址，下一拍数据有效。
   private val sram: Option[SRAMInterface[Vec[UInt]]] =
     if (useSramStorage)
@@ -337,6 +270,34 @@ private[cache] trait ysyx_26030103_DCacheCore {
   // 本次flush的缓存行重新变为有效。
   val suppressFill = RegInit(false.B)
   val requestIndexSafe = if (Enable) requestIndexReg else 0.U(indexWidth.W)
+  private def RaiseFault(response: UInt): Unit = {
+    responseFault := true.B
+    responseFaultResponse := response
+    responseValid := true.B
+  }
+  private def AbortRefillOnMissingLast(readError: Bool): Unit = {
+    valid(requestIndexSafe) := false.B
+    refillError := true.B
+    refillWordValid := 0.U
+    when(!demandResponseDone && !responseValid) {
+      RaiseFault(Mux(readError, io.AXI.R.RRESP, 2.U))
+    }
+    state := stateDrain
+  }
+  private def FinishUncached(): Unit = {
+    when(io.AXI.R.RLAST) {
+      suppressFill := false.B
+      state := stateIdle
+    }.otherwise {
+      responseFault := true.B
+      responseFaultResponse := Mux(
+        io.AXI.R.RRESP =/= 0.U,
+        io.AXI.R.RRESP,
+        2.U
+      )
+      state := stateDrain
+    }
+  }
   if (useSramStorage) {
     for (lane <- 0 until wordsPerBeat) {
       sramPorts.writePorts(lane).address :=
@@ -408,30 +369,7 @@ private[cache] trait ysyx_26030103_DCacheCore {
     Mux(strobe(1), "hff".U(8.W), 0.U(8.W)),
     Mux(strobe(0), "hff".U(8.W), 0.U(8.W))
   )
-  io.AXI.AW.AWVALID := false.B // 写通道由LSU负责
-  io.AXI.AW.AWID := 0.U
-  io.AXI.AW.AWADDR := 0.U
-  io.AXI.AW.AWLEN := 0.U
-  io.AXI.AW.AWSIZE := 2.U
-  io.AXI.AW.AWBURST := 1.U
-  io.AXI.AW.AWPROT := 0.U
-  io.AXI.AW.AWCACHE := 0.U
-  io.AXI.AW.AWQOS := 0.U
-  io.AXI.W.WVALID := false.B
-  io.AXI.W.WDATA := 0.U
-  io.AXI.W.WSTRB := 0.U
-  io.AXI.W.WLAST := false.B
-  io.AXI.B.BREADY := false.B
-  io.AXI.AR.ARVALID := false.B
-  io.AXI.AR.ARID := 0.U
-  io.AXI.AR.ARADDR := 0.U
-  io.AXI.AR.ARLEN := 0.U
-  io.AXI.AR.ARSIZE := 2.U
-  io.AXI.AR.ARBURST := 1.U
-  io.AXI.AR.ARPROT := 0.U
-  io.AXI.AR.ARCACHE := 0.U
-  io.AXI.AR.ARQOS := 0.U
-  io.AXI.R.RREADY := false.B
+  AXIDefaults(io.AXI, false.B, 2.U)
   // 响应槽：消费者本拍取走旧响应时，新响应可立即复用该槽。
   // SRAM 非旁路模式要等数据锁存后（晚两拍）才可见，槽位只能在真实
   // fire 时释放，否则会被超额订阅并静默丢响应。
@@ -1041,9 +979,7 @@ private[cache] trait ysyx_26030103_DCacheCore {
             // 拿到响应，就立即以该错误产生 fault，而不是只对 keyword/high
             // beat 报错，导致后续成功 beat 被 RefillError 挡住后永久等待。
             when(!demandResponseDone && !responseValid) {
-              responseFault := true.B
-              responseFaultResponse := io.AXI.R.RRESP
-              responseValid := true.B
+              RaiseFault(io.AXI.R.RRESP)
             }
           }
           when(!beatError) {
@@ -1138,13 +1074,11 @@ private[cache] trait ysyx_26030103_DCacheCore {
               // 在 refill 结束、缓存行已失效后留下一个永不返回的 demand。
               when((refillError || beatError) && !demandResponseDone &&
                   !responseValid) {
-                responseFault := true.B
-                responseFaultResponse := Mux(
+                RaiseFault(Mux(
                   refillErrorResponse =/= 0.U,
                   refillErrorResponse,
                   Mux(beatError, io.AXI.R.RRESP, 2.U)
-                )
-                responseValid := true.B
+                ))
               }
               refillActive := false.B
               refillBurst := false.B
@@ -1154,17 +1088,9 @@ private[cache] trait ysyx_26030103_DCacheCore {
             }.otherwise {
               // 预期的最后一拍到达时没有RLAST。仲裁器仍持有此响应期间，
               // 不得让load退休；应使缓存行失效并持续排空，直到迟到的RLAST出现。
-              valid(requestIndexSafe) := false.B
-              refillError := true.B
-              refillWordValid := 0.U
               // 绝不修改或重新产生已经对外可见的Decoupled响应。若关键字先前已被
               // 消费，这个迟到的协议错误只会使缓存行失效并将其排空。
-              when(!demandResponseDone && !responseValid) {
-                responseFault := true.B
-                responseFaultResponse := Mux(beatError, io.AXI.R.RRESP, 2.U)
-                responseValid := true.B
-              }
-              state := stateDrain
+              AbortRefillOnMissingLast(beatError)
             }
           }.elsewhen(refillBurst) {
             when(io.AXI.R.RLAST) {
@@ -1180,23 +1106,14 @@ private[cache] trait ysyx_26030103_DCacheCore {
               refillCount := refillCount + wordsPerBeat.U
               state := stateReadRequest
             }.otherwise {
-              valid(requestIndexSafe) := false.B
-              refillError := true.B
-              refillWordValid := 0.U
-              when(!demandResponseDone && !responseValid) {
-                responseFault := true.B
-                responseFaultResponse := Mux(beatError, io.AXI.R.RRESP, 2.U)
-                responseValid := true.B
-              }
-              state := stateDrain
+              AbortRefillOnMissingLast(beatError)
             }
           }
         }.otherwise {
           if (BusDataWidth == 64) {
             when(requestWidthReg === 3.U) {
               when(io.AXI.R.RRESP =/= 0.U) {
-                responseFault := true.B
-                responseFaultResponse := io.AXI.R.RRESP
+                RaiseFault(io.AXI.R.RRESP)
               }.otherwise {
                 responseData := formatLoad(
                   io.AXI.R.RDATA(31, 0),
@@ -1205,20 +1122,9 @@ private[cache] trait ysyx_26030103_DCacheCore {
                   requestWidthReg,
                   requestSignedReg
                 )
+                responseValid := true.B
               }
-              responseValid := true.B
-              when(io.AXI.R.RLAST) {
-                suppressFill := false.B
-                state := stateIdle
-              }.otherwise {
-                responseFault := true.B
-                responseFaultResponse := Mux(
-                  io.AXI.R.RRESP =/= 0.U,
-                  io.AXI.R.RRESP,
-                  2.U
-                )
-                state := stateDrain
-              }
+              FinishUncached()
             }.otherwise {
               val uncachedWord = Mux(
                 requestAddressReg(2),
@@ -1226,8 +1132,7 @@ private[cache] trait ysyx_26030103_DCacheCore {
                 io.AXI.R.RDATA(31, 0)
               )
               when(io.AXI.R.RRESP =/= 0.U) {
-                responseFault := true.B
-                responseFaultResponse := io.AXI.R.RRESP
+                RaiseFault(io.AXI.R.RRESP)
               }.otherwise {
                 responseData := formatLoad(
                   uncachedWord,
@@ -1236,32 +1141,19 @@ private[cache] trait ysyx_26030103_DCacheCore {
                   requestWidthReg,
                   requestSignedReg
                 )
+                responseValid := true.B
               }
-              responseValid := true.B
-              when(io.AXI.R.RLAST) {
-                suppressFill := false.B
-                state := stateIdle
-              }.otherwise {
-                responseFault := true.B
-                responseFaultResponse := Mux(
-                  io.AXI.R.RRESP =/= 0.U,
-                  io.AXI.R.RRESP,
-                  2.U
-                )
-                state := stateDrain
-              }
+              FinishUncached()
             }
           } else {
             when(requestWidthReg === 3.U) {
               when(wideBeat === 0.U) {
                 when(io.AXI.R.RLAST) {
-                  responseFault := true.B
-                  responseFaultResponse := Mux(
+                  RaiseFault(Mux(
                     io.AXI.R.RRESP =/= 0.U,
                     io.AXI.R.RRESP,
                     2.U
-                  )
-                  responseValid := true.B
+                  ))
                   state := stateIdle
                 }.otherwise {
                   wideLowReg := io.AXI.R.RDATA
@@ -1271,12 +1163,11 @@ private[cache] trait ysyx_26030103_DCacheCore {
               }.otherwise {
                 when(io.AXI.R.RLAST) {
                   when(wideLowFault || io.AXI.R.RRESP =/= 0.U) {
-                    responseFault := true.B
-                    responseFaultResponse := Mux(
+                    RaiseFault(Mux(
                       io.AXI.R.RRESP =/= 0.U,
                       io.AXI.R.RRESP,
                       2.U
-                    )
+                    ))
                   }.otherwise {
                     responseData := formatLoad(
                       wideLowReg,
@@ -1285,27 +1176,24 @@ private[cache] trait ysyx_26030103_DCacheCore {
                       requestWidthReg,
                       requestSignedReg
                     )
+                    responseValid := true.B
                   }
-                  responseValid := true.B
                   suppressFill := false.B
                   state := stateIdle
                 }.otherwise {
                   when(!demandResponseDone && !responseOccupied) {
-                    responseFault := true.B
-                    responseFaultResponse := Mux(
+                    RaiseFault(Mux(
                       io.AXI.R.RRESP =/= 0.U,
                       io.AXI.R.RRESP,
                       2.U
-                    )
-                    responseValid := true.B
+                    ))
                   }
                   state := stateDrain
                 }
               }
             }.otherwise {
               when(io.AXI.R.RRESP =/= 0.U) {
-                responseFault := true.B
-                responseFaultResponse := io.AXI.R.RRESP
+                RaiseFault(io.AXI.R.RRESP)
               }.otherwise {
                 responseData := formatLoad(
                   io.AXI.R.RDATA,
@@ -1314,20 +1202,9 @@ private[cache] trait ysyx_26030103_DCacheCore {
                   requestWidthReg,
                   requestSignedReg
                 )
+                responseValid := true.B
               }
-              responseValid := true.B
-              when(io.AXI.R.RLAST) {
-                suppressFill := false.B
-                state := stateIdle
-              }.otherwise {
-                responseFault := true.B
-                responseFaultResponse := Mux(
-                  io.AXI.R.RRESP =/= 0.U,
-                  io.AXI.R.RRESP,
-                  2.U
-                )
-                state := stateDrain
-              }
+              FinishUncached()
             }
           }
         }
@@ -1347,9 +1224,7 @@ private[cache] trait ysyx_26030103_DCacheCore {
         // 已经 valid 的响应可能正被下游反压，Decoupled payload 必须保持
         // 稳定；超时只允许填充空响应槽，绝不能把成功改写成故障。
         when(!demandResponseDone && !responseOccupied) {
-          responseFault := true.B
-          responseFaultResponse := 2.U
-          responseValid := true.B
+          RaiseFault(2.U)
         }
         valid(requestIndexSafe) := false.B
         refillActive := false.B

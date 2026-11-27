@@ -17,7 +17,7 @@ class ysyx_26030103_PLIC(
     AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth,
     IDWidth: Int = ysyx_26030103_KconfigDefaults.AXIIDWidth
-) extends Module {
+) extends Module with ysyx_26030103_AXI5ChannelFire {
   require(DataWidth == 32 || DataWidth == 64,
     s"PLIC DataWidth 非法: $DataWidth")
   // UART 中断固定使用 source 10（xv6/OpenSBI 都按 1 << UART0_IRQ 编程）。
@@ -51,10 +51,14 @@ class ysyx_26030103_PLIC(
   // gateway 只把尚未被 claim 的 source 电平转成 pending；这样 claim 后
   // source 仍为高也不会立刻重新触发，complete 清 claimed 后才重新挂起。
   pending := pending | (sources & ~claimed)
-  val enabledPending = VecInit((0 until NumberSources).map { i =>
-    i.U =/= 0.U && pending(i) && !claimed(i) &&
-      enable(i / 32)(i % 32) && priority(i) > threshold
-  })
+  def SourceCandidate(includeThreshold: Boolean): Vec[Bool] =
+    VecInit((0 until NumberSources).map { i =>
+      i.U =/= 0.U && pending(i) && !claimed(i) &&
+        enable(i / 32)(i % 32) &&
+        (if (includeThreshold) priority(i) > threshold
+         else priority(i) =/= 0.U)
+    })
+  val enabledPending = SourceCandidate(true)
   ExternalIRQ := enabledPending.reduce(_ || _)
 
   def addressOf(offset: BigInt): UInt = (base + offset).U(AddressWidth.W)
@@ -71,9 +75,7 @@ class ysyx_26030103_PLIC(
   // pending 与 enable 一样按 32 位字分页：NumberSources>32 时 0x1004/0x1008/…
   // 分别是高位 pending 字。只解码 0x1000 会把高位 source 截断成 0。
   private def isPendingAddress(address: UInt): Bool =
-    address >= pendingAddress &&
-      address < addressOf(0x1000L + 4L * words) &&
-      ((address - pendingAddress) & 3.U) === 0.U
+    ysyx_26030103_PLIC.IsWordWindow(address, pendingAddress, words)
   private def pendingWordIndex(address: UInt): UInt =
     if (words == 1) 0.U
     else ((address - pendingAddress) >> 2)(log2Ceil(words) - 1, 0)
@@ -85,14 +87,20 @@ class ysyx_26030103_PLIC(
   val thresholdAddress = addressOf(0x200000L)
   val claimAddress = addressOf(0x200004L)
 
-  def enableBaseIsValid(address: UInt, base: BigInt): Bool =
-    address >= addressOf(base) &&
-      address < addressOf(base + 4L * words) &&
-      ((address - addressOf(base)) & 3.U) === 0.U
-
   def isEnableAddress(address: UInt): Bool =
-    enableBaseIsValid(address, legacyEnableBase) ||
-      enableBaseIsValid(address, standardSEnableBase)
+    ysyx_26030103_PLIC.IsWordWindow(
+      address, addressOf(legacyEnableBase), words) ||
+      ysyx_26030103_PLIC.IsWordWindow(
+        address, addressOf(standardSEnableBase), words)
+
+  def PriorityIndexOf(address: UInt): UInt =
+    (address - addressOf(0L)) >> 2
+  def IsPriorityAddress(address: UInt): Bool = {
+    val index = PriorityIndexOf(address)
+    address >= addressOf(0L) &&
+      address < addressOf(4L * NumberSources) &&
+      index > 0.U && index < NumberSources.U
+  }
 
   def enableWordIndex(address: UInt): UInt = {
     val offset = Mux(
@@ -109,42 +117,38 @@ class ysyx_26030103_PLIC(
   def isClaimAddress(address: UInt): Bool =
     address === claimAddress || address === standardClaimAddress
 
-  val OKAY = 0.U(2.W)
-  val SLVERR = 2.U(2.W)
-  val awValid = RegInit(false.B)
-  val wValid = RegInit(false.B)
-  val bValid = RegInit(false.B)
-  val awID = RegInit(0.U(IDWidth.W))
-  val AWAddress = RegInit(0.U(AddressWidth.W))
-  val wData = RegInit(0.U(DataWidth.W))
-  val wStrobe = RegInit(0.U((DataWidth / 8).W))
-  val bResponse = RegInit(OKAY)
-  val rValid = RegInit(false.B)
-  val rID = RegInit(0.U(IDWidth.W))
-  val rData = RegInit(0.U(DataWidth.W))
-  val rResponse = RegInit(OKAY)
+  val OKAY = ysyx_26030103_AXI5Resp.OKAY
+  val SLVERR = ysyx_26030103_AXI5Resp.SLVERR
+  val awRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5AWChannelRegs(AddressWidth, IDWidth))
+  val wRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5WChannelRegs(DataWidth))
+  val bRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5BChannelRegs)
+  val rRegs = ysyx_26030103_AXI5ChannelRegs(
+    new ysyx_26030103_AXI5RChannelRegs(DataWidth, IDWidth))
   private val busWide = DataWidth == 64
-  val wWord = SelectWord(wData, AWAddress, busWide)
-  val wByte = SelectStrobe(wStrobe, AWAddress, busWide)
+  val wWord = SelectWord(wRegs.data, awRegs.address, busWide)
+  val wByte = SelectStrobe(wRegs.strobe, awRegs.address, busWide)
   val rWord = WireDefault(0.U(32.W))
 
-  io.AW.AWREADY := !awValid && !bValid
-  io.W.WREADY := !wValid && !bValid
-  io.B.BID := awID
-  io.B.BVALID := bValid
-  io.B.BRESP := bResponse
-  io.AR.ARREADY := !rValid
-  io.R.RID := rID
-  io.R.RVALID := rValid
-  io.R.RDATA := rData
-  io.R.RRESP := rResponse
-  io.R.RLAST := rValid
+  io.AW.AWREADY := !awRegs.valid && !bRegs.valid
+  io.W.WREADY := !wRegs.valid && !bRegs.valid
+  io.B.BID := awRegs.id
+  io.B.BVALID := bRegs.valid
+  io.B.BRESP := bRegs.response
+  io.AR.ARREADY := !rRegs.valid
+  io.R.RID := rRegs.id
+  io.R.RVALID := rRegs.valid
+  io.R.RDATA := rRegs.data
+  io.R.RRESP := rRegs.response
+  io.R.RLAST := rRegs.valid
 
-  val AWFire = io.AW.AWVALID && io.AW.AWREADY
-  val wFire = io.W.WVALID && io.W.WREADY
-  val bFire = io.B.BVALID && io.B.BREADY
-  val ARFire = io.AR.ARVALID && io.AR.ARREADY
-  val rFire = io.R.RVALID && io.R.RREADY
+  val AWFire = AwFire(io.AW.AWVALID, io.AW.AWREADY)
+  val wFire = WFire(io.W.WVALID, io.W.WREADY)
+  val bFire = BFire(io.B.BVALID, io.B.BREADY)
+  val ARFire = ArFire(io.AR.ARVALID, io.AR.ARREADY)
+  val rFire = RFire(io.R.RVALID, io.R.RREADY)
   val perfComplete = WireDefault(false.B)
   perf_complete := perfComplete
   // claim/complete 可能在同一拍同时发生（读 claim 与写 complete 走独立
@@ -153,17 +157,24 @@ class ysyx_26030103_PLIC(
   // 必须既清 A 又置 B。
   val completeFire = WireDefault(false.B)
   val completeIndex = WireDefault(0.U(IDBits.W))
-  when(AWFire) { awID := io.AW.AWID; AWAddress := io.AW.AWADDR; awValid := true.B }
-  when(wFire) { wData := io.W.WDATA; wStrobe := io.W.WSTRB; wValid := true.B }
+  when(AWFire) {
+    awRegs.id := io.AW.AWID
+    awRegs.address := io.AW.AWADDR
+    awRegs.valid := true.B
+  }
+  when(wFire) {
+    wRegs.data := io.W.WDATA
+    wRegs.strobe := io.W.WSTRB
+    wRegs.valid := true.B
+  }
 
   // 单拍写：priority / enable / threshold / complete。
-  when(awValid && wValid && !bValid) {
-    val index = (AWAddress - addressOf(0L)) >> 2
-    val isPriority = AWAddress >= addressOf(0L) && AWAddress < addressOf(4L * NumberSources) &&
-      index > 0.U && index < NumberSources.U
-    val isEnable = isEnableAddress(AWAddress)
-    val isThreshold = isThresholdAddress(AWAddress)
-    val isComplete = isClaimAddress(AWAddress)
+  when(awRegs.valid && wRegs.valid && !bRegs.valid) {
+    val index = PriorityIndexOf(awRegs.address)
+    val isPriority = IsPriorityAddress(awRegs.address)
+    val isEnable = isEnableAddress(awRegs.address)
+    val isThreshold = isThresholdAddress(awRegs.address)
+    val isComplete = isClaimAddress(awRegs.address)
     when(isPriority && wByte =/= 0.U) {
       val merged = merge32(priority(index(IDBits - 1, 0)), wWord, wByte)
       priority(index(IDBits - 1, 0)) := Mux(
@@ -172,8 +183,8 @@ class ysyx_26030103_PLIC(
         merged(priorityBits - 1, 0)
       )
     }.elsewhen(isEnable && wByte =/= 0.U) {
-      enable(enableWordIndex(AWAddress)) :=
-        merge32(enable(enableWordIndex(AWAddress)), wWord, wByte)
+      enable(enableWordIndex(awRegs.address)) :=
+        merge32(enable(enableWordIndex(awRegs.address)), wWord, wByte)
     }.elsewhen(isThreshold && wByte =/= 0.U) {
       val merged = merge32(threshold, wWord, wByte)
       threshold := Mux(
@@ -191,21 +202,18 @@ class ysyx_26030103_PLIC(
       completeFire := wWord < NumberSources.U
       perfComplete := true.B
     }
-    bResponse := Mux(isPriority || isEnable || isThreshold || isComplete, OKAY, SLVERR)
-    bValid := true.B
-    awValid := false.B
-    wValid := false.B
+    bRegs.response := Mux(isPriority || isEnable || isThreshold || isComplete, OKAY, SLVERR)
+    bRegs.valid := true.B
+    awRegs.valid := false.B
+    wRegs.valid := false.B
   }
-  when(bFire) { bValid := false.B }
+  when(bFire) { bRegs.valid := false.B }
 
   // 读 claim 有副作用：选择最高优先级的未 claim source，并清 pending。
   // 同优先级时 PriorityEncoder 返回最低 ID。threshold 只控制是否向 hart
   // 发出中断通知（ExternalIRQ），规范要求已 enable、已挂起且未 claim 的
   // source 即使优先级不高于 threshold 也必须能被 claim。
-  val claimCandidates = VecInit((0 until NumberSources).map { i =>
-    i.U =/= 0.U && pending(i) && !claimed(i) &&
-      enable(i / 32)(i % 32) && priority(i) =/= 0.U
-  })
+  val claimCandidates = SourceCandidate(false)
   val claimValid = claimCandidates.reduce(_ || _)
   val candidatePriority = VecInit((0 until NumberSources).map { i =>
     Mux(claimCandidates(i), priority(i), 0.U(priorityBits.W))
@@ -220,10 +228,9 @@ class ysyx_26030103_PLIC(
   perf_claim := ARFire && isClaimAddress(io.AR.ARADDR) && claimValid
 
   when(ARFire) {
-    rID := io.AR.ARID
-    rValid := true.B
-    rResponse := OKAY
-    val index = (io.AR.ARADDR - addressOf(0L)) >> 2
+    rRegs.id := io.AR.ARID
+    rRegs.valid := true.B
+    rRegs.response := OKAY
     when(isClaimAddress(io.AR.ARADDR)) {
       rWord := claimIdentifier
       when(claimValid) {
@@ -233,16 +240,16 @@ class ysyx_26030103_PLIC(
       rWord := pendingWords(pendingWordIndex(io.AR.ARADDR))
     }.elsewhen(isThresholdAddress(io.AR.ARADDR)) {
       rWord := threshold
-    }.elsewhen(io.AR.ARADDR >= addressOf(0L) && io.AR.ARADDR < addressOf(4L * NumberSources) &&
-      index > 0.U && index < NumberSources.U) {
+    }.elsewhen(IsPriorityAddress(io.AR.ARADDR)) {
+      val index = PriorityIndexOf(io.AR.ARADDR)
       rWord := priority(index(IDBits - 1, 0))
     }.elsewhen(isEnableAddress(io.AR.ARADDR)) {
       rWord := enable(enableWordIndex(io.AR.ARADDR))
     }.otherwise {
       rWord := 0.U
-      rResponse := SLVERR
+      rRegs.response := SLVERR
     }
-    rData := LaneWord(rWord, io.AR.ARADDR, busWide)
+    rRegs.data := LaneWord(rWord, io.AR.ARADDR, busWide)
   }
   // claimed 的唯一更新点：complete 先清，claim 再置。两笔事件的目标在
   // 正常协议下互斥（已 claimed 的 source 不会被再次 claim），但即使发生
@@ -259,5 +266,12 @@ class ysyx_26030103_PLIC(
     0.U(NumberSources.W)
   )
   claimed := (claimed & ~completeMask) | claimMask
-  when(rFire) { rValid := false.B }
+  when(rFire) { rRegs.valid := false.B }
+}
+
+object ysyx_26030103_PLIC {
+  def IsWordWindow(address: UInt, base: UInt, count: Int): Bool =
+    address >= base &&
+      address < (base + (4L * count).U) &&
+      ((address - base) & 3.U) === 0.U
 }

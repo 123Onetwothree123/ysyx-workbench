@@ -15,13 +15,13 @@ private[infra] trait AXI5XbarRead {
     when(RequestValid) {
       downstream.AR.ARVALID := true.B
       downstream.AR.ARID := RequestID
-      downstream.AR.ARADDR := ARAddressReg(RequestID)
-      downstream.AR.ARLEN := ARLengthReg(RequestID)
-      downstream.AR.ARSIZE := ARSizeReg(RequestID)
-      downstream.AR.ARBURST := ARBurstReg(RequestID)
-      downstream.AR.ARPROT := ARProtReg(RequestID)
-      downstream.AR.ARCACHE := ARCacheReg(RequestID)
-      downstream.AR.ARQOS := ARQosReg(RequestID)
+      downstream.AR.ARADDR := ARBurstShapes(RequestID).address
+      downstream.AR.ARLEN := ARBurstShapes(RequestID).length
+      downstream.AR.ARSIZE := ARBurstShapes(RequestID).size
+      downstream.AR.ARBURST := ARBurstShapes(RequestID).burst
+      downstream.AR.ARPROT := ARBurstShapes(RequestID).prot
+      downstream.AR.ARCACHE := ARBurstShapes(RequestID).cache
+      downstream.AR.ARQOS := ARBurstShapes(RequestID).qos
       when(RequestFire) {
         readSlotState(RequestID) := readSlotResponse
       }
@@ -55,13 +55,14 @@ private[infra] trait AXI5XbarRead {
         isWrite = false
       )
       readTargetReg(IncomingReadID) := target
-      ARAddressReg(IncomingReadID) := io.in.AR.ARADDR
-      ARLengthReg(IncomingReadID) := io.in.AR.ARLEN
-      ARSizeReg(IncomingReadID) := io.in.AR.ARSIZE
-      ARBurstReg(IncomingReadID) := io.in.AR.ARBURST
-      ARProtReg(IncomingReadID) := io.in.AR.ARPROT
-      ARCacheReg(IncomingReadID) := io.in.AR.ARCACHE
-      ARQosReg(IncomingReadID) := io.in.AR.ARQOS
+      ARBurstShapes(IncomingReadID).ID := io.in.AR.ARID
+      ARBurstShapes(IncomingReadID).address := io.in.AR.ARADDR
+      ARBurstShapes(IncomingReadID).length := io.in.AR.ARLEN
+      ARBurstShapes(IncomingReadID).size := io.in.AR.ARSIZE
+      ARBurstShapes(IncomingReadID).burst := io.in.AR.ARBURST
+      ARBurstShapes(IncomingReadID).prot := io.in.AR.ARPROT
+      ARBurstShapes(IncomingReadID).cache := io.in.AR.ARCACHE
+      ARBurstShapes(IncomingReadID).qos := io.in.AR.ARQOS
       readDECERRBeatReg(IncomingReadID) := 0.U
       readSlotState(IncomingReadID) := Mux(
         target === targetInvalid,
@@ -70,33 +71,24 @@ private[infra] trait AXI5XbarRead {
       )
     }
 
-    DriveReadRequest(io.SoCBus, SOCRequestValid, SOCRequestID, SOCRequestFire)
-    DriveReadRequest(io.CLINT, CLINTRequestValid, CLINTRequestID, CLINTRequestFire)
-    DriveReadRequest(io.PLIC, PLICRequestValid, PLICRequestID, PLICRequestFire)
+    ReadTargets.indices.foreach { Index =>
+      DriveReadRequest(
+        ReadTargets(Index).downstream,
+        ReadRequestValids(Index),
+        ReadRequestIDs(Index),
+        ReadRequestFires(Index)
+      )
+    }
 
-    HoldReadRequest(
-      SOCARHeld,
-      SOCARHeldID,
-      SOCRequestValid,
-      SOCRequestID,
-      SOCRequestFire,
-      io.SoCBus.AR.ARREADY
-    )
-    HoldReadRequest(
-      CLINTARHeld,
-      CLINTARHeldID,
-      CLINTRequestValid,
-      CLINTRequestID,
-      CLINTRequestFire,
-      io.CLINT.AR.ARREADY
-    )
-    HoldReadRequest(
-      PLICARHeld,
-      PLICARHeldID,
-      PLICRequestValid,
-      PLICRequestID,
-      PLICRequestFire,
-      io.PLIC.AR.ARREADY
-    )
+    ReadTargets.indices.foreach { Index =>
+      HoldReadRequest(
+        ReadARHelds(Index),
+        ReadARHeldIDs(Index),
+        ReadRequestValids(Index),
+        ReadRequestIDs(Index),
+        ReadRequestFires(Index),
+        ReadTargets(Index).downstream.AR.ARREADY
+      )
+    }
   }
 }

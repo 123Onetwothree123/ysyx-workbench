@@ -164,14 +164,12 @@ class ysyx_26030103(
   // VIPT 取指并行：ICache 先用 VA 选 index，再等待带 VA 标签的 PA。
   // PIPT 走原来的“翻译完成后再取指”路径，行为不变。
   protected val parallelFetchVIPT = config.MMU.cacheMode == "vipt"
+  protected def OptWhen[T <: Module](cond: Boolean)(gen: => T): Option[T] =
+    if (cond) Some(Module(gen)) else None
   val PMPOpt =
-    if (config.MMU.PMPEnabled)
-      Some(
-        Module(
-          new ysyx_26030103_PMP(config.MMU.PMPEntries, config.AddressWidth)
-        )
-      )
-    else None
+    OptWhen(config.MMU.PMPEnabled) {
+      new ysyx_26030103_PMP(config.MMU.PMPEntries, config.AddressWidth)
+    }
   // 无 MMU 时的取指 PMP 检查：PMP 直接看 IFU 的物理取指地址（VA==PA）。
   // 故障请求不进入 ICache，而是在响应级注入一条带 cause=1 的精确异常。
   // pending 只产生一次注入；blocked 一直保持到流水冲刷，防止故障 PC 被
@@ -215,44 +213,32 @@ class ysyx_26030103(
     if (MMUEnabled) RegNext(pipeFlush, false.B) else false.B
 
   val MMUUnitOpt =
-    if (MMUEnabled) Some(Module(new ysyx_26030103_MMU(config.MMU))) else None
+    OptWhen(MMUEnabled) { new ysyx_26030103_MMU(config.MMU) }
   val IMMUOpt =
-    if (MMUEnabled)
-      Some(
-        Module(
-          new ysyx_26030103_IFUMMU(
-            ParallelVIPT = parallelFetchVIPT,
-            XLEN = XLEN,
-            AddressWidth = config.AddressWidth
-          )
-        )
+    OptWhen(MMUEnabled) {
+      new ysyx_26030103_IFUMMU(
+        ParallelVIPT = parallelFetchVIPT,
+        XLEN = XLEN,
+        AddressWidth = config.AddressWidth
       )
-    else None
+    }
   val DMMUOpt =
-    if (MMUEnabled)
-      Some(
-        Module(
-          new ysyx_26030103_LSUMMU(
-            ParallelVIPT = parallelDataVIPT,
-            XLEN = XLEN,
-            AddressWidth = config.AddressWidth
-          )
-        )
+    OptWhen(MMUEnabled) {
+      new ysyx_26030103_LSUMMU(
+        ParallelVIPT = parallelDataVIPT,
+        XLEN = XLEN,
+        AddressWidth = config.AddressWidth
       )
-    else None
+    }
   val MMUArbiterOpt =
-    if (MMUEnabled)
-      Some(
-        Module(
-          new ysyx_26030103_MMURequestArbiter(
-            XLEN = XLEN,
-            AddressWidth = config.AddressWidth
-          )
-        )
+    OptWhen(MMUEnabled) {
+      new ysyx_26030103_MMURequestArbiter(
+        XLEN = XLEN,
+        AddressWidth = config.AddressWidth
       )
-    else None
+    }
   val PTWToAXIOpt =
-    if (MMUEnabled) {
+    OptWhen(MMUEnabled) {
       // PTW 页表总线可多 outstanding；适配器内部给每笔读分配独立 AXI ID
       // （3..15）并保存 PTW 原事务 ID，响应按 ID 回送对应页表槽位。
       // 4 位下游 ID 还要保留 0/1/2 给 ICache/LSU/DMA，因此 AXI 读槽位
@@ -262,68 +248,48 @@ class ysyx_26030103(
         else config.MMU.PTWOutstanding
       val AXIReadSlots =
         math.min(busDepth.max(1), ysyx_26030103_AXIReadID.PTWSlots)
-      Some(
-        Module(
-          new ysyx_26030103_PTWToAXI(
-            busDepth = busDepth.max(1),
-            AXIReadSlots = AXIReadSlots,
-            AddressWidth = config.AddressWidth,
-            DataWidth = busDataWidth
-          )
-        )
+      new ysyx_26030103_PTWToAXI(
+        busDepth = busDepth.max(1),
+        AXIReadSlots = AXIReadSlots,
+        AddressWidth = config.AddressWidth,
+        DataWidth = busDataWidth
       )
-    } else None
+    }
   // 隐式页表访问必须按 S 权限经过 PMP；在 PTW 总线与 AXI 适配器之间加
   // 过滤层，PMP 关闭时保持原来的直连。
   val PTWPMPFilterOpt =
-    if (MMUEnabled && config.MMU.PMPEnabled)
-      Some(
-        Module(
-          new ysyx_26030103_PTWPMPFilter(
-            AddressWidth = config.AddressWidth,
-            entries = config.MMU.PMPEntries,
-            faultQueueDepth = config.MMU.PTWPMPFaultQueueDepth
-          )
-        )
+    OptWhen(MMUEnabled && config.MMU.PMPEnabled) {
+      new ysyx_26030103_PTWPMPFilter(
+        AddressWidth = config.AddressWidth,
+        entries = config.MMU.PMPEntries,
+        faultQueueDepth = config.MMU.PTWPMPFaultQueueDepth
       )
-    else None
+    }
   val AXIReadMuxOpt =
-    if (MMUEnabled && config.MMU.PTWPath != "reuse_dcache")
-      Some(
-        Module(
-          new ysyx_26030103_AXIReadMux(
-            AddressWidth = config.AddressWidth,
-            DataWidth = busDataWidth
-          )
-        )
+    OptWhen(MMUEnabled && config.MMU.PTWPath != "reuse_dcache") {
+      new ysyx_26030103_AXIReadMux(
+        AddressWidth = config.AddressWidth,
+        DataWidth = busDataWidth
       )
-    else None
+    }
   val AXIReadLSUMuxOpt =
-    if (MMUEnabled && config.MMU.PTWPath == "reuse_dcache")
-      Some(
-        Module(
-          new ysyx_26030103_AXIReadMux(
-            passWriteA = true,
-            AddressWidth = config.AddressWidth,
-            DataWidth = busDataWidth
-          )
-        )
+    OptWhen(MMUEnabled && config.MMU.PTWPath == "reuse_dcache") {
+      new ysyx_26030103_AXIReadMux(
+        passWriteA = true,
+        AddressWidth = config.AddressWidth,
+        DataWidth = busDataWidth
       )
-    else None
+    }
   // PTW 只有 A/D=hardware 时才需要写回；其余配置让 LSU 的读写通道
   // 直接接仲裁器，避免写 mux 影响普通 load。
   val AXIWriteMuxOpt =
-    if (MMUEnabled && config.MMU.adMode == "hardware")
-      Some(
-        Module(
-          new ysyx_26030103_AXIWriteMux(
-            PassRead = false,
-            AddressWidth = config.AddressWidth,
-            DataWidth = busDataWidth
-          )
-        )
+    OptWhen(MMUEnabled && config.MMU.adMode == "hardware") {
+      new ysyx_26030103_AXIWriteMux(
+        PassRead = false,
+        AddressWidth = config.AddressWidth,
+        DataWidth = busDataWidth
       )
-    else None
+    }
 
   connectFrontend()
   connectMemory()

@@ -25,6 +25,56 @@ abstract class ysyx_26030103_ALU(
   val io = IO(new ysyx_26030103_ALUInterface(XLEN))
 }
 
+trait ysyx_26030103_ALUCommonBackend { this: ysyx_26030103_ALU =>
+  protected val XLEN: Int = config.XLEN
+  protected val ShiftAmountWidth: Int = if (XLEN == 64) {
+    6
+  } else {
+    5
+  }
+  protected val AdderEnable: Bool = IsAddLike(io.ALUCtrl)
+  protected val SubtractorEnable: Bool = IsSubLike(io.ALUCtrl)
+  protected val ShifterEnable: Bool = IsShiftLike(io.ALUCtrl)
+  protected val BitLogicEnable: Bool = IsLogicLike(io.ALUCtrl)
+  protected def Isolate(value: UInt, enable: Bool): UInt =
+    Mux(enable, value, 0.U(value.getWidth.W))
+  val shifterUnit = Module(new ysyx_26030103_ALUShifter(XLEN))
+  val bitLogicUnit = Module(new ysyx_26030103_ALUBitLogic(XLEN))
+  val resultSelectUnit = Module(new ysyx_26030103_ALUResultSelect(XLEN))
+  protected def ConnectShiftAndLogic(): Unit = {
+    shifterUnit.io.A := Isolate(io.A, ShifterEnable)
+    shifterUnit.io.shamt := Isolate(io.B(ShiftAmountWidth - 1, 0), ShifterEnable)
+    bitLogicUnit.io.A := Isolate(io.A, BitLogicEnable)
+    bitLogicUnit.io.B := Isolate(io.B, BitLogicEnable)
+  }
+  protected def ConnectResultSelect(
+      adderSum: UInt,
+      subResult: UInt,
+      slt: Bool,
+      sltu: Bool,
+      addw: UInt,
+      subw: UInt
+  ): Unit = {
+    resultSelectUnit.io.ALUCtrl := io.ALUCtrl
+    resultSelectUnit.io.adderSum := adderSum
+    resultSelectUnit.io.subResult := subResult
+    resultSelectUnit.io.slt := slt
+    resultSelectUnit.io.sltu := sltu
+    resultSelectUnit.io.sll := shifterUnit.io.sll
+    resultSelectUnit.io.srl := shifterUnit.io.srl
+    resultSelectUnit.io.sra := shifterUnit.io.sra
+    resultSelectUnit.io.xorResult := bitLogicUnit.io.xorResult
+    resultSelectUnit.io.orResult := bitLogicUnit.io.orResult
+    resultSelectUnit.io.andResult := bitLogicUnit.io.andResult
+    resultSelectUnit.io.addw := addw
+    resultSelectUnit.io.subw := subw
+    resultSelectUnit.io.sllw := shifterUnit.io.sllw
+    resultSelectUnit.io.srlw := shifterUnit.io.srlw
+    resultSelectUnit.io.sraw := shifterUnit.io.sraw
+    io.result := resultSelectUnit.io.result
+  }
+}
+
 // ALU 工厂：按 Kconfig 选择后端。
 object ysyx_26030103_ALU {
   def apply(config: ysyx_26030103_NPCConfig): ysyx_26030103_ALU = {

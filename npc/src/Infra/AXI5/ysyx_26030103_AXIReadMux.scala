@@ -12,68 +12,34 @@ class ysyx_26030103_AXIReadMux(
     val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth
 ) extends Module {
   val io = IO(new Bundle {
-    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
-    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4))
-    val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth, 4)
+    val a = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth,
+      ysyx_26030103_AXIReadID.IDWidth))
+    val b = Flipped(new ysyx_26030103_AXI5IO(AddressWidth, DataWidth,
+      ysyx_26030103_AXIReadID.IDWidth))
+    val out = new ysyx_26030103_AXI5IO(AddressWidth, DataWidth,
+      ysyx_26030103_AXIReadID.IDWidth)
   })
 
-  private val AReadID = ysyx_26030103_AXIReadID.IFU.U(4.W)
-  private val PTWBaseID = ysyx_26030103_AXIReadID.PTWBase.U(4.W)
-  private val PTWLastID = ysyx_26030103_AXIReadID.PTWLast.U(4.W)
+  private val AReadID = ysyx_26030103_AXIReadID.IFU.U(ysyx_26030103_AXIReadID.IDWidth.W)
+  private val PTWBaseID = ysyx_26030103_AXIReadID.PTWBase.U(ysyx_26030103_AXIReadID.IDWidth.W)
+  private val PTWLastID = ysyx_26030103_AXIReadID.PTWLast.U(ysyx_26030103_AXIReadID.IDWidth.W)
 
-  def quiet(axiPort: ysyx_26030103_AXI5IO): Unit = {
-    axiPort.AW.AWREADY := false.B
-    axiPort.AR.ARREADY := false.B
-    axiPort.W.WREADY := false.B
-    axiPort.B.BVALID := false.B
-    axiPort.B.BID := 0.U
-    axiPort.B.BRESP := 0.U
-    axiPort.R.RVALID := false.B
-    axiPort.R.RID := 0.U
-    axiPort.R.RDATA := 0.U
-    axiPort.R.RRESP := 0.U
-    axiPort.R.RLAST := false.B
-  }
-  quiet(io.a)
-  quiet(io.b)
+  ysyx_26030103_AXI5Idle.SlaveOut(io.a)
+  ysyx_26030103_AXI5Idle.SlaveOut(io.b)
 
   // 写通道：只有复用 LSU 读端口时才把 A 的写通路直通出去。
   if (passWriteA) {
     io.out.AW <> io.a.AW
     io.out.W <> io.a.W
     io.a.B <> io.out.B
-  } else {
-    io.out.AW.AWVALID := false.B
-    io.out.AW.AWID := 0.U
-    io.out.AW.AWADDR := 0.U
-    io.out.AW.AWLEN := 0.U
-    io.out.AW.AWSIZE := 2.U
-    io.out.AW.AWBURST := 0.U
-    io.out.AW.AWPROT := 0.U
-    io.out.AW.AWCACHE := 0.U
-    io.out.AW.AWQOS := 0.U
-    io.out.W.WVALID := false.B
-    io.out.W.WDATA := 0.U
-    io.out.W.WSTRB := 0.U
-    io.out.W.WLAST := false.B
-    io.out.B.BREADY := false.B
   }
 
-  io.out.AR.ARVALID := false.B
-  io.out.AR.ARID := 0.U
-  io.out.AR.ARADDR := 0.U
-  io.out.AR.ARLEN := 0.U
-  io.out.AR.ARSIZE := 2.U
-  io.out.AR.ARBURST := 0.U
-  io.out.AR.ARPROT := 0.U
-  io.out.AR.ARCACHE := 0.U
-  io.out.AR.ARQOS := 0.U
-  io.out.R.RREADY := false.B
+  ysyx_26030103_AXI5Idle.MasterOut(io.out, write = !passWriteA)
 
   // A 口最多一笔在途；B 口按 ID 槽记录在途事务。不同 ID 的响应可以
   // 任意顺序返回，同 ID 仍由 AXI 保证顺序。
   val aBusy = RegInit(false.B)
-  val bBusy = RegInit(VecInit(Seq.fill(16)(false.B)))
+  val bBusy = RegInit(VecInit(Seq.fill(ysyx_26030103_AXIReadID.SlotCount)(false.B)))
   // 初始优先 A；每次授权后把优先权让给另一侧，A/B 交替，避免 PTW
   // 连续请求饿死取指。
   val lastGrantB = RegInit(false.B)

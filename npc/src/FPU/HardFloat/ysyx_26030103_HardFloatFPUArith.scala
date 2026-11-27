@@ -37,23 +37,16 @@ trait ysyx_26030103_HardFloatFPUArith {
 
   val fmaS = if (useFMA) Some(Module(new MulAddRecFN(expS, sigS))) else None
   val fmaD = if (useFMA) Some(Module(new MulAddRecFN(expD, sigD))) else None
-  private def fmaOp(operation: UInt): UInt = MuxLookup(operation, 0.U(2.W))(
-    Seq(
-      ysyx_26030103_FPUOp.FFma -> 0.U(2.W),
-      ysyx_26030103_FPUOp.FFms -> 1.U(2.W),
-      // op[1]=negate product, op[0]=subtract c: FNMSUB=2, FNMADD=3。
-      ysyx_26030103_FPUOp.FFnms -> 2.U(2.W),
-      ysyx_26030103_FPUOp.FFnma -> 3.U(2.W)
-    )
-  )
+  // op[1]=negate product, op[0]=subtract c: FNMSUB=2, FNMADD=3
+  private val fmaOpValue = ysyx_26030103_FPUOp.FmaOp2(op)
   if (useFMA) {
-    fmaS.get.io.op := fmaOp(op)
+    fmaS.get.io.op := fmaOpValue
     fmaS.get.io.a := aRecS
     fmaS.get.io.b := bRecS
     fmaS.get.io.c := cRecS
     fmaS.get.io.roundingMode := rm
     fmaS.get.io.detectTininess := detectTininessUInt
-    fmaD.get.io.op := fmaOp(op)
+    fmaD.get.io.op := fmaOpValue
     fmaD.get.io.a := aRecD
     fmaD.get.io.b := bRecD
     fmaD.get.io.c := cRecD
@@ -72,20 +65,16 @@ trait ysyx_26030103_HardFloatFPUArith {
       Some(Module(new ysyx_26030103_ExactFMA(
         expD, sigD, params.DetectTininessBeforeRounding)))
     else None
-  private val FlipFmaA = op === ysyx_26030103_FPUOp.FFnms ||
-    op === ysyx_26030103_FPUOp.FFnma
-  private val FlipFmaC = op === ysyx_26030103_FPUOp.FFms ||
-    op === ysyx_26030103_FPUOp.FFnma
-  private def flipSign(value: UInt, width: Int): UInt =
-    value ^ Cat(1.U(1.W), 0.U((width - 1).W))
+  private val fmaNegA = ysyx_26030103_FPUOp.NegateFmaA(op)
+  private val fmaNegC = ysyx_26030103_FPUOp.NegateFmaC(op)
   if (!useFMA) {
-    exactFmaS.get.io.a := Mux(FlipFmaA, flipSign(aS, 32), aS)
+    exactFmaS.get.io.a := Mux(fmaNegA, ysyx_26030103_FPUFormat.FlipSign(aS, 32), aS)
     exactFmaS.get.io.b := bS
-    exactFmaS.get.io.c := Mux(FlipFmaC, flipSign(cS, 32), cS)
+    exactFmaS.get.io.c := Mux(fmaNegC, ysyx_26030103_FPUFormat.FlipSign(cS, 32), cS)
     exactFmaS.get.io.rm := rm
-    exactFmaD.get.io.a := Mux(FlipFmaA, flipSign(aD, 64), aD)
+    exactFmaD.get.io.a := Mux(fmaNegA, ysyx_26030103_FPUFormat.FlipSign(aD, 64), aD)
     exactFmaD.get.io.b := bD
-    exactFmaD.get.io.c := Mux(FlipFmaC, flipSign(cD, 64), cD)
+    exactFmaD.get.io.c := Mux(fmaNegC, ysyx_26030103_FPUFormat.FlipSign(cD, 64), cD)
     exactFmaD.get.io.rm := rm
   }
 

@@ -2,6 +2,7 @@ package ysyx_26030103.mmu
 
 import chisel3._
 import chisel3.util._
+import _root_.ysyx_26030103.common.ysyx_26030103_RISCVFields
 import _root_.ysyx_26030103.config.ysyx_26030103_MMUProfile
 
 // Sv32 MMU：TLB 查找、miss queue 排队、PTW walk 三级解耦；命中/旁路直接
@@ -172,8 +173,8 @@ class ysyx_26030103_MMU(
     if (profile.TLBEnabled && !split) Some(makeTLB(profile.utlbEntries, profile.utlbWays))
     else None
 
-  private val PTW: ysyx_26030103_PTWBackend =
-    if (profile.PTWArch == "pipelined") {
+  private def MakePTW(pipelined: Boolean): ysyx_26030103_PTWBackend =
+    if (pipelined) {
       Module(
         new ysyx_26030103_PTWPipeline(
           outstanding = profile.PTWOutstanding,
@@ -223,6 +224,9 @@ class ysyx_26030103_MMU(
       )
     }
 
+  private val PTW: ysyx_26030103_PTWBackend =
+    MakePTW(profile.PTWArch == "pipelined")
+
   // 每拍为 unified TLB 选择最多两个不同的 contextLookup 上下文：端口 0 选
   // 编号最小的候选，端口 1 在剩余候选中再选一个。split 只有一个端口。
   val lookupValid      = Wire(Vec(lookupPorts, Bool()))
@@ -251,7 +255,7 @@ class ysyx_26030103_MMU(
   def connectTLB(TLB: ysyx_26030103_TLB):                          Unit = {
     for (port <- 0 until lookupPorts) {
       TLB.io.lookup(port).vaddr     := lookupRequest(port).vaddr
-      TLB.io.lookup(port).ASID      := satpASID(lookupRequest(port).satp)
+      TLB.io.lookup(port).ASID      := ysyx_26030103_RISCVFields.SatpASID(lookupRequest(port).satp, xlen)
       TLB.io.lookup(port).privilege := lookupRequest(port).privilege
       TLB.io.lookup(port).access    := lookupRequest(port).access
       TLB.io.lookup(port).sum       :=
@@ -287,10 +291,21 @@ class ysyx_26030103_MMU(
   dtlbOpt.foreach(connectTLB)
   utlbOpt.foreach(connectTLB)
 
-  def optBool(opt: Option[ysyx_26030103_TLB], f: ysyx_26030103_TLB => Bool): Bool =
-    opt.map(f).getOrElse(false.B)
-  def optUInt(opt: Option[ysyx_26030103_TLB], f: ysyx_26030103_TLB => UInt): UInt =
-    opt.map(f).getOrElse(0.U)
+  def OptField[T <: Data](opt: Option[ysyx_26030103_TLB],
+      field: ysyx_26030103_TLB => T, default: T): T =
+    opt.map(field).getOrElse(default)
+  def LaneField[T <: Data](port: Int, default: T)(
+      fetchField: ysyx_26030103_TLB => T,
+      dataField: ysyx_26030103_TLB => T,
+      unifiedField: ysyx_26030103_TLB => T): T =
+    if (!profile.TLBEnabled) default
+    else if (split)
+      Mux(
+        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
+        OptField(itlbOpt, fetchField, default),
+        OptField(dtlbOpt, dataField, default)
+      )
+    else OptField(utlbOpt, unifiedField, default)
 
   // 响应顺序：每个请求分配一个序号，完成结果写入按序号索引的表，
   // 只有队首完成时才向软件返回，后面的尽早完成也不会越过前面。
@@ -301,93 +316,35 @@ class ysyx_26030103_MMU(
   // split 下两个 TLB 都只有一个查找端口；unified 的端口 1 只在
   // lookupPorts=2 时存在，下面按端口号从对应 TLB 实例取结果。
   def laneResultValid(port: Int): Bool =
-    if (!profile.TLBEnabled) true.B
-    else if (split)
-      Mux(
-        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
-        optBool(itlbOpt, _.io.result(0).resultValid),
-        optBool(dtlbOpt, _.io.result(0).resultValid)
-      )
-    else optBool(utlbOpt, _.io.result(port).resultValid)
+    LaneField(port, true.B)(_.io.result(0).resultValid, _.io.result(0).resultValid,
+      _.io.result(port).resultValid)
   def laneHit(port: Int):         Bool =
-    if (!profile.TLBEnabled) false.B
-    else if (split)
-      Mux(
-        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
-        optBool(itlbOpt, _.io.result(0).hit),
-        optBool(dtlbOpt, _.io.result(0).hit)
-      )
-    else optBool(utlbOpt, _.io.result(port).hit)
+    LaneField(port, false.B)(_.io.result(0).hit, _.io.result(0).hit,
+      _.io.result(port).hit)
   def laneFault(port: Int):       Bool =
-    if (!profile.TLBEnabled) false.B
-    else if (split)
-      Mux(
-        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
-        optBool(itlbOpt, _.io.result(0).fault),
-        optBool(dtlbOpt, _.io.result(0).fault)
-      )
-    else optBool(utlbOpt, _.io.result(port).fault)
+    LaneField(port, false.B)(_.io.result(0).fault, _.io.result(0).fault,
+      _.io.result(port).fault)
   def laneSuperpage(port: Int):   Bool =
-    if (!profile.TLBEnabled) false.B
-    else if (split)
-      Mux(
-        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
-        optBool(itlbOpt, _.io.result(0).superpage),
-        optBool(dtlbOpt, _.io.result(0).superpage)
-      )
-    else optBool(utlbOpt, _.io.result(port).superpage)
+    LaneField(port, false.B)(_.io.result(0).superpage, _.io.result(0).superpage,
+      _.io.result(port).superpage)
   def laneASIDHit(port: Int):     Bool =
-    if (!profile.TLBEnabled) false.B
-    else if (split)
-      Mux(
-        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
-        optBool(itlbOpt, _.io.result(0).ASIDHit),
-        optBool(dtlbOpt, _.io.result(0).ASIDHit)
-      )
-    else optBool(utlbOpt, _.io.result(port).ASIDHit)
+    LaneField(port, false.B)(_.io.result(0).ASIDHit, _.io.result(0).ASIDHit,
+      _.io.result(port).ASIDHit)
   def lanePhysicalAddress(port: Int):       UInt =
-    if (!profile.TLBEnabled) lookupRequest(port).vaddr
-    else if (split)
-      Mux(
-        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
-        optUInt(itlbOpt, _.io.result(0).paddr),
-        optUInt(dtlbOpt, _.io.result(0).paddr)
-      )
-    else optUInt(utlbOpt, _.io.result(port).paddr)
+    LaneField(port, lookupRequest(port).vaddr)(_.io.result(0).paddr,
+      _.io.result(0).paddr, _.io.result(port).paddr)
   def laneCause(port: Int):       UInt =
-    if (!profile.TLBEnabled) 0.U
-    else if (split)
-      Mux(
-        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
-        optUInt(itlbOpt, _.io.result(0).cause),
-        optUInt(dtlbOpt, _.io.result(0).cause)
-      )
-    else optUInt(utlbOpt, _.io.result(port).cause)
+    LaneField(port, 0.U)(_.io.result(0).cause, _.io.result(0).cause,
+      _.io.result(port).cause)
 
-  // satp 字段位置按 XLEN 选择：RV32 mode=31, ASID=30:22, PPN=21:0；
-  // RV64 mode=63:60, ASID=59:44, PPN=43:0。
-  def satpModeOf(satp: UInt): UInt =
-    if (xlen == 32) satp(31) else satp(63, 60)
-  def satpASIDOf(satp: UInt): UInt =
-    if (xlen == 32) satp(30, 22) else satp(59, 44)
-  def satpASID(satp: UInt): UInt = satpASIDOf(satp)
   // Sv39/Sv48 非规范虚拟地址必须在 TLB 之前就判定为页错误。
-  def canonicalOk(virtualAddress: UInt): Bool = {
-    if (vaBits == xlen) true.B
-    else {
-      val upper = virtualAddress(xlen - 1, vaBits)
-      val sign = Fill(xlen - vaBits, virtualAddress(vaBits - 1))
-      upper === sign
-    }
-  }
-
   val LaneTLBValid = VecInit((0 until lookupPorts).map(laneResultValid))
   val LaneTLBHit   = VecInit((0 until lookupPorts).map(laneHit))
   val LaneTLBFault = VecInit((0 until lookupPorts).map(laneFault))
   val lanePhysicalAddressVec = VecInit((0 until lookupPorts).map(lanePhysicalAddress))
   val laneCauseVec = VecInit((0 until lookupPorts).map(laneCause))
   val laneBypass   = VecInit((0 until lookupPorts).map { port =>
-    !profile.enabled.B || satpModeOf(lookupRequest(port).satp) === 0.U ||
+    !profile.enabled.B || ysyx_26030103_RISCVFields.SatpMode(lookupRequest(port).satp, xlen) === 0.U ||
     lookupRequest(port).privilege === 3.U
   })
   // 只有配置对应的 MODE 才允许翻译。CSR 已对 satp.MODE 做 WARL 收敛，
@@ -395,10 +352,12 @@ class ysyx_26030103_MMU(
   // STANDARD 下写入另一标准模式，都必须产生页错误，不能拿另一种页表
   // 几何继续翻译。
   val laneModeInvalid = VecInit((0 until lookupPorts).map { port =>
-    !laneBypass(port) && satpModeOf(lookupRequest(port).satp) =/= profile.satpMode.U
+    val mode = ysyx_26030103_RISCVFields.SatpMode(lookupRequest(port).satp, xlen)
+    !laneBypass(port) && mode =/= profile.satpMode.U
   })
   val laneNonCanonical = VecInit((0 until lookupPorts).map { port =>
-    !laneBypass(port) && !canonicalOk(lookupRequest(port).vaddr)
+    !laneBypass(port) &&
+      !ysyx_26030103_RISCVFields.CanonicalOk(lookupRequest(port).vaddr, vaBits, xlen)
   })
   // 模式错误优先于非规范地址：两者都只产生页错误，不会访问页表。
   val laneAddressFault = VecInit((0 until lookupPorts).map { port =>
@@ -460,6 +419,17 @@ class ysyx_26030103_MMU(
     PTWResponseVec(port).tval  := PTWResponsePayloadVec(port).tval
   }
 
+  def BuildResponse(responseID: UInt, physicalAddress: UInt, fault: Bool,
+      cause: UInt, trapValue: UInt): ysyx_26030103_MMUResponse = {
+    val response = WireInit(0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))
+    response.ID    := responseID
+    response.paddr := physicalAddress
+    response.fault := fault
+    response.cause := cause
+    response.tval  := trapValue
+    response
+  }
+
   val laneHitResponse    = WireInit(VecInit(Seq.fill(lookupPorts)(
     0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
   val laneBypassResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
@@ -467,25 +437,20 @@ class ysyx_26030103_MMU(
   val laneAddressFaultResponse = WireInit(VecInit(Seq.fill(lookupPorts)(
     0.U.asTypeOf(new ysyx_26030103_MMUResponse(xlen, addressWidth)))))
   for (port <- 0 until lookupPorts) {
-    laneHitResponse(port).ID    := lookupRequest(port).ID
-    laneHitResponse(port).paddr := lanePhysicalAddressVec(port)
-    laneHitResponse(port).fault := LaneTLBFault(port)
-    laneHitResponse(port).cause := laneCauseVec(port)
-    laneHitResponse(port).tval  := lookupRequest(port).vaddr
+    laneHitResponse(port) := BuildResponse(
+      lookupRequest(port).ID, lanePhysicalAddressVec(port), LaneTLBFault(port),
+      laneCauseVec(port), lookupRequest(port).vaddr)
 
-    laneBypassResponse(port).ID    := lookupRequest(port).ID
-    laneBypassResponse(port).paddr := lookupRequest(port).vaddr
-    laneBypassResponse(port).fault := false.B
-    laneBypassResponse(port).cause := 0.U
-    laneBypassResponse(port).tval  := lookupRequest(port).vaddr
+    laneBypassResponse(port) := BuildResponse(
+      lookupRequest(port).ID, lookupRequest(port).vaddr, false.B, 0.U,
+      lookupRequest(port).vaddr)
 
-    laneAddressFaultResponse(port).ID    := lookupRequest(port).ID
-    laneAddressFaultResponse(port).paddr := 0.U
-    laneAddressFaultResponse(port).fault := true.B
-    laneAddressFaultResponse(port).cause := Mux(
-      lookupRequest(port).access === ysyx_26030103_AccessType.Fetch, 12.U,
-      Mux(lookupRequest(port).access === ysyx_26030103_AccessType.Store, 15.U, 13.U))
-    laneAddressFaultResponse(port).tval  := lookupRequest(port).vaddr
+    laneAddressFaultResponse(port) := BuildResponse(
+      lookupRequest(port).ID, 0.U, true.B,
+      ysyx_26030103_RISCVFields.PageFaultCause(
+        lookupRequest(port).access === ysyx_26030103_AccessType.Fetch,
+        lookupRequest(port).access === ysyx_26030103_AccessType.Store),
+      lookupRequest(port).vaddr)
   }
 
   // 两个查找端口可以在同一拍各写一个响应表项；表项按请求序号索引，

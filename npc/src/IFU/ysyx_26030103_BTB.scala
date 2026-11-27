@@ -57,13 +57,19 @@ class ysyx_26030103_BTB(
     if (hasKind) Some(Reg(Vec(NumberSets, Vec(BTBWays, UInt(KindBits.W)))))
     else None
 
+  private def IndexOf(pc: UInt): UInt =
+    if (BTBBits == 0) 0.U(1.W) else pc(BTBBits - 1, 0)
+  private def TagOf(pc: UInt): UInt =
+    pc(addressShiftedWidth - 1, BTBBits)
+  private def WayHit(set: UInt, way: UInt, tagValue: UInt): Bool =
+    valid(set)(way) && tag(set)(way) === tagValue
+
   // 查询: input已是PC[31:2], 低BTBBits位做index, 高位做tag
-  val lookupIndex =
-    if (BTBBits == 0) 0.U(1.W) else io.LookupPC(BTBBits - 1, 0)
-  val lookupTag = io.LookupPC(addressShiftedWidth - 1, BTBBits)
+  val lookupIndex = IndexOf(io.LookupPC)
+  val lookupTag = TagOf(io.LookupPC)
   val hitVec = Wire(Vec(BTBWays, Bool()))
   for (w <- 0 until BTBWays) {
-    hitVec(w) := valid(lookupIndex)(w) && tag(lookupIndex)(w) === lookupTag
+    hitVec(w) := WayHit(lookupIndex, w.U, lookupTag)
   }
   val hitWay = hitVec.indexWhere((h: Bool) => h)
   io.hit := hitVec.reduceTree(_ || _)
@@ -73,9 +79,8 @@ class ysyx_26030103_BTB(
   }
 
   // 更新: 写入对应组,命中同tag则更新target,否则找第一个空槽,组满按轮转指针替换(FIFO)
-  val updIndex =
-    if (BTBBits == 0) 0.U(1.W) else io.UpdatePC(BTBBits - 1, 0)
-  val updTag = io.UpdatePC(addressShiftedWidth - 1, BTBBits)
+  val updIndex = IndexOf(io.UpdatePC)
+  val updTag = TagOf(io.UpdatePC)
   // 每组一个轮转指针, 组满替换时指向受害者way, 替换后自增回绕
   // (ways=1时恒为0, 退化为直接映射的正常覆盖行为)
   val replPointerWidth = log2Ceil(BTBWays).max(1)
@@ -91,7 +96,7 @@ class ysyx_26030103_BTB(
     // 先组合判断: 是否有同tag命中, 各way之前(不含自己)是否全占用
     val tagMatch = Wire(Vec(BTBWays, Bool()))
     for (w <- 0 until BTBWays) {
-      tagMatch(w) := valid(updIndex)(w) && tag(updIndex)(w) === updTag
+      tagMatch(w) := WayHit(updIndex, w.U, updTag)
     }
     val anyMatch = tagMatch.reduceTree(_ || _)
     // prefix_full(w) = way 0..w-1 全部占用(AND语义, way0的前置恒为"已满")

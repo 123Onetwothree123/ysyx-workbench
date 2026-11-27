@@ -65,6 +65,30 @@ object ysyx_26030103_VIPTAliasScan {
       if (i < items.length) items(i) else 0.U(width.W)
     })
 
+  private def ScanChunkBody(
+      valid: Vec[Bool],
+      paddedValid: Vec[Bool],
+      paddedTag: Vec[UInt],
+      scanChunk: UInt,
+      compareTag: UInt,
+      numberSets: Int,
+      width: Int,
+      indexWidth: Int,
+      offWidth: Int
+  )(exclude: UInt => Bool): Unit = {
+    for (k <- 0 until width) {
+      val offset = (scanChunk * width.U + k.U)(offWidth - 1, 0)
+      val inRange = offset < numberSets.U
+      val index = offset(indexWidth - 1, 0)
+      when(
+        inRange && paddedValid(offset) && paddedTag(offset) === compareTag &&
+          exclude(index)
+      ) {
+        valid(index) := false.B
+      }
+    }
+  }
+
   // 两种扫描引擎共用的几何与补齐参数。
   private final class Geometry(
       val valid: Vec[Bool],
@@ -111,16 +135,18 @@ object ysyx_26030103_VIPTAliasScan {
     val lastChunk = scanChunk === (chunks - 1).U
 
     when(active) {
-      for (k <- 0 until width) {
-        val offset = (scanChunk * width.U + k.U)(offWidth - 1, 0)
-        val inRange = offset < NumberSets.U
-        val index = offset(indexWidth - 1, 0)
-        when(
-          inRange && paddedValid(offset) && paddedTag(offset) === scanTag &&
-            index =/= scanTarget
-        ) {
-          valid(index) := false.B
-        }
+      ScanChunkBody(
+        valid,
+        paddedValid,
+        paddedTag,
+        scanChunk,
+        scanTag,
+        NumberSets,
+        width,
+        indexWidth,
+        offWidth
+      ) { index =>
+        index =/= scanTarget
       }
       when(lastChunk) {
         active := false.B
@@ -213,17 +239,18 @@ object ysyx_26030103_VIPTAliasScan {
         queueTarget(storeSlot) := 0.U
       }
       when(scanning) {
-        for (k <- 0 until width) {
-          val offset = (scanChunk * width.U + k.U)(offWidth - 1, 0)
-          val inRange = offset < NumberSets.U
-          val index = offset(indexWidth - 1, 0)
-          when(
-            inRange && paddedValid(offset) &&
-              paddedTag(offset) === queueTag(head) &&
-              (!queueTargetValid(head) || index =/= queueTarget(head))
-          ) {
-            valid(index) := false.B
-          }
+        ScanChunkBody(
+          valid,
+          paddedValid,
+          paddedTag,
+          scanChunk,
+          queueTag(head),
+          NumberSets,
+          width,
+          indexWidth,
+          offWidth
+        ) { index =>
+          !queueTargetValid(head) || index =/= queueTarget(head)
         }
         when(lastChunk) {
           scanChunk := 0.U

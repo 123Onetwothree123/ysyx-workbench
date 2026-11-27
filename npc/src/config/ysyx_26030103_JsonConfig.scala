@@ -240,19 +240,32 @@ object ysyx_26030103_JsonConfig {
       )
   }
 
-  private def parseLong(path: String, text: String): Long = {
-    val trimmed = text.trim
-    try {
-      if (trimmed.startsWith("0x") || trimmed.startsWith("0X"))
-        java.lang.Long.parseLong(trimmed.substring(2), 16)
-      else
-        java.lang.Long.parseLong(trimmed)
-    } catch {
+  private def parseLong(path: String, text: String): Long =
+    try ParseLongText(text)
+    catch {
       case _: NumberFormatException =>
         throw new IllegalArgumentException(
           s"配置项 $path 不是整数: '$text'"
         )
     }
+
+  private def HasHexPrefix(text: String): Boolean =
+    text.startsWith("0x") || text.startsWith("0X")
+
+  private[config] def ParseLongText(text: String): Long = {
+    val trimmed = text.trim
+    if (HasHexPrefix(trimmed))
+      java.lang.Long.parseLong(trimmed.substring(2), 16)
+    else
+      java.lang.Long.parseLong(trimmed)
+  }
+
+  private[config] def ParseIntText(text: String): Int = {
+    val trimmed = text.trim
+    if (HasHexPrefix(trimmed))
+      Integer.parseInt(trimmed.substring(2), 16)
+    else
+      Integer.parseInt(trimmed)
   }
 
   // typed 路径 -> Kconfig 扁平键。生成器和 Scala 共享这份约定。

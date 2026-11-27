@@ -15,6 +15,58 @@ import _root_.ysyx_26030103.config._
   * 修改 core 或任一存储适配后必须跑 csrc/Test/rtl/issue-audit-test 全套。
   */
 object ysyx_26030103_ICacheFactory {
+  private def MakeReg(
+      config: ysyx_26030103_NPCConfig,
+      snoop: Boolean,
+      dmaSnoop: Boolean
+  ): ysyx_26030103_ICacheBase =
+    Module(
+      new ysyx_26030103_ICacheReg(
+        Enable = config.ICacheEnable,
+        BlockSizeLog2 = config.ICacheBlockSizeLog2,
+        IndexBits = config.ICacheIndexBits,
+        AddressWidth = config.AddressWidth,
+        DataWidth = config.EffectiveInternalBusWidth,
+        VIPT = config.MMU.cacheMode == "vipt",
+        VIPTAliasSafe = config.ICacheVIPTAliasHardware,
+        VIPTAliasScanMode = config.ICacheVIPTAliasScanMode,
+        VIPTAliasScanWidth = config.ICacheVIPTAliasScanWidth,
+        VIPTAliasDirectoryEntries =
+          config.ICacheVIPTAliasDirectoryEntries,
+        Snoop = snoop,
+        DMASnoop = dmaSnoop,
+        DrainTimeout = config.ICacheDrainTimeout,
+        PMARegions = config.CachePMARegions
+      )
+    )
+
+  private def MakeSram(
+      config: ysyx_26030103_NPCConfig,
+      snoop: Boolean,
+      dmaSnoop: Boolean,
+      bypass: Boolean
+  ): ysyx_26030103_ICacheBase =
+    Module(
+      new ysyx_26030103_ICacheSRAM(
+        Enable = config.ICacheEnable,
+        BlockSizeLog2 = config.ICacheBlockSizeLog2,
+        IndexBits = config.ICacheIndexBits,
+        AddressWidth = config.AddressWidth,
+        DataWidth = config.EffectiveInternalBusWidth,
+        VIPT = config.MMU.cacheMode == "vipt",
+        VIPTAliasSafe = config.ICacheVIPTAliasHardware,
+        VIPTAliasScanMode = config.ICacheVIPTAliasScanMode,
+        VIPTAliasScanWidth = config.ICacheVIPTAliasScanWidth,
+        VIPTAliasDirectoryEntries =
+          config.ICacheVIPTAliasDirectoryEntries,
+        Bypass = bypass,
+        Snoop = snoop,
+        DMASnoop = dmaSnoop,
+        DrainTimeout = config.ICacheDrainTimeout,
+        PMARegions = config.CachePMARegions
+      )
+    )
+
   def Create(
       config: ysyx_26030103_NPCConfig = ysyx_26030103_NPCConfig()
   ): ysyx_26030103_ICacheBase = {
@@ -27,67 +79,9 @@ object ysyx_26030103_ICacheFactory {
     val DMASnoop = config.ICacheEnable &&
       config.DMACoherence == ysyx_26030103_DMACoherence.HardwareSnoop
     config.ICacheStorage match {
-      case ysyx_26030103_CacheStorage.Reg =>
-        Module(
-          new ysyx_26030103_ICacheReg(
-            Enable = config.ICacheEnable,
-            BlockSizeLog2 = config.ICacheBlockSizeLog2,
-            IndexBits = config.ICacheIndexBits,
-            AddressWidth = config.AddressWidth,
-            DataWidth = config.EffectiveInternalBusWidth,
-            VIPT = config.MMU.cacheMode == "vipt",
-            VIPTAliasSafe = config.ICacheVIPTAliasHardware,
-            VIPTAliasScanMode = config.ICacheVIPTAliasScanMode,
-            VIPTAliasScanWidth = config.ICacheVIPTAliasScanWidth,
-            VIPTAliasDirectoryEntries =
-              config.ICacheVIPTAliasDirectoryEntries,
-            Snoop = snoop,
-            DMASnoop = DMASnoop,
-            DrainTimeout = config.ICacheDrainTimeout,
-            PMARegions = config.CachePMARegions
-          )
-        )
-      case ysyx_26030103_CacheStorage.SRAM =>
-        Module(
-          new ysyx_26030103_ICacheSRAM(
-            Enable = config.ICacheEnable,
-            BlockSizeLog2 = config.ICacheBlockSizeLog2,
-            IndexBits = config.ICacheIndexBits,
-            AddressWidth = config.AddressWidth,
-            DataWidth = config.EffectiveInternalBusWidth,
-            VIPT = config.MMU.cacheMode == "vipt",
-            VIPTAliasSafe = config.ICacheVIPTAliasHardware,
-            VIPTAliasScanMode = config.ICacheVIPTAliasScanMode,
-            VIPTAliasScanWidth = config.ICacheVIPTAliasScanWidth,
-            VIPTAliasDirectoryEntries =
-              config.ICacheVIPTAliasDirectoryEntries,
-            Snoop = snoop,
-            DMASnoop = DMASnoop,
-            DrainTimeout = config.ICacheDrainTimeout,
-            PMARegions = config.CachePMARegions
-          )
-        )
-      case ysyx_26030103_CacheStorage.SRAMNoBypass =>
-        Module(
-          new ysyx_26030103_ICacheSRAM(
-            Enable = config.ICacheEnable,
-            BlockSizeLog2 = config.ICacheBlockSizeLog2,
-            IndexBits = config.ICacheIndexBits,
-            AddressWidth = config.AddressWidth,
-            DataWidth = config.EffectiveInternalBusWidth,
-            VIPT = config.MMU.cacheMode == "vipt",
-            VIPTAliasSafe = config.ICacheVIPTAliasHardware,
-            VIPTAliasScanMode = config.ICacheVIPTAliasScanMode,
-            VIPTAliasScanWidth = config.ICacheVIPTAliasScanWidth,
-            VIPTAliasDirectoryEntries =
-              config.ICacheVIPTAliasDirectoryEntries,
-            Bypass = false,
-            Snoop = snoop,
-            DMASnoop = DMASnoop,
-            DrainTimeout = config.ICacheDrainTimeout,
-            PMARegions = config.CachePMARegions
-          )
-        )
+      case ysyx_26030103_CacheStorage.Reg => MakeReg(config, snoop, DMASnoop)
+      case ysyx_26030103_CacheStorage.SRAM => MakeSram(config, snoop, DMASnoop, true)
+      case ysyx_26030103_CacheStorage.SRAMNoBypass => MakeSram(config, snoop, DMASnoop, false)
     }
   }
 }

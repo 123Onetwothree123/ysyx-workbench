@@ -9,6 +9,86 @@ private[mem] trait LSUHelpers {
 
   private[mem] def addressOf(value: UInt): UInt = value(AddressWidth - 1, 0)
 
+  private[mem] def addressOf(value: UInt, addressWidth: Int): UInt =
+    value(addressWidth - 1, 0)
+
+  private[mem] case class AccessPlan(
+      last: UInt,
+      singleGranule: Bool,
+      crossPage: Bool,
+      page1Va: UInt,
+      cause46: Bool,
+      cause57: Bool,
+      misaligned: Bool,
+      needsSegments: Bool
+  )
+
+  private[mem] def Page1Va(va: UInt, addressWidth: Int): UInt =
+    Cat(va(addressWidth - 1, 12) + 1.U, 0.U(12.W))
+
+  private[mem] def CrossesPage(
+      upper: UInt,
+      base: UInt,
+      addressWidth: Int
+  ): Bool =
+    upper(addressWidth - 1, 12) =/= base(addressWidth - 1, 12)
+
+  private[mem] def Page1Paddr(
+      base: UInt,
+      page1Pa: UInt,
+      page1Valid: Bool,
+      va: UInt,
+      addressWidth: Int
+  ): UInt = {
+    val page1Base = Mux(
+      page1Valid,
+      page1Pa & ~"hfff".U(addressWidth.W),
+      (base & ~"hfff".U(addressWidth.W)) + "h1000".U(addressWidth.W)
+    )
+    page1Base | va(11, 0)
+  }
+
+  private[mem] def PlanAccess(
+      va: UInt,
+      pa: UInt,
+      width: UInt,
+      memoryValid: Bool,
+      isAtomic: Bool,
+      enable: Bool,
+      mmioFault: Bool,
+      ncSplit: Bool,
+      addressWidth: Int,
+      granuleBytes: Int
+  ): AccessPlan = {
+    val bytes = addressOf(va, addressWidth)
+    val physical = addressOf(pa, addressWidth)
+    val last = bytes + accessByteSize(width) - 1.U
+    val (mapped, cacheable) = classifyPMA(physical, memoryValid)
+    val mmio = mapped && !cacheable
+    val naturalMisaligned = addressIsMisaligned(physical, width)
+    val cause46 = memoryValid && naturalMisaligned &&
+      (!enable || isAtomic ||
+        (mmio && !mmioFault && !ncSplit))
+    val cause57 = memoryValid && naturalMisaligned && enable &&
+      !isAtomic && mmio && mmioFault
+    val misaligned = cause46 || cause57
+    val singleGranule =
+      (bytes & ~((granuleBytes - 1).U(addressWidth.W))) ===
+        (last & ~((granuleBytes - 1).U(addressWidth.W)))
+    val needsSegments = memoryValid && !isAtomic && enable &&
+      !misaligned && (naturalMisaligned || !singleGranule)
+    AccessPlan(
+      last = last,
+      singleGranule = singleGranule,
+      crossPage = CrossesPage(last, bytes, addressWidth),
+      page1Va = Page1Va(bytes, addressWidth),
+      cause46 = cause46,
+      cause57 = cause57,
+      misaligned = misaligned,
+      needsSegments = needsSegments
+    )
+  }
+
   private[mem] def atomicSignExtend32(value: UInt): UInt =
     if (XLEN == 32) value
     else Cat(Fill(XLEN - 32, value(31)), value)

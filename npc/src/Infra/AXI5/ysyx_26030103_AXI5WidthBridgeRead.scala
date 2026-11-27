@@ -3,30 +3,6 @@ package ysyx_26030103.infra
 import chisel3._
 import chisel3.util._
 
-private[infra] class ysyx_26030103_WidthBridgeReadAR(
-    AddressWidth: Int,
-    IDWidth: Int
-) extends Bundle {
-  val ID = UInt(IDWidth.W)
-  val address = UInt(AddressWidth.W)
-  val length = UInt(8.W)
-  val size = UInt(3.W)
-  val burst = UInt(2.W)
-  val prot = UInt(3.W)
-  val cache = UInt(4.W)
-  val qos = UInt(4.W)
-}
-
-private[infra] class ysyx_26030103_WidthBridgeReadR(
-    DataWidth: Int,
-    IDWidth: Int
-) extends Bundle {
-  val ID = UInt(IDWidth.W)
-  val data = UInt(DataWidth.W)
-  val response = UInt(2.W)
-  val last = Bool()
-}
-
 private[infra] trait AXI5WidthBridgeRead {
   this: ysyx_26030103_AXI5WidthBridge =>
 
@@ -39,16 +15,8 @@ private[infra] trait AXI5WidthBridgeRead {
     val rIdle :: rUpsize :: rErrData :: rDnSend :: rDnWait :: rDnOut :: Nil =
       Enum(6)
     val rState = RegInit(VecInit(Seq.fill(ReadSlots)(rIdle)))
-    val rID = RegInit(VecInit(Seq.fill(ReadSlots)(0.U(IDWidth.W))))
-    val rAddress = RegInit(
-      VecInit(Seq.fill(ReadSlots)(0.U(UpstreamAddressWidth.W)))
-    )
-    val RLength = RegInit(VecInit(Seq.fill(ReadSlots)(0.U(8.W))))
-    val rSize = RegInit(VecInit(Seq.fill(ReadSlots)(2.U(3.W))))
-    val rBurst = RegInit(VecInit(Seq.fill(ReadSlots)(0.U(2.W))))
-    val rProt = RegInit(VecInit(Seq.fill(ReadSlots)(0.U(3.W))))
-    val rCache = RegInit(VecInit(Seq.fill(ReadSlots)(0.U(4.W))))
-    val rQos = RegInit(VecInit(Seq.fill(ReadSlots)(0.U(4.W))))
+    val ReadBurstShapes = RegInit(VecInit(Seq.fill(ReadSlots)(
+      ysyx_26030103_AXI5BurstShape.Default(UpstreamAddressWidth, IDWidth))))
     val rLock = RegInit(VecInit(Seq.fill(ReadSlots)(false.B)))
     val rBeat = RegInit(VecInit(Seq.fill(ReadSlots)(0.U(8.W))))
     val rChunk = RegInit(VecInit(Seq.fill(ReadSlots)(0.U(2.W))))
@@ -64,16 +32,16 @@ private[infra] trait AXI5WidthBridgeRead {
     val slotFree = Wire(Vec(ReadSlots, Bool()))
     val slotARValid = Wire(Vec(ReadSlots, Bool()))
     val slotAR = Wire(
-      Vec(ReadSlots, new ysyx_26030103_WidthBridgeReadAR(
+      Vec(ReadSlots, new ysyx_26030103_AXI5BurstShape(
         UpstreamAddressWidth,
         IDWidth
       ))
     )
     val slotRValid = Wire(Vec(ReadSlots, Bool()))
     val slotR = Wire(
-      Vec(ReadSlots, new ysyx_26030103_WidthBridgeReadR(
-        UpstreamDataWidth,
-        IDWidth
+      Vec(ReadSlots, new ysyx_26030103_AXI5RPayload(
+        IDWidth,
+        UpstreamDataWidth
       ))
     )
     val slotDnRReady = Wire(Vec(ReadSlots, Bool()))
@@ -81,16 +49,16 @@ private[infra] trait AXI5WidthBridgeRead {
     for (slot <- 0 until ReadSlots) {
       slotFree(slot) := rState(slot) === rIdle
       slotARValid(slot) := false.B
-      slotAR(slot).ID := rID(slot)
-      slotAR(slot).address := downAddress(rAddress(slot))
-      slotAR(slot).length := RLength(slot)
-      slotAR(slot).size := rSize(slot)
-      slotAR(slot).burst := rBurst(slot)
-      slotAR(slot).prot := rProt(slot)
-      slotAR(slot).cache := rCache(slot)
-      slotAR(slot).qos := rQos(slot)
+      slotAR(slot).ID := ReadBurstShapes(slot).ID
+      slotAR(slot).address := downAddress(ReadBurstShapes(slot).address)
+      slotAR(slot).length := ReadBurstShapes(slot).length
+      slotAR(slot).size := ReadBurstShapes(slot).size
+      slotAR(slot).burst := ReadBurstShapes(slot).burst
+      slotAR(slot).prot := ReadBurstShapes(slot).prot
+      slotAR(slot).cache := ReadBurstShapes(slot).cache
+      slotAR(slot).qos := ReadBurstShapes(slot).qos
       slotRValid(slot) := false.B
-      slotR(slot).ID := rID(slot)
+      slotR(slot).ID := ReadBurstShapes(slot).ID
       slotR(slot).data := 0.U
       slotR(slot).response := OKAY
       slotR(slot).last := false.B
@@ -100,7 +68,7 @@ private[infra] trait AXI5WidthBridgeRead {
 
     val freeMask = VecInit((0 until ReadSlots).map(slotFree(_))).asUInt
     val incomingIDBusy = VecInit((0 until ReadSlots).map { slot =>
-      rState(slot) =/= rIdle && rID(slot) === io.in.AR.ARID
+      rState(slot) =/= rIdle && ReadBurstShapes(slot).ID === io.in.AR.ARID
     }).asUInt.orR
     // 第 0 槽保持 CPU 侧单事务串行；BypassReadID 优先用第 1 槽，必要时
     // 也可落到空闲的第 0 槽，非 bypass ID 永远不能占用第 1 槽。
@@ -149,7 +117,7 @@ private[infra] trait AXI5WidthBridgeRead {
     )
 
     for (slot <- 0 until ReadSlots) {
-      val dnRMatch = io.out.R.RID === rID(slot)
+      val dnRMatch = io.out.R.RID === ReadBurstShapes(slot).ID
       val dnRSelect = io.out.R.RVALID && slotDnREligible(slot) &&
         DnRSelect === slot.U
       val dnRFire = dnRSelect && io.out.R.RREADY
@@ -168,14 +136,14 @@ private[infra] trait AXI5WidthBridgeRead {
               io.in.AR.ARBURST =/= 3.U,
               "AXI5WidthBridge: reserved ARBURST encoding"
             )
-            rID(slot) := io.in.AR.ARID
-            rAddress(slot) := io.in.AR.ARADDR
-            RLength(slot) := io.in.AR.ARLEN
-            rSize(slot) := io.in.AR.ARSIZE
-            rBurst(slot) := io.in.AR.ARBURST
-            rProt(slot) := io.in.AR.ARPROT
-            rCache(slot) := io.in.AR.ARCACHE
-            rQos(slot) := io.in.AR.ARQOS
+            ReadBurstShapes(slot).ID := io.in.AR.ARID
+            ReadBurstShapes(slot).address := io.in.AR.ARADDR
+            ReadBurstShapes(slot).length := io.in.AR.ARLEN
+            ReadBurstShapes(slot).size := io.in.AR.ARSIZE
+            ReadBurstShapes(slot).burst := io.in.AR.ARBURST
+            ReadBurstShapes(slot).prot := io.in.AR.ARPROT
+            ReadBurstShapes(slot).cache := io.in.AR.ARCACHE
+            ReadBurstShapes(slot).qos := io.in.AR.ARQOS
             rLock(slot) := InARLock
             rBeat(slot) := 0.U
             rChunk(slot) := 0.U
@@ -196,21 +164,21 @@ private[infra] trait AXI5WidthBridgeRead {
         is(rUpsize) {
           // 32->64：AR 形状不变，R 数据按 beat 地址从宽总线对应半区取回。
           slotARValid(slot) := !RARSent(slot)
-          slotAR(slot).ID := rID(slot)
-          slotAR(slot).address := downAddress(rAddress(slot))
-          slotAR(slot).length := RLength(slot)
-          slotAR(slot).size := rSize(slot)
-          slotAR(slot).burst := rBurst(slot)
-          slotAR(slot).prot := rProt(slot)
-          slotAR(slot).cache := rCache(slot)
-          slotAR(slot).qos := rQos(slot)
+          slotAR(slot).ID := ReadBurstShapes(slot).ID
+          slotAR(slot).address := downAddress(ReadBurstShapes(slot).address)
+          slotAR(slot).length := ReadBurstShapes(slot).length
+          slotAR(slot).size := ReadBurstShapes(slot).size
+          slotAR(slot).burst := ReadBurstShapes(slot).burst
+          slotAR(slot).prot := ReadBurstShapes(slot).prot
+          slotAR(slot).cache := ReadBurstShapes(slot).cache
+          slotAR(slot).qos := ReadBurstShapes(slot).qos
           when(slotARFire) {
             RARSent(slot) := true.B
           }
 
           val beatAddress =
-            beatAddressOf(rAddress(slot), rBeat(slot), rSize(slot),
-              rBurst(slot), RLength(slot))
+            beatAddressOf(ReadBurstShapes(slot).address, rBeat(slot), ReadBurstShapes(slot).size,
+              ReadBurstShapes(slot).burst, ReadBurstShapes(slot).length)
           val lane = upsizeLane(beatAddress)
           slotDnREligible(slot) := dnRMatch
           slotDnRReady(slot) := io.in.R.RREADY && RSelect === slot.U
@@ -221,17 +189,17 @@ private[infra] trait AXI5WidthBridgeRead {
           slotR(slot).last := io.out.R.RLAST
           when(dnRSelect) {
             assert(
-              io.out.R.RID === rID(slot),
+              io.out.R.RID === ReadBurstShapes(slot).ID,
               "AXI5WidthBridge: downstream read response ID mismatch"
             )
             assert(
-              io.out.R.RLAST === (rBeat(slot) === RLength(slot)),
+              io.out.R.RLAST === (ysyx_26030103_AXI5Beat.IsLast(rBeat(slot), ReadBurstShapes(slot).length)),
               "AXI5WidthBridge: downstream RLAST does not match ARLEN"
             )
             // 32 位上游数据放进 64 位总线的一半；非对齐首拍只占该 size
             // 自然窗口的剩余部分，后续拍必须是完整且对齐的 size 窗口。
-            val sizeBytes = 1.U << rSize(slot)
-            val partial = rBeat(slot) === 0.U || rBurst(slot) === 0.U
+            val sizeBytes = 1.U << ReadBurstShapes(slot).size
+            val partial = rBeat(slot) === 0.U || ReadBurstShapes(slot).burst === 0.U
             val beatBytes =
               Mux(
                 partial,
@@ -244,10 +212,10 @@ private[infra] trait AXI5WidthBridgeRead {
             )
           }
           when(dnRFire) {
-            when(rBeat(slot) === RLength(slot)) {
+            when(ysyx_26030103_AXI5Beat.IsLast(rBeat(slot), ReadBurstShapes(slot).length)) {
               rState(slot) := rIdle
             }.otherwise {
-              rBeat(slot) := rBeat(slot) + 1.U
+              rBeat(slot) := ysyx_26030103_AXI5Beat.Next(rBeat(slot))
             }
           }
         }
@@ -255,15 +223,15 @@ private[infra] trait AXI5WidthBridgeRead {
         is(rErrData) {
           // 地址越界读：不产生下游 AR，按 ARLEN 返回等长 DECERR burst。
           slotRValid(slot) := true.B
-          slotR(slot).ID := rID(slot)
+          slotR(slot).ID := ReadBurstShapes(slot).ID
           slotR(slot).data := 0.U
           slotR(slot).response := DECERR
-          slotR(slot).last := rBeat(slot) === RLength(slot)
+          slotR(slot).last := ysyx_26030103_AXI5Beat.IsLast(rBeat(slot), ReadBurstShapes(slot).length)
           when(upRFire) {
-            when(rBeat(slot) === RLength(slot)) {
+            when(ysyx_26030103_AXI5Beat.IsLast(rBeat(slot), ReadBurstShapes(slot).length)) {
               rState(slot) := rIdle
             }.otherwise {
-              rBeat(slot) := rBeat(slot) + 1.U
+              rBeat(slot) := ysyx_26030103_AXI5Beat.Next(rBeat(slot))
             }
           }
         }
@@ -271,18 +239,18 @@ private[infra] trait AXI5WidthBridgeRead {
         is(rDnSend) {
           // 64->32：为当前上游 beat 的一个 4 字节块发一笔单拍 AR。
           val beatAddress =
-            beatAddressOf(rAddress(slot), rBeat(slot), rSize(slot),
-              rBurst(slot), RLength(slot))
+            beatAddressOf(ReadBurstShapes(slot).address, rBeat(slot), ReadBurstShapes(slot).size,
+              ReadBurstShapes(slot).burst, ReadBurstShapes(slot).length)
           val chunkAddress = chunkAddressOf(beatAddress, rChunk(slot))
           slotARValid(slot) := true.B
-          slotAR(slot).ID := rID(slot)
+          slotAR(slot).ID := ReadBurstShapes(slot).ID
           slotAR(slot).address := downAddress(chunkAddress)
           slotAR(slot).length := 0.U
           slotAR(slot).size := downLaneBits.U(3.W)
           slotAR(slot).burst := 1.U
-          slotAR(slot).prot := rProt(slot)
-          slotAR(slot).cache := rCache(slot)
-          slotAR(slot).qos := rQos(slot)
+          slotAR(slot).prot := ReadBurstShapes(slot).prot
+          slotAR(slot).cache := ReadBurstShapes(slot).cache
+          slotAR(slot).qos := ReadBurstShapes(slot).qos
           when(slotARFire) {
             rState(slot) := rDnWait
           }
@@ -290,18 +258,18 @@ private[infra] trait AXI5WidthBridgeRead {
 
         is(rDnWait) {
           val beatAddress =
-            beatAddressOf(rAddress(slot), rBeat(slot), rSize(slot),
-              rBurst(slot), RLength(slot))
+            beatAddressOf(ReadBurstShapes(slot).address, rBeat(slot), ReadBurstShapes(slot).size,
+              ReadBurstShapes(slot).burst, ReadBurstShapes(slot).length)
           val byteBase = beatByteBase(beatAddress)
           val chunkAddress = chunkAddressOf(beatAddress, rChunk(slot))
           val byteOffset = (chunkAddress - byteBase)(upLaneBits - 1, 0)
-          val partial = rBeat(slot) === 0.U || rBurst(slot) === 0.U
-          val lastChunk = beatChunkCount(beatAddress, rSize(slot), partial) - 1.U
+          val partial = rBeat(slot) === 0.U || ReadBurstShapes(slot).burst === 0.U
+          val lastChunk = beatChunkCount(beatAddress, ReadBurstShapes(slot).size, partial) - 1.U
           slotDnREligible(slot) := dnRMatch
           slotDnRReady(slot) := true.B
           when(dnRSelect) {
             assert(
-              io.out.R.RID === rID(slot),
+              io.out.R.RID === ReadBurstShapes(slot).ID,
               "AXI5WidthBridge: downstream read response ID mismatch"
             )
             assert(
@@ -328,15 +296,15 @@ private[infra] trait AXI5WidthBridgeRead {
 
         is(rDnOut) {
           slotRValid(slot) := true.B
-          slotR(slot).ID := rID(slot)
+          slotR(slot).ID := ReadBurstShapes(slot).ID
           slotR(slot).data := rData(slot)
           slotR(slot).response := rResponseCode(slot)
-          slotR(slot).last := rBeat(slot) === RLength(slot)
+          slotR(slot).last := ysyx_26030103_AXI5Beat.IsLast(rBeat(slot), ReadBurstShapes(slot).length)
           when(upRFire) {
-            when(rBeat(slot) === RLength(slot)) {
+            when(ysyx_26030103_AXI5Beat.IsLast(rBeat(slot), ReadBurstShapes(slot).length)) {
               rState(slot) := rIdle
             }.otherwise {
-              rBeat(slot) := rBeat(slot) + 1.U
+              rBeat(slot) := ysyx_26030103_AXI5Beat.Next(rBeat(slot))
               rChunk(slot) := 0.U
               rData(slot) := 0.U
               rResponseCode(slot) := OKAY
@@ -380,7 +348,7 @@ private[infra] trait AXI5WidthBridgeRead {
           "AXI5WidthBridge: downstream R without outstanding AR"
         )
         assert(
-          io.out.R.RID === rID(slot),
+          io.out.R.RID === ReadBurstShapes(slot).ID,
           "AXI5WidthBridge: downstream read response ID mismatch"
         )
       }
@@ -390,7 +358,7 @@ private[infra] trait AXI5WidthBridgeRead {
           "AXI5WidthBridge: upstream R while idle"
         )
         assert(
-          io.in.R.RID === rID(slot),
+          io.in.R.RID === ReadBurstShapes(slot).ID,
           "AXI5WidthBridge: upstream read response ID mismatch"
         )
         assert(
@@ -398,7 +366,7 @@ private[infra] trait AXI5WidthBridgeRead {
           "AXI5WidthBridge: duplicate upstream RLAST"
         )
         assert(
-          io.in.R.RLAST === (rBeat(slot) === RLength(slot)),
+          io.in.R.RLAST === (ysyx_26030103_AXI5Beat.IsLast(rBeat(slot), ReadBurstShapes(slot).length)),
           "AXI5WidthBridge: upstream RLAST does not match ARLEN"
         )
         when(io.in.R.RLAST) {
@@ -421,7 +389,7 @@ private[infra] trait AXI5WidthBridgeRead {
 
     when(io.out.AR.ARVALID) {
       assert(
-        io.out.AR.ARID === rID(ARSelect),
+        io.out.AR.ARID === ReadBurstShapes(ARSelect).ID,
         "AXI5WidthBridge: downstream read request ID mismatch"
       )
     }

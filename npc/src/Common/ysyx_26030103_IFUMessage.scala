@@ -1,10 +1,23 @@
 package ysyx_26030103.common
 import chisel3._
 
+trait ysyx_26030103_FetchContext {
+  def Instruction: UInt
+  def IsCompressed: Bool
+  def PC: UInt
+  def ExceptionValid: Bool
+  def ExceptionCause: UInt
+  def AccessFaultResponse: UInt
+  def PredTaken: Bool
+  def PredTarget: UInt
+}
+
 // Instruction 保留取指内存中的原始编码：16 位压缩指令零扩展到 32 位。
 // 是否调用 RVC 展开器并计算 snpc=PC+2/PC+4 由 IDU 决定；默认 XLEN=32
 // 保证既有单元测试和 RV32 配置的端口布局兼容。
-class ysyx_26030103_IFUMessage(val XLEN: Int = 32) extends Bundle {
+class ysyx_26030103_IFUMessage(val XLEN: Int = 32)
+    extends Bundle
+    with ysyx_26030103_FetchContext {
   ysyx_26030103_XLENRequire(XLEN, "IFUMessage")
   val Instruction = UInt(32.W)
   // 1=本条是 16 位压缩指令；0=32 位指令。关闭 C 扩展时恒为 0。

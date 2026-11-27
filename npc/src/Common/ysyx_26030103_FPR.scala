@@ -22,16 +22,26 @@ class ysyx_26030103_FPR(
     val DebugRaddr = Input(UInt(5.W))
     val DebugReadData = Output(UInt(FLEN.W))
   })
-  val regs = RegInit(VecInit(Seq.fill(32)(0.U(FLEN.W))))
-  when(io.wen) {
-    regs(io.waddr) := io.wdata
-  }
-  io.rdata1 := regs(io.raddr1)
-  io.rdata2 := regs(io.raddr2)
-  io.rdata3 := regs(io.raddr3)
-  if (EnableDynamicDebug) {
-    io.DebugReadData := regs(io.DebugRaddr)
-  } else {
-    io.DebugReadData := 0.U(FLEN.W)
-  }
+  val registerFile = Module(
+    new ysyx_26030103_RegisterFile(
+      ADDR_WIDTH = 5,
+      DATA_WIDTH = FLEN,
+      ReadPorts = 3,
+      ZeroReg0 = false,
+      DebugA0Fallback = false,
+      InitZero = true,
+      EnableDynamicDebug = EnableDynamicDebug
+    )
+  )
+  registerFile.io.wdata := io.wdata
+  registerFile.io.waddr := io.waddr
+  registerFile.io.wen := io.wen
+  registerFile.io.raddr1 := io.raddr1
+  registerFile.io.raddr2 := io.raddr2
+  registerFile.io.raddr3 := io.raddr3
+  io.rdata1 := registerFile.io.rdata1
+  io.rdata2 := registerFile.io.rdata2
+  io.rdata3 := registerFile.io.rdata3
+  registerFile.io.DebugRaddr := io.DebugRaddr
+  io.DebugReadData := registerFile.io.DebugRdata
 }

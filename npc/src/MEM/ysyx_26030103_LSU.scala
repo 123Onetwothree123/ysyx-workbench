@@ -104,6 +104,9 @@ class ysyx_26030103_LSU(
   private val dataVIPT = DCacheVIPT && DCacheEnable
   private[mem] val dataVIPTParallel = dataVIPT && VIPTParallel
 
+  private def HeadOf[T <: Data](vec: Vec[T], head: UInt): T =
+    if (WBufDepth == 1) vec(0) else vec(head)
+
   val io = IO(new ysyx_26030103_LSUIO(XLEN, AddressWidth, BusDataWidth))
   dontTouch(io.DCacheFlush)
   dontTouch(io.in.bits.CSRStateMepc)
@@ -153,8 +156,7 @@ class ysyx_26030103_LSU(
   val pendingStoreTail = RegInit(0.U(storePointerWidth.W))
   val pendingStoreCount = RegInit(0.U(storeCountWidth.W))
   val pendingStoreValid = pendingStoreCount =/= 0.U
-  val pendingStoreHeadBits =
-    if (WBufDepth == 1) pendingStore(0) else pendingStore(pendingStoreHead)
+  val pendingStoreHeadBits = HeadOf(pendingStore, pendingStoreHead)
   // 架构 load 结果统一保留 64 位：RV64 的 LD 和 RV32D 的 FLD 都要完整
   // 高字；整数 load 只消费低 XLEN 位，FP load 由 FPWriteData 写 f 寄存器。
   val loadDataReg = RegInit(0.U(64.W))
@@ -237,12 +239,8 @@ class ysyx_26030103_LSU(
 
   // PMA 分类使用物理地址；端点上界可能等于 2^AddressWidth（例如 4GiB），
   // 因此比较时统一多扩一位，避免字面量放不进 AddressWidth。
-  def addressInRegion(address: UInt, region: ysyx_26030103_PMARegion): Bool = {
-    val compareWidth = AddressWidth + 1
-    val extended = address.pad(compareWidth)
-    extended >= region.Base.U(compareWidth.W) &&
-    extended < region.EndExclusive.U(compareWidth.W)
-  }
+  def addressInRegion(address: UInt, region: ysyx_26030103_PMARegion): Bool =
+    ysyx_26030103_PMAAddress.InRegion(address, region, AddressWidth)
   // 返回 (PMA 命中, cacheable 子集命中)，均以 MemoryValid 为前提。
   private[mem] def classifyPMA(
       address: UInt,
@@ -255,32 +253,24 @@ class ysyx_26030103_LSU(
         DCachePMARegions.filter(_.Cacheable).map(addressInRegion(address, _)))
     (mapped, cacheable)
   }
-  val StagePMAAddress = addressOf(stageInputBits.ALUResult)
-  val (stageMapped, stageCacheable) =
-    classifyPMA(StagePMAAddress, stageInputBits.MemoryValid)
-  val StageMMIO = stageMapped && !stageCacheable
-  val stageNaturalMisaligned = addressIsMisaligned(
-    StagePMAAddress, stageInputBits.WidthSelect)
+  val StageInputPlan = PlanAccess(
+    stageInputBits.VAddress,
+    stageInputBits.ALUResult,
+    stageInputBits.WidthSelect,
+    stageInputBits.MemoryValid,
+    stageInputBits.IsAtomic,
+    MisalignedSupportEnable,
+    MisalignedMMIOFaultEnable,
+    MisalignedNCSplitEnable,
+    AddressWidth,
+    GranuleBytes
+  )
   // 关闭支持时沿用 cause 4/6；MMIO 按策略选择 access fault 或交给软件。
-  val StageInputCause46 = stageInputBits.MemoryValid &&
-    stageNaturalMisaligned &&
-    (!MisalignedSupportEnable || stageInputBits.IsAtomic ||
-      (StageMMIO && !MisalignedMMIOFaultEnable && !MisalignedNCSplitEnable))
-  val StageInputCause57 = stageInputBits.MemoryValid &&
-    stageNaturalMisaligned && MisalignedSupportEnable &&
-    !stageInputBits.IsAtomic && StageMMIO && MisalignedMMIOFaultEnable
-  val stageInputMisaligned = StageInputCause46 || StageInputCause57
-  val StageInputBytes = addressOf(stageInputBits.VAddress)
-  val StageInputByteSize = accessByteSize(stageInputBits.WidthSelect)
-  val StageInputLast = StageInputBytes + StageInputByteSize - 1.U
-  val StageInputSingleGranule =
-    (StageInputBytes & ~((GranuleBytes - 1).U(AddressWidth.W))) ===
-      (StageInputLast & ~((GranuleBytes - 1).U(AddressWidth.W)))
+  val StageInputCause46 = StageInputPlan.cause46
+  val StageInputCause57 = StageInputPlan.cause57
+  val stageInputMisaligned = StageInputPlan.misaligned
   // 自然非对齐或跨粒度块的普通访问走分段路径。
-  val StageInputNeedsSegments = stageInputBits.MemoryValid &&
-    !stageInputBits.IsAtomic && MisalignedSupportEnable &&
-    !stageInputMisaligned &&
-    (stageNaturalMisaligned || !StageInputSingleGranule)
+  val StageInputNeedsSegments = StageInputPlan.needsSegments
   // PMP 故障只针对访存指令；非访存直通指令不消费 PmpFault。
   val StageInputPMPFault = io.PMPFault && stageInputBits.MemoryValid
   // 非对齐策略陷阱（cause 4/6 或 MMIO 的 5/7）都没有总线事务，
@@ -363,18 +353,13 @@ class ysyx_26030103_LSU(
   io.HazardRegWrite := activeInstruction.RegisterWrite && !memFaultReg
   io.HazardMemOp := activeInstruction.MemoryValid
   // 向译码级转发最终写回值
-  io.ForwardData := Mux(
-    activeInstruction.WBSelect === 2.U,
+  io.ForwardData := ysyx_26030103_WritebackSource.Select(
+    activeInstruction.WBSelect,
+    activeInstruction.ALUResult,
+    Mux(loadForwardValid, loadForwardData, loadDataReg),
     activeInstruction.snpc,
-    Mux(
-      activeInstruction.WBSelect === 3.U,
-      activeInstruction.CSRReadData,
-      Mux(
-        activeInstruction.WBSelect === 1.U,
-        Mux(loadForwardValid, loadForwardData, loadDataReg),
-        activeInstruction.ALUResult
-      )
-    )
+    activeInstruction.CSRReadData,
+    activeInstruction.ALUResult
   )
   io.ForwardReady := io.HazardValid && io.HazardRegWrite &&
     (!activeInstruction.MemoryValid || stageState === stageDone ||
@@ -397,14 +382,13 @@ class ysyx_26030103_LSU(
   io.Hazard2Rd := io.in.bits.Rd
   io.Hazard2RegWrite := io.in.bits.RegisterWrite
   io.Hazard2MemOp := io.in.bits.MemoryValid
-  io.Hazard2ForwardData := Mux(
-    io.in.bits.WBSelect === 2.U,
+  io.Hazard2ForwardData := ysyx_26030103_WritebackSource.Select(
+    io.in.bits.WBSelect,
+    io.in.bits.ALUResult,
+    io.in.bits.ALUResult,
     io.in.bits.snpc,
-    Mux(
-      io.in.bits.WBSelect === 3.U,
-      io.in.bits.CSRReadData,
-      io.in.bits.ALUResult
-    )
+    io.in.bits.CSRReadData,
+    io.in.bits.ALUResult
   )
   io.Hazard2ForwardReady := waitValid && io.in.bits.RegisterWrite && !io.in.bits.MemoryValid
   io.Hazard2FPRegWrite := io.in.bits.FPRegisterWrite
@@ -475,12 +459,11 @@ class ysyx_26030103_LSU(
   val activeVa = addressOf(activeInstruction.VAddress)
   val activeSegCount = accessGranuleCount(
     activeVa, activeInstruction.WidthSelect, ChunkLog2)
-  val activePage1Va =
-    Cat(activeVa(AddressWidth - 1, 12) + 1.U, 0.U(12.W))
+  val activePage1Va = Page1Va(activeVa, AddressWidth)
   val MisalignedSegmentVirtualAddress = Cat(activeVa(AddressWidth - 1, ChunkLog2),
     0.U(ChunkLog2.W)) + (MisalignedSegmentIndex << ChunkLog2)
-  val MisalignedSegmentUsesPage1 = MisalignedSegmentVirtualAddress(AddressWidth - 1, 12) =/=
-    activeVa(AddressWidth - 1, 12)
+  val MisalignedSegmentUsesPage1 =
+    CrossesPage(MisalignedSegmentVirtualAddress, activeVa, AddressWidth)
   val MisalignedBasePhysicalAddress =
     if (dataVIPTParallel) physicalAddressReg else addressOf(activeInstruction.ALUResult)
   val MisalignedBaseReady = if (dataVIPTParallel) physicalAddressValidReg else true.B
@@ -490,15 +473,17 @@ class ysyx_26030103_LSU(
   val MisalignedPage1Ready = !UseMMU.B || MisalignedPage1TranslationValid
   val MisalignedSegmentReady = MisalignedBaseReady && (!MisalignedSegmentUsesPage1 || MisalignedPage1Ready)
   // 有第二页翻译结果就用它；无 MMU 时按连续物理页外推。
-  val MisalignedPage1PhysicalAddress = Mux(
-    MisalignedPage1TranslationValid,
-    xlatePaReg & ~"hfff".U(AddressWidth.W),
-    (MisalignedBasePhysicalAddress & ~"hfff".U(AddressWidth.W)) + "h1000".U(AddressWidth.W)
-  )
   val MisalignedSegmentPhysicalAddress = Mux(
     MisalignedSegmentUsesPage1,
-    MisalignedPage1PhysicalAddress | MisalignedSegmentVirtualAddress(11, 0),
-    (MisalignedBasePhysicalAddress & ~"hfff".U(AddressWidth.W)) | MisalignedSegmentVirtualAddress(11, 0)
+    Page1Paddr(
+      MisalignedBasePhysicalAddress,
+      xlatePaReg,
+      MisalignedPage1TranslationValid,
+      MisalignedSegmentVirtualAddress,
+      AddressWidth
+    ),
+    (MisalignedBasePhysicalAddress & ~"hfff".U(AddressWidth.W)) |
+      MisalignedSegmentVirtualAddress(11, 0)
   )
   val directWord =
     SelectWord(io.DataBus.R.RDATA, activeInstruction.ALUResult, busWide)
@@ -598,33 +583,22 @@ class ysyx_26030103_LSU(
   val incomingVIPTPhysicalAddressMatch =
     io.VIPTPAddressValid && io.VIPTPAddressVirtualAddress === io.in.bits.VAddress
   val IncomingVirtualAddress = addressOf(io.in.bits.VAddress)
-  val IncomingByteSize = accessByteSize(io.in.bits.WidthSelect)
-  val IncomingCrossPage =
-    (IncomingVirtualAddress + IncomingByteSize - 1.U)(AddressWidth - 1, 12) =/=
-      IncomingVirtualAddress(AddressWidth - 1, 12)
-  val IncomingPage1VirtualAddress =
-    Cat(IncomingVirtualAddress(AddressWidth - 1, 12) + 1.U, 0.U(12.W))
-  val IncomingPMAAddress = addressOf(io.in.bits.ALUResult)
-  val (incomingMapped, incomingCacheable) =
-    classifyPMA(IncomingPMAAddress, io.in.bits.MemoryValid)
-  val IncomingMMIO = incomingMapped && !incomingCacheable
-  val incomingNaturalMisaligned = addressIsMisaligned(
-    IncomingPMAAddress, io.in.bits.WidthSelect)
-  val IncomingCause46 = io.in.bits.MemoryValid &&
-    incomingNaturalMisaligned &&
-    (!MisalignedSupportEnable ||
-      (IncomingMMIO && !MisalignedMMIOFaultEnable && !MisalignedNCSplitEnable))
-  val IncomingCause57 = io.in.bits.MemoryValid &&
-    incomingNaturalMisaligned && MisalignedSupportEnable && IncomingMMIO &&
-    MisalignedMMIOFaultEnable
-  val IncomingBlocked = IncomingCause46 || IncomingCause57
-  val IncomingLast = IncomingVirtualAddress + IncomingByteSize - 1.U
-  val IncomingSingleGranule =
-    (IncomingVirtualAddress & ~((GranuleBytes - 1).U(AddressWidth.W))) ===
-      (IncomingLast & ~((GranuleBytes - 1).U(AddressWidth.W)))
-  val IncomingNeedsSegments = io.in.bits.MemoryValid &&
-    MisalignedSupportEnable && !IncomingBlocked &&
-    (incomingNaturalMisaligned || !IncomingSingleGranule)
+  val IncomingPlan = PlanAccess(
+    io.in.bits.VAddress,
+    io.in.bits.ALUResult,
+    io.in.bits.WidthSelect,
+    io.in.bits.MemoryValid,
+    false.B,
+    MisalignedSupportEnable,
+    MisalignedMMIOFaultEnable,
+    MisalignedNCSplitEnable,
+    AddressWidth,
+    GranuleBytes
+  )
+  val IncomingCrossPage = IncomingPlan.crossPage
+  val IncomingPage1VirtualAddress = IncomingPlan.page1Va
+  val IncomingBlocked = IncomingPlan.misaligned
+  val IncomingNeedsSegments = IncomingPlan.needsSegments
   when(wbPush) {
     if (WBufDepth == 1) {
       wbAddress(0) := addressOf(io.in.bits.ALUResult)
@@ -739,30 +713,22 @@ class ysyx_26030103_LSU(
   val wbBMatchFire = wbBFire && wbBMatch
   // 写直达 DCache 不能在 store 入队时投机更新。匹配B握手时再通知：
   // OKAY按字节更新命中行；错误响应只失效该行，以覆盖从机可能的部分副作用。
-  val wbHeadAddress = if (WBufDepth == 1) wbAddress(0) else wbAddress(wbHead)
-  val wbHeadVirtualAddress = if (WBufDepth == 1) wbVirtualAddress(0) else wbVirtualAddress(wbHead)
-  val wbHeadPhysicalAddress = if (WBufDepth == 1) wbPhysicalAddress(0) else wbPhysicalAddress(wbHead)
-  val wbHeadPhysicalAddressValid =
-    if (WBufDepth == 1) wbPhysicalAddressValid(0) else wbPhysicalAddressValid(wbHead)
-  val wbHeadData = if (WBufDepth == 1) wbData(0) else wbData(wbHead)
-  val wbHeadDataHi = if (WBufDepth == 1) wbDataHi(0) else wbDataHi(wbHead)
-  val wbHeadStrobe = if (WBufDepth == 1) wbStrobe(0) else wbStrobe(wbHead)
-  val wbHeadSize = if (WBufDepth == 1) wbSize(0) else wbSize(wbHead)
-  val wbHeadWide = if (WBufDepth == 1) wbWide(0) else wbWide(wbHead)
-  val wbHeadMisaligned =
-    if (WBufDepth == 1) wbMisaligned(0) else wbMisaligned(wbHead)
-  val wbHeadTrapBlocked =
-    if (WBufDepth == 1) wbTrapBlocked(0) else wbTrapBlocked(wbHead)
-  val wbHeadStoreData =
-    if (WBufDepth == 1) wbStoreData(0) else wbStoreData(wbHead)
-  val wbHeadSegCount =
-    if (WBufDepth == 1) wbSegCount(0) else wbSegCount(wbHead)
-  val wbHeadCrossPage =
-    if (WBufDepth == 1) wbCrossPage(0) else wbCrossPage(wbHead)
-  val wbHeadPage1Pa =
-    if (WBufDepth == 1) wbPage1Pa(0) else wbPage1Pa(wbHead)
-  val wbHeadPage1Valid =
-    if (WBufDepth == 1) wbPage1Valid(0) else wbPage1Valid(wbHead)
+  val wbHeadAddress = HeadOf(wbAddress, wbHead)
+  val wbHeadVirtualAddress = HeadOf(wbVirtualAddress, wbHead)
+  val wbHeadPhysicalAddress = HeadOf(wbPhysicalAddress, wbHead)
+  val wbHeadPhysicalAddressValid = HeadOf(wbPhysicalAddressValid, wbHead)
+  val wbHeadData = HeadOf(wbData, wbHead)
+  val wbHeadDataHi = HeadOf(wbDataHi, wbHead)
+  val wbHeadStrobe = HeadOf(wbStrobe, wbHead)
+  val wbHeadSize = HeadOf(wbSize, wbHead)
+  val wbHeadWide = HeadOf(wbWide, wbHead)
+  val wbHeadMisaligned = HeadOf(wbMisaligned, wbHead)
+  val wbHeadTrapBlocked = HeadOf(wbTrapBlocked, wbHead)
+  val wbHeadStoreData = HeadOf(wbStoreData, wbHead)
+  val wbHeadSegCount = HeadOf(wbSegCount, wbHead)
+  val wbHeadCrossPage = HeadOf(wbCrossPage, wbHead)
+  val wbHeadPage1Pa = HeadOf(wbPage1Pa, wbHead)
+  val wbHeadPage1Valid = HeadOf(wbPage1Valid, wbHead)
   // 每个不同页的 PA 必须都就绪后才发任何一段写；无 MMU 页连续。
   val wbPage1Needed = wbHeadCrossPage && UseMMU.B
   val wbHeadReady =
@@ -775,18 +741,18 @@ class ysyx_26030103_LSU(
     wbHeadVirtualAddress(AddressWidth - 1, ChunkLog2),
     0.U(ChunkLog2.W)) + (wbSegIndex << ChunkLog2)
   val wbHeadSegUsesPage1 = wbHeadCrossPage &&
-    wbHeadSegVa(AddressWidth - 1, 12) =/=
-      wbHeadVirtualAddress(AddressWidth - 1, 12)
-  val wbHeadPage1Base = Mux(
-    wbHeadPage1Valid,
-    wbHeadPage1Pa & ~"hfff".U(AddressWidth.W),
-    (wbHeadEffectiveAddress & ~"hfff".U(AddressWidth.W)) +
-      "h1000".U(AddressWidth.W)
-  )
+    CrossesPage(wbHeadSegVa, wbHeadVirtualAddress, AddressWidth)
   val wbHeadSegPaddr = Mux(
     wbHeadSegUsesPage1,
-    wbHeadPage1Base | wbHeadSegVa(11, 0),
-    (wbHeadEffectiveAddress & ~"hfff".U(AddressWidth.W)) | wbHeadSegVa(11, 0)
+    Page1Paddr(
+      wbHeadEffectiveAddress,
+      wbHeadPage1Pa,
+      wbHeadPage1Valid,
+      wbHeadSegVa,
+      AddressWidth
+    ),
+    (wbHeadEffectiveAddress & ~"hfff".U(AddressWidth.W)) |
+      wbHeadSegVa(11, 0)
   )
   val wbHeadSegPayload = segmentedStorePayload(
     wbHeadStoreData,

@@ -12,15 +12,15 @@ class riscv32e_npc_AXIRAM(
     val RAMBase: Long = ysyx_26030103_PMAOptions.Default.NpcRAMBase
 ) extends Module {
   require(RAMBytes > 0, "direct-NPC RAM 大小必须为正")
-  require((RAMBytes & (RAMBytes - 1)) == 0, "direct-NPC RAM 大小必须是 2 的幂")
-  require(RAMBytes % 4 == 0, "direct-NPC RAM 大小必须是 4 字节的倍数")
-  require(UARTBase % 8 == 0, "direct-NPC UART 基地址必须按 8 字节对齐")
-  require(RAMBase >= 0 && RAMBase % 4 == 0,
-    "direct-NPC RAM 基地址必须非负且按 4 字节对齐")
-  require(
-    BigInt(RAMBase) + BigInt(RAMBytes) <= (BigInt(1) << 32),
+  ysyx_26030103_PMAOptions.ValidateNpcRam(
+    RAMBase,
+    RAMBytes,
+    "direct-NPC RAM 大小必须是 2 的幂",
+    "direct-NPC RAM 大小必须是 4 字节的倍数",
+    "direct-NPC RAM 基地址必须非负且按 4 字节对齐",
     "direct-NPC RAM 窗口超出 32 位地址空间"
   )
+  require(UARTBase % 8 == 0, "direct-NPC UART 基地址必须按 8 字节对齐")
   // direct-NPC 顶层只实现 32 位 AXI（地址/数据同宽、4 位 WSTRB），
   // 与 rtl/riscv32e_npc_SimTop.sv 的固定端口一致。Makefile 的 direct
   // 目标会强制 EffectiveSocXLEN=32；这里再拒绝任何 64 位实例化，避免
@@ -67,29 +67,42 @@ class riscv32e_npc_AXIRAM(
 
   // UART 窗口只有 8 个字节寄存器。与 RAM 一样，必须保证整个访问都落在
   // 窗口内，避免跨窗口访问被错误地当成 UART 寄存器。
-  def isUARTBeat(address: UInt, size: UInt): Bool = {
+  def InWindow(base: UInt, last: UInt, address: UInt, size: UInt): Bool = {
     val lastStart = MuxLookup(size, 0.U(32.W))(
       Seq(
-        0.U -> UARTLastU,
-        1.U -> (UARTLastU - 1.U),
-        2.U -> (UARTLastU - 3.U)
+        0.U -> last,
+        1.U -> (last - 1.U),
+        2.U -> (last - 3.U)
       )
     )
-    size <= 2.U && address >= UARTBaseU && address <= lastStart
+    size <= 2.U && address >= base && address <= lastStart
+  }
+
+  def isUARTBeat(address: UInt, size: UInt): Bool = {
+    InWindow(UARTBaseU, UARTLastU, address, size)
   }
 
   // 只有 AxSIZE 选中的每个字节都位于当前 RAM 窗口内时，该拍才属于
   // RAM。尤其要避免窗口外地址通过截断后的 SyncReadMem 索引发生回绕。
   def isRAMBeat(address: UInt, size: UInt): Bool = {
-    val lastStart = MuxLookup(size, 0.U(32.W))(
+    InWindow(RAMBaseU, RAMLastU, address, size)
+  }
+
+  def BeatStep(size: UInt): UInt =
+    MuxLookup(size, 0.U(32.W))(
       Seq(
-        0.U -> RAMLastU,
-        1.U -> (RAMLastU - 1.U),
-        2.U -> (RAMLastU - 3.U)
+        0.U -> 1.U(32.W),
+        1.U -> 2.U(32.W),
+        2.U -> 4.U(32.W)
       )
     )
-    size <= 2.U && address >= RAMBaseU && address <= lastStart
-  }
+
+  def ConfigError(address: UInt, size: UInt, burst: UInt, len: UInt): Bool =
+    size > 2.U || burst > 1.U ||
+      (isUARTBeat(address, size) && len =/= 0.U)
+
+  def WordIndex(address: UInt): UInt =
+    ((address - RAMBaseU) >> 2)(wordIndexBits - 1, 0)
 
   val sIdle :: sReadWait :: sReadResponse :: sWriteRead :: sWriteCommit :: sWriteDrain :: sWriteResponse :: Nil =
     Enum(7)
@@ -104,16 +117,10 @@ class riscv32e_npc_AXIRAM(
   val readResponse = RegInit(OKAY)
   val ReadIsUART = RegInit(false.B)
   val ReadUARTData = RegInit(0.U(8.W))
-  val readStep = MuxLookup(arSize, 0.U(32.W))(
-    Seq(
-      0.U -> 1.U(32.W),
-      1.U -> 2.U(32.W),
-      2.U -> 4.U(32.W)
-    )
-  )
+  val readStep = BeatStep(arSize)
   val ReadAddressIsRAM = isRAMBeat(ARAddress, arSize)
   val ReadAddressIsUART = isUARTBeat(ARAddress, arSize)
-  val readWordIndex = ((ARAddress - RAMBaseU) >> 2)(wordIndexBits - 1, 0)
+  val readWordIndex = WordIndex(ARAddress)
   val readData = mem.read(
     readWordIndex,
     (state === sReadWait || state === sReadResponse) &&
@@ -139,7 +146,7 @@ class riscv32e_npc_AXIRAM(
   // 数据。
   val WriteAddressIsRAM = isRAMBeat(AWAddress, awSize)
   val WriteAddressIsUART = isUARTBeat(AWAddress, awSize)
-  val writeWordIndex = ((AWAddress - RAMBaseU) >> 2)(wordIndexBits - 1, 0)
+  val writeWordIndex = WordIndex(AWAddress)
   val writeOld = mem.read(
     writeWordIndex,
     state === sWriteRead && !writeConfigError && WriteAddressIsRAM
@@ -151,13 +158,7 @@ class riscv32e_npc_AXIRAM(
     Mux(wStrobe(0), 0xff.U(8.W), 0.U(8.W))
   )
   val writeMerged = (wData & writeMask) | (writeOld & ~writeMask)
-  val writeStep = MuxLookup(awSize, 0.U(32.W))(
-    Seq(
-      0.U -> 1.U(32.W),
-      1.U -> 2.U(32.W),
-      2.U -> 4.U(32.W)
-    )
-  )
+  val writeStep = BeatStep(awSize)
   val expectedLastBeat = writeBeat === awLen
 
   // RAM 只保留一个写端口。主机初始化发生在 reset 期间，
@@ -217,16 +218,14 @@ class riscv32e_npc_AXIRAM(
     awSize := io.AXI.AW.AWSIZE
     awBurst := io.AXI.AW.AWBURST
     writeBeat := 0.U
-    writeConfigError := io.AXI.AW.AWSIZE > 2.U || io.AXI.AW.AWBURST > 1.U ||
-      (isUARTBeat(io.AXI.AW.AWADDR, io.AXI.AW.AWSIZE) &&
-        io.AXI.AW.AWLEN =/= 0.U)
-    writeResponse := Mux(
-      io.AXI.AW.AWSIZE > 2.U || io.AXI.AW.AWBURST > 1.U ||
-        (isUARTBeat(io.AXI.AW.AWADDR, io.AXI.AW.AWSIZE) &&
-          io.AXI.AW.AWLEN =/= 0.U),
-      SLVERR,
-      OKAY
+    val badWrite = ConfigError(
+      io.AXI.AW.AWADDR,
+      io.AXI.AW.AWSIZE,
+      io.AXI.AW.AWBURST,
+      io.AXI.AW.AWLEN
     )
+    writeConfigError := badWrite
+    writeResponse := Mux(badWrite, SLVERR, OKAY)
     AWPending := true.B
   }
   when(wCollectFire) {
@@ -265,9 +264,12 @@ class riscv32e_npc_AXIRAM(
         ReadUARTData := UART.io.rdData
         // UART 不支持突发读；突发请求按配置错误安全终止，且不产生
         // RBR 弹出等副作用。
-        readConfigError := io.AXI.AR.ARSIZE > 2.U || io.AXI.AR.ARBURST > 1.U ||
-          (isUARTBeat(io.AXI.AR.ARADDR, io.AXI.AR.ARSIZE) &&
-            io.AXI.AR.ARLEN =/= 0.U)
+        readConfigError := ConfigError(
+          io.AXI.AR.ARADDR,
+          io.AXI.AR.ARSIZE,
+          io.AXI.AR.ARBURST,
+          io.AXI.AR.ARLEN
+        )
         state := sReadWait
       }.elsewhen(HaveAW && haveW) {
         state := sWriteRead

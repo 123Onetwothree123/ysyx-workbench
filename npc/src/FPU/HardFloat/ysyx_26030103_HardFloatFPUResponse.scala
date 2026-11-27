@@ -7,7 +7,8 @@ import hardfloat._
 trait ysyx_26030103_HardFloatFPUResponse {
   this: ysyx_26030103_HardFloatFPUBase
     with ysyx_26030103_HardFloatFPUArith
-    with ysyx_26030103_HardFloatFPUResult =>
+    with ysyx_26030103_HardFloatFPUResult
+    with ysyx_26030103_FPUResponseShell =>
 
   // 多周期 DIV/SQRT
   val divS = Module(new DivSqrtRecFN_small(expS, sigS, 0))
@@ -24,22 +25,9 @@ trait ysyx_26030103_HardFloatFPUResponse {
   divD.io.roundingMode := rm
   divD.io.detectTininess := detectTininessUInt
 
-  val responseValid = RegInit(false.B)
-  val responseResult = RegInit(0.U(FLEN.W))
-  val responseFlags = RegInit(0.U(ysyx_26030103_FPUFlags.Width.W))
   val divActive = RegInit(false.B)
   val divAbandoned = RegInit(false.B)
   val ActiveDivIsSingle = RegInit(false.B)
-
-  // FPU_PIPELINE=N：在响应边界插 N 级 valid/ready，反压沿 ready 回传。
-  val responsePipe =
-    Module(new ysyx_26030103_FPUResponsePipeline(FLEN, Config.FPUProfile.Pipeline))
-  responsePipe.io.flush := io.flush
-  responsePipe.io.in.valid := responseValid
-  responsePipe.io.in.bits.result := responseResult
-  responsePipe.io.in.bits.fflags := responseFlags
-  io.response <> responsePipe.io.out
-  val responsePipeReady = responsePipe.io.in.ready
 
   val selectedDivReady = Mux(fmtS, divS.io.inReady, divD.io.inReady)
   // io.request.ready 不能组合依赖 io.flush，否则经 CSRUnit.ExceptionTaken 成环。
@@ -67,23 +55,16 @@ trait ysyx_26030103_HardFloatFPUResponse {
     divActive := false.B
     divAbandoned := false.B
     when(!divAbandoned) {
-      responseValid := true.B
-      responseResult := divOutResult
-      responseFlags := divOutFlags
+      PublishResponse(divOutResult, divOutFlags)
     }
   }
 
   // 非 DIV/SQRT 在接收请求的下一拍给出寄存结果。
-  when(io.request.valid && io.request.ready && !isDivSqrt && !io.flush) {
-    responseValid := true.B
-    responseResult := fastResult
-    responseFlags := fastFlags
-  }
-  when(responseValid && responsePipeReady) {
-    responseValid := false.B
-  }
+  CaptureFastResponse(
+    io.request.valid && io.request.ready && !isDivSqrt && !io.flush)
+  ReleaseResponse()
   when(io.flush) {
-    responseValid := false.B
+    ClearResponseOnFlush()
     when(divActive) { divAbandoned := true.B }
   }
 

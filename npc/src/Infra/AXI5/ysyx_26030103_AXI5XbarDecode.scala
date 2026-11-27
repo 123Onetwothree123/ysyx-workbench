@@ -9,25 +9,21 @@ private[infra] trait AXI5XbarDecode {
 
   private val busLaneBits = log2Ceil(DataWidth / 8)
 
-  private def lastByte(
-      address: UInt,
-      length: UInt,
-      size: UInt,
-      burst: UInt
-  ): UInt =
-    ysyx_26030103_AXI5Burst.lastByte(address, length, size, burst)
   private def inRegion(
       address: UInt,
       length: UInt,
       size: UInt,
       burst: UInt,
       region: ysyx_26030103_PMARegion
-  ): Bool = {
-    val extendedAddress = Cat(0.U(1.W), address)
-    val lastAddress = lastByte(address, length, size, burst)
-    extendedAddress >= BigInt(region.Base).U &&
-    lastAddress < BigInt(region.EndExclusive).U
-  }
+  ): Bool =
+    ysyx_26030103_AXI5Burst.WithinWindow(
+      address,
+      length,
+      size,
+      burst,
+      BigInt(region.Base),
+      BigInt(region.EndExclusive)
+    )
   private def inAnyRegion(
       address: UInt,
       length: UInt,
@@ -39,24 +35,31 @@ private[infra] trait AXI5XbarDecode {
       regions.map(inRegion(address, length, size, burst, _))
     )
 
-  def isCLINT(address: UInt, length: UInt, size: UInt, burst: UInt): Bool = {
-    val lastAddress = lastByte(address, length, size, burst)
-    Cat(0.U(1.W), address) >= Cat(0.U(1.W), CLINTBase) &&
-    lastAddress < Cat(0.U(1.W), CLINTEnd)
-  }
-  def isPLIC(address: UInt, length: UInt, size: UInt, burst: UInt): Bool = {
-    val lastAddress = lastByte(address, length, size, burst)
-    Cat(0.U(1.W), address) >= Cat(0.U(1.W), PLICBase) &&
-    lastAddress < Cat(0.U(1.W), PLICEnd)
-  }
+  def isCLINT(address: UInt, length: UInt, size: UInt, burst: UInt): Bool =
+    ysyx_26030103_AXI5Burst.WithinWindow(
+      address,
+      length,
+      size,
+      burst,
+      CLINTBaseValue,
+      CLINTBaseValue + CLINTSizeBytes
+    )
+  def isPLIC(address: UInt, length: UInt, size: UInt, burst: UInt): Bool =
+    ysyx_26030103_AXI5Burst.WithinWindow(
+      address,
+      length,
+      size,
+      burst,
+      PLICBaseValue,
+      PLICBaseValue + PLICSizeBytes
+    )
   private val readableRegions = PMARegions.filter(_.Readable)
   private val writableRegions = PMARegions.filter(_.Writable)
   // PLIC/CLINT 同样要过 PMA：要求某个可读/可写区域完整覆盖整个窗口。
   private def coversRegion(region: ysyx_26030103_PMARegion,
                            base: BigInt,
                            size: BigInt): Boolean =
-    BigInt(region.Base) <= base &&
-      BigInt(region.EndExclusive) >= base + size
+    region.Covers(base.toLong, size.toLong)
   private val ReadableCLINT = readableRegions.exists(region =>
     coversRegion(region, CLINTBaseValue, CLINTSizeBytes))
   private val WritableCLINT = writableRegions.exists(region =>

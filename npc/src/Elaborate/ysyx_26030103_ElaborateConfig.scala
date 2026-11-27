@@ -28,72 +28,34 @@ object ysyx_26030103_ElaborateConfig {
     val JalBTBWays = config.int("frontend.jal_btb_ways", ysyx_26030103_KconfigDefaults.NpcJalBTBWays)
     val RASBits = config.int("frontend.ras_bits", ysyx_26030103_KconfigDefaults.NpcRASBits)
     val cachePadding = config.int("platform.cache_padding", ysyx_26030103_KconfigDefaults.NpcCachePadding)
-    val NpcRAMSize: Long = {
-      val parsed = config.long(
+    val NpcRAMSize: Long =
+      config.long(
         "platform.ram_size",
         ysyx_26030103_KconfigDefaults.NpcRamSize
       )
-      require(parsed >= 4096L, s"NPC_RAM_SIZE=$parsed 太小")
-      require(
-        (parsed & (parsed - 1L)) == 0L,
-        s"NPC_RAM_SIZE=$parsed 必须是 2 的幂"
+    val NpcRAMBase: Long =
+      config.long(
+        "platform.ram_base",
+        ysyx_26030103_KconfigDefaults.NpcRamBase
       )
-      require(parsed % 4L == 0L, s"NPC_RAM_SIZE=$parsed 必须是 4 字节的倍数")
-      parsed
-    }
+    require(NpcRAMSize >= 4096L, s"NPC_RAM_SIZE=$NpcRAMSize 太小")
     println(
       s"[NPC config] direct-NPC RAM: 0x${NpcRAMSize.toHexString}" +
         s" ($NpcRAMSize bytes)"
     )
-    val NpcRAMBase: Long = {
-      val parsed = config.long(
-        "platform.ram_base",
-        ysyx_26030103_KconfigDefaults.NpcRamBase
-      )
-      require(parsed >= 0 && parsed % 4L == 0L,
-        s"NPC_RAM_BASE=0x${parsed.toHexString} 必须非负且按 4 字节对齐")
-      require(
-        BigInt(parsed) + BigInt(NpcRAMSize) <= (BigInt(1) << 32),
-        s"NPC_RAM_BASE + NPC_RAM_SIZE 超出 32 位地址空间"
-      )
-      parsed
-    }
+    ysyx_26030103_PMAOptions.ValidateNpcRam(
+      NpcRAMBase,
+      NpcRAMSize,
+      s"NPC_RAM_SIZE=$NpcRAMSize 必须是 2 的幂",
+      s"NPC_RAM_SIZE=$NpcRAMSize 必须是 4 字节的倍数",
+      s"NPC_RAM_BASE=0x${NpcRAMBase.toHexString} 必须非负且按 4 字节对齐",
+      "NPC_RAM_BASE + NPC_RAM_SIZE 超出 32 位地址空间"
+    )
     val hasChipLink = config.bool("platform.chip_link", false)
     val PMADefaults = ysyx_26030103_KconfigDefaults.Pma
-    val PMA = ysyx_26030103_PMAOptions(
-      CLINTBase = config.long("PMA.clint_base", PMADefaults.CLINTBase),
-      CLINTSize = config.long("PMA.clint_size", PMADefaults.CLINTSize),
-      sramBase = config.long("PMA.sram_base", PMADefaults.sramBase),
-      sramSize = config.long("PMA.sram_size", PMADefaults.sramSize),
-      UARTBase = config.long("PMA.uart_base", PMADefaults.UARTBase),
-      UARTSize = config.long("PMA.uart_size", PMADefaults.UARTSize),
-      SPIBase = config.long("PMA.spi_base", PMADefaults.SPIBase),
-      SPISize = config.long("PMA.spi_size", PMADefaults.SPISize),
-      GPIOBase = config.long("PMA.gpio_base", PMADefaults.GPIOBase),
-      GPIOSize = config.long("PMA.gpio_size", PMADefaults.GPIOSize),
-      keyboardBase = config.long("PMA.keyboard_base", PMADefaults.keyboardBase),
-      keyboardSize = config.long("PMA.keyboard_size", PMADefaults.keyboardSize),
-      VGABase = config.long("PMA.vga_base", PMADefaults.VGABase),
-      VGASize = config.long("PMA.vga_size", PMADefaults.VGASize),
-      mromBase = config.long("PMA.mrom_base", PMADefaults.mromBase),
-      mromSize = config.long("PMA.mrom_size", PMADefaults.mromSize),
-      flashBase = config.long("PMA.flash_base", PMADefaults.flashBase),
-      flashSize = config.long("PMA.flash_size", PMADefaults.flashSize),
-      psramBase = config.long("PMA.psram_base", PMADefaults.psramBase),
-      psramSize = config.long("PMA.psram_size", PMADefaults.psramSize),
-      sdramBase = config.long("PMA.sdram_base", PMADefaults.sdramBase),
-      sdramSize = config.long("PMA.sdram_size", PMADefaults.sdramSize),
-      ChipLinkMMIOBase =
-        config.long("PMA.chiplink_mmio_base", PMADefaults.ChipLinkMMIOBase),
-      ChipLinkMMIOSize =
-        config.long("PMA.chiplink_mmio_size", PMADefaults.ChipLinkMMIOSize),
-      chipLinkMemBase =
-        config.long("PMA.chiplink_mem_base", PMADefaults.chipLinkMemBase),
-      chipLinkMemSize =
-        config.long("PMA.chiplink_mem_size", PMADefaults.chipLinkMemSize),
-      SOCResetAddress = config.long("PMA.soc_reset_addr", PMADefaults.SOCResetAddress),
-      NpcRAMBase = NpcRAMBase
-    )
+    val PMA = ysyx_26030103_PMAOptions
+      .FromConfig((k, dv) => config.long(k, dv), PMADefaults)
+      .copy(NpcRAMBase = NpcRAMBase)
     val XLEN = config.int("isa.xlen", ysyx_26030103_KconfigDefaults.NpcXlen)
     val addressWidth =
       config.int("platform.address_width", if (XLEN == 64) 64 else 32)
@@ -222,27 +184,7 @@ object ysyx_26030103_ElaborateConfig {
       FloatTraceEnable = FloatTraceEnable,
       InstructionRingBufferEnable = IringBufferEnable,
       DicArchCounterEnable = dicArchCounterEnable,
-      PerfDicArchCounterBasic = perf.basic,
-      PerfDicArchCounterOpClass = perf.opClass,
-      PerfDicArchCounterMDU = perf.MDU,
-      PerfDicArchCounterIFUStall = perf.IFUStall,
-      PerfDicArchCounterICache = perf.ICache,
-      PerfDicArchCounterDCache = perf.DCache,
-      PerfDicArchCounterEXUStall = perf.EXUStall,
-      PerfDicArchCounterLSU = perf.LSU,
-      PerfDicArchCounterIDUStall = perf.IDUStall,
-      PerfDicArchCounterTrap = perf.trap,
-      PerfDicArchCounterBranchPred = perf.branchPred,
-      PerfDicArchCounterMMU = perf.mmu,
-      PerfDicArchCounterFPU = perf.fpu,
-      PerfDicArchCounterAXI = perf.AXI,
-      PerfDicArchCounterInstMix = perf.instMix,
-      PerfDicArchCounterCacheDetail = perf.cacheDetail,
-      PerfDicArchCounterInterrupt = perf.interrupt,
-      PerfDicArchCounterWBuf = perf.WBuf,
-      PerfDicArchCounterCSR = perf.CSR,
-      PerfDicArchCounterMDUDetail = perf.MDUDetail,
-      PerfDicArchCounterQueue = perf.queue,
+      PerfDicArchCounterGroupFlags = perf,
       RISCVArchPMU = riscvArchPMU,
       RiscvArchPMUZihpm = riscvArchPMUZihpm,
       RiscvArchPMUSscofpmf = riscvArchPMUSscofpmf,
