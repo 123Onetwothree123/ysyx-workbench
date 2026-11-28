@@ -1,3 +1,24 @@
 {
-  "tests": []
+  "tests": [
+    {
+      "name": "scala.ysyx_26030103.exu.ysyx_26030103_CSRAddressMapTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.exu.ysyx_26030103_CSRAddressMapTest"
+      ],
+      "timeout": 120,
+      "tags": [
+        "scala",
+        "exu",
+        "csr"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    }
+  ]
 }

@@ -1,6 +1,9 @@
+module;
+#include "npc_config_defaults.h"
 module npc.kconfig_contract;
 import std;
 namespace npc::kconfig_contract {
+namespace defaults = config_defaults;
 namespace {
 struct SelfTest {
   int passed = 0;
@@ -281,7 +284,40 @@ struct SelfTest {
     }
     std::cerr << '\n';
   }
+  void test_default_tables() {
+    expect_true("default_npc_ram_base",
+                defaults::NpcRamBase() == 0x80000000LL);
+    expect_true("default_npc_ram_size",
+                defaults::NpcRamSize() == 0x04000000LL);
+    expect_true("default_sbi_fw_base_follows_ram",
+                defaults::SbiFwBase(defaults::NpcRamBase()) ==
+                    defaults::NpcRamBase());
+    expect_true("default_sbi_next_addr_rv32",
+                defaults::SbiNextAddr(32) == 0x80400000LL);
+    expect_true("default_sbi_next_addr_rv64",
+                defaults::SbiNextAddr(64) == 0x80200000LL);
+    expect_true("default_sbi_fdt_addr",
+                defaults::SbiFdtAddr() == 0x80f00000LL);
+    expect_true("default_linux_initramfs_addr",
+                defaults::LinuxInitramfsAddr() == 0x82000000LL);
+    expect_true("default_pma_psram_act",
+                defaults::PmaPsramBase(0, 0) == 0x80000000LL);
+    expect_true("default_pma_psram_linux",
+                defaults::PmaPsramBase(1, 0) == 0xb0000000LL);
+    expect_true("default_pma_sdram_act_base",
+                defaults::PmaSdramBase(0, 0) == 0xa0000000LL);
+    expect_true("default_pma_sdram_act_size",
+                defaults::PmaSdramSize(0, 0) == 0x02000000LL);
+    expect_true("default_pma_sdram_linux_base",
+                defaults::PmaSdramBase(1, 0) == 0x80000000LL);
+    expect_true("default_pma_sdram_linux_size",
+                defaults::PmaSdramSize(1, 0) == 0x08000000LL);
+    expect_true("default_pma_reset_follows_mrom",
+                defaults::PmaSocResetAddr(defaults::PmaMromBase()) ==
+                    defaults::PmaMromBase());
+  }
   int run() {
+    test_default_tables();
     test_parser();
     Config values;
     values = base_rv64();
@@ -499,6 +535,17 @@ struct SelfTest {
     values = base_sbi();
     expect_ok("sbi_opensbi_default_layout_passes", values);
     values = base_sbi();
+    values["XLEN"] = Value::make_int(32);
+    values.erase("SBI_NEXT_ADDR");
+    expect_ok("sbi_rv32_default_next_addr_passes", values);
+    values = base_sbi();
+    values.erase("SBI_FW_BASE");
+    values.erase("SBI_NEXT_ADDR");
+    values.erase("SBI_FDT_ADDR");
+    values["SBI_FDT_ENABLE"] = Value::make_bool(true);
+    values["SBI_FDT_PATH"] = Value::make_string("dts/npc.dts");
+    expect_ok("sbi_default_layout_from_shared_table_passes", values);
+    values = base_sbi();
     values["SBI_NEXT_ADDR"] = Value::make_int(0x80100000);
     expect_error("sbi_next_addr_overlaps_firmware_rejected", values, "越过");
     values = base_sbi();
@@ -543,6 +590,13 @@ struct SelfTest {
     expect_ok("sbi_disabled_ignores_layout", values);
     values = base_linux();
     expect_ok("linux_standard_layout_passes", values);
+    values = base_linux();
+    values.erase("SBI_FDT_ADDR");
+    values.erase("LINUX_INITRAMFS_ADDR");
+    expect_ok("linux_default_fdt_and_initramfs_pass", values);
+    values = base_soc();
+    values["SOC_MEMORY_MAP_LINUX"] = Value::make_bool(true);
+    expect_ok("linux_memory_map_pma_defaults_pass", values);
     values = base_linux();
     values["SBI_FDT_ENABLE"] = Value::make_bool(false);
     expect_error("linux_requires_fdt", values, "SBI_FDT_ENABLE=y");

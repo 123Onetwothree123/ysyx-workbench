@@ -12,76 +12,10 @@
 # 设置 STRICT=1 可把 SKIP 升级为 FAIL，供 RVC 合入后的 CI 使用。
 set -uo pipefail
 
-fail() {
-    echo "[FAIL] $*" >&2
-    exit 1
-}
-
-skip() {
-    if [[ "${STRICT:-0}" == 1 ]]; then
-        fail "STRICT=1: $*"
-    fi
-    echo "[SKIP] $*"
-    exit 0
-}
-
-show_log() {
-    local log="$1"
-    if [[ -f "$log" ]]; then
-        echo "---- $log (tail) ----" >&2
-        tail -n 40 "$log" >&2 || true
-    fi
-}
-
-show_first_divergence() {
-    local log="$1"
-    if grep -q 'DiffTest 校验失败' "$log" 2>/dev/null; then
-        echo "---- 第一次分叉报告 ----" >&2
-        sed -n '/DiffTest 校验失败/,$p' "$log" | head -n 80 >&2 || true
-    fi
-}
-
-require_file() {
-    local path="$1" what="$2"
-    [[ -f "$path" ]] || skip "缺少 $what：$path"
-}
-
-# 运行 NPC。自动适配启用/未启用 SDB 的构建：
-#   - 启用 SDB 时必须 --batch，否则非交互 stdin 会提前退出；
-#   - 未启用 SDB 的构建不认识 --batch，检测到后自动去掉重跑。
-# 结果写入 LAST_STATUS。
-LAST_STATUS=0
-BATCH_MODE="${NPC_BATCH_MODE:-auto}"
-run_npc() {
-    local timeout_s="$1" log="$2" binary="$3" image="$4"
-    shift 4
-    local status=0
-    local -a args=("$binary" "$image" "$@")
-
-    mkdir -p "$(dirname -- "$log")"
-    : >"$log"
-
-    if [[ "$BATCH_MODE" != no ]]; then
-        if timeout "$timeout_s" "${args[@]}" --batch >>"$log" 2>&1; then
-            status=0
-        else
-            status=$?
-        fi
-        if grep -qE -- '--batch 需要在构建时启用 CONFIG_SDB|未知参数: --batch' "$log"; then
-            BATCH_MODE=no
-        fi
-    fi
-
-    if [[ "$BATCH_MODE" == no ]]; then
-        if timeout "$timeout_s" "${args[@]}" >>"$log" 2>&1; then
-            status=0
-        else
-            status=$?
-        fi
-    fi
-
-    LAST_STATUS=$status
-}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TEST_RUNNER_TAIL_LINES=40
+TEST_RUNNER_DIVERGENCE_LINES=80
+source "$SCRIPT_DIR/../../common/test_runner.sh"
 
 # 返回 0=支持 RVC，2=在首条 C 指令上明确 illegal，1=其他错误。
 probe_c_support() {
@@ -104,21 +38,6 @@ probe_c_support() {
     echo "[FAIL] RVC 探针异常（exit=$status，既非正确执行也非 c_site illegal）" >&2
     show_log "$log"
     return 1
-}
-
-check_diff_log() {
-    local log="$1"
-    grep -Fq 'DiffTest: ON' "$log" ||
-        fail "DiffTest 未启用（日志缺少 'DiffTest: ON'）"
-    ! grep -Fq 'DiffTest 校验失败' "$log" ||
-        {
-            show_first_divergence "$log"
-            fail "DiffTest 出现分叉；上方为第一次分叉报告"
-        }
-    grep -Fq 'DiffTest: final state PASS' "$log" ||
-        fail "DiffTest 未完成最终状态比对"
-    grep -Fq 'HIT GOOD TRAP' "$log" ||
-        fail "guest 未触发 HIT GOOD TRAP"
 }
 
 run_forward() {

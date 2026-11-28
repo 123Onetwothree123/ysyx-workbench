@@ -1,6 +1,6 @@
 {
   "evidence_scope": "elaboration-only",
-  "generated_at": "2026-11-28T06:24:05+00:00",
+  "generated_at": "2026-11-28T10:40:05+00:00",
   "generated_by": "npc/tools/ParamGen/qualify.py",
   "hashes": [
     {
@@ -13,11 +13,11 @@
         "note": "L2 Chisel elaboration only; no Linux boot evidence. This exact hash is not a claim that RV32 Linux boots.",
         "scope": "elaboration-only"
       },
-      "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
+      "git_head": "875e77b30fdd5676867ece431d4f7bd0dd497536",
       "npc_config_hash": "0d9806715ce75b95",
       "profile": "rv32gc-linux",
       "profile_version": 1,
-      "qualified_at": "2026-11-28T06:24:05+00:00",
+      "qualified_at": "2026-11-28T10:40:05+00:00",
       "source": "npc/configs/rv32gc_linux_defconfig"
     }
   ],
@@ -32,7 +32,7 @@
   "profile_version": 1,
   "run": {
     "git_dirty": true,
-    "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
+    "git_head": "875e77b30fdd5676867ece431d4f7bd0dd497536",
     "note": "L3 full Verilator build and L4 simulation are not part of this manifest.",
     "selected_defconfigs": [
       "mmu_default",

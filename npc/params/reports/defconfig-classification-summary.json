@@ -4,9 +4,9 @@
       "best_profile": "rv32imac-linux",
       "best_status": "experimental",
       "defconfig": "mmu_default",
-      "effective_hash": "d613dfbcce4457a42b40546a5dc9a2cf38c3471cce8faed59b1f8883b8073d67",
+      "effective_hash": "4f0c85e059272e1abb5bd5e47bb6267021db354044a94e47879b386510310acf",
       "hash_stable": true,
-      "npc_config_hash": "e7686f5f7a4427a2",
+      "npc_config_hash": "d1a07abe8002e1d4",
       "path": "npc/configs/mmu_default_defconfig",
       "profiles": {
         "rv32gc-linux": {
@@ -325,13 +325,6 @@
               "effective": null,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter missing from effective config"
-            },
-            {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
             }
           ],
           "errors": [],
@@ -1232,13 +1225,6 @@
               "effective": null,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter missing from effective config"
-            },
-            {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
             }
           ],
           "errors": [],
@@ -1628,6 +1614,13 @@
               "reason": "parameter missing from effective config"
             },
             {
+              "base": 2149580800,
+              "dimension": "base",
+              "effective": 2151677952,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 64,
               "dimension": "int_range",
               "effective": 32,
@@ -1797,9 +1790,9 @@
       "best_profile": "rv32imac-linux",
       "best_status": "experimental",
       "defconfig": "nanos",
-      "effective_hash": "99345e5b2e3dc4099d010599dfeb0f09d9a3b51c246ecade4435c2a1070a373e",
+      "effective_hash": "a36377cf8ca76837e7c9f9693475ee66fe5b60df48958bb0cde2044bad06f039",
       "hash_stable": true,
-      "npc_config_hash": "92c5d63da371b1e5",
+      "npc_config_hash": "4bb49052f8068953",
       "path": "npc/configs/nanos_defconfig",
       "profiles": {
         "rv32gc-linux": {
@@ -1915,13 +1908,6 @@
               "effective": null,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter missing from effective config"
-            },
-            {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
             },
             {
               "base": true,
@@ -2893,13 +2879,6 @@
               "reason": "parameter missing from effective config"
             },
             {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": true,
               "dimension": "base",
               "effective": false,
@@ -3154,6 +3133,13 @@
               "reason": "parameter missing from effective config"
             },
             {
+              "base": 2149580800,
+              "dimension": "base",
+              "effective": 2151677952,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 64,
               "dimension": "int_range",
               "effective": 32,
@@ -3337,9 +3323,9 @@
       "best_profile": "rv32i",
       "best_status": "experimental",
       "defconfig": "rv32_c",
-      "effective_hash": "a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a",
+      "effective_hash": "d978e8baa610074c1e4d8f5bf9ff72e2622ea314b8f3cba6718606ade1918256",
       "hash_stable": true,
-      "npc_config_hash": "578501289129d1dc",
+      "npc_config_hash": "d0048d29751ef04a",
       "path": "npc/configs/rv32_c_defconfig",
       "profiles": {
         "rv32gc-linux": {
@@ -3786,13 +3772,6 @@
               "reason": "parameter missing from effective config"
             },
             {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": 9,
               "dimension": "base",
               "effective": null,
@@ -4720,13 +4699,6 @@
               "reason": "parameter missing from effective config"
             },
             {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": 9,
               "dimension": "base",
               "effective": null,
@@ -5355,6 +5327,13 @@
               "reason": "parameter missing from effective config"
             },
             {
+              "base": 2149580800,
+              "dimension": "base",
+              "effective": 2151677952,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 64,
               "dimension": "int_range",
               "effective": 32,
@@ -5618,9 +5597,9 @@
       "best_profile": "rv32i",
       "best_status": "experimental",
       "defconfig": "rv32_f",
-      "effective_hash": "e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3",
+      "effective_hash": "cedee85baae8dbac3316542a7e2bbceb873ce6c51b965c64e897c2efb366fb72",
       "hash_stable": true,
-      "npc_config_hash": "9305fd044e7d886c",
+      "npc_config_hash": "7f6b2d803eab2eda",
       "path": "npc/configs/rv32_f_defconfig",
       "profiles": {
         "rv32gc-linux": {
@@ -6046,13 +6025,6 @@
               "reason": "parameter missing from effective config"
             },
             {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": 9,
               "dimension": "base",
               "effective": null,
@@ -7120,13 +7092,6 @@
               "reason": "parameter missing from effective config"
             },
             {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": 9,
               "dimension": "base",
               "effective": null,
@@ -7744,6 +7709,13 @@
               "reason": "parameter missing from effective config"
             },
             {
+              "base": 2149580800,
+              "dimension": "base",
+              "effective": 2151677952,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 64,
               "dimension": "int_range",
               "effective": 32,
@@ -7997,9 +7969,9 @@
       "best_profile": "rv32i",
       "best_status": "experimental",
       "defconfig": "rv32_fd",
-      "effective_hash": "0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152",
+      "effective_hash": "97c02c22ad4ac450250e1139affabc5f20b3a895c73e50d15b733475fc6561b0",
       "hash_stable": true,
-      "npc_config_hash": "5211331fd3a72962",
+      "npc_config_hash": "09c20cc48bcaa5b4",
       "path": "npc/configs/rv32_fd_defconfig",
       "profiles": {
         "rv32gc-linux": {
@@ -8402,13 +8374,6 @@
               "effective": null,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter missing from effective config"
-            },
-            {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
             },
             {
               "base": 9,
@@ -9502,13 +9467,6 @@
               "reason": "parameter missing from effective config"
             },
             {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": 9,
               "dimension": "base",
               "effective": null,
@@ -10115,6 +10073,13 @@
               "reason": "parameter missing from effective config"
             },
             {
+              "base": 2149580800,
+              "dimension": "base",
+              "effective": 2151677952,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 64,
               "dimension": "int_range",
               "effective": 32,
@@ -10358,9 +10323,9 @@
       "best_profile": "rv32i",
       "best_status": "experimental",
       "defconfig": "rv32_noc",
-      "effective_hash": "3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283",
+      "effective_hash": "88079e6aca37deb8e1644745b52211d0118bcaa470740ab322bcf250bd2bda57",
       "hash_stable": true,
-      "npc_config_hash": "58eefbaa8ecc6fa7",
+      "npc_config_hash": "3f22271a58a0de59",
       "path": "npc/configs/rv32_noc_defconfig",
       "profiles": {
         "rv32gc-linux": {
@@ -10910,13 +10875,6 @@
               "effective": null,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter missing from effective config"
-            },
-            {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
             },
             {
               "base": 9,
@@ -11871,13 +11829,6 @@
               "reason": "parameter missing from effective config"
             },
             {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": 9,
               "dimension": "base",
               "effective": null,
@@ -12629,6 +12580,13 @@
               "effective": null,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter missing from effective config"
+            },
+            {
+              "base": 2149580800,
+              "dimension": "base",
+              "effective": 2151677952,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
             },
             {
               "base": 64,
@@ -13691,13 +13649,6 @@
               "reason": "parameter not present in profile base"
             },
             {
-              "base": 2149580800,
-              "dimension": "base",
-              "effective": 2151677952,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": null,
               "dimension": "base",
               "effective": 9,
@@ -14185,9 +14136,9 @@
       "best_profile": "rv32i",
       "best_status": "qualified",
       "defconfig": "rv32i",
-      "effective_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
+      "effective_hash": "0713ee86c0be17880a2b972e4221732e9d7da97519519ed543d5526e42f8bde6",
       "hash_stable": true,
-      "npc_config_hash": "65fc26e772f081d4",
+      "npc_config_hash": "4ee1851ac307a46a",
       "path": "npc/configs/rv32i_defconfig",
       "profiles": {
         "rv32gc-linux": {
@@ -14912,13 +14863,6 @@
               "effective": null,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter missing from effective config"
-            },
-            {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
             },
             {
               "base": 9,
@@ -15819,13 +15763,6 @@
               "reason": "parameter missing from effective config"
             },
             {
-              "base": 2151677952,
-              "dimension": "base",
-              "effective": 2149580800,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
-            },
-            {
               "base": 9,
               "dimension": "base",
               "effective": null,
@@ -16696,6 +16633,13 @@
               "effective": null,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter missing from effective config"
+            },
+            {
+              "base": 2149580800,
+              "dimension": "base",
+              "effective": 2151677952,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
             },
             {
               "base": 64,
@@ -17736,13 +17680,6 @@
               "effective": false,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter not present in profile base"
-            },
-            {
-              "base": 2149580800,
-              "dimension": "base",
-              "effective": 2151677952,
-              "parameter": "SBI_NEXT_ADDR",
-              "reason": "deviation outside allow dimensions"
             },
             {
               "base": null,
@@ -19160,6 +19097,13 @@
               "dimension": "base",
               "effective": true,
               "parameter": "RISCV_M",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
               "reason": "deviation outside allow dimensions"
             },
             {
@@ -21539,6 +21483,13 @@
               "reason": "deviation outside allow dimensions"
             },
             {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 32,
               "dimension": "int_range",
               "effective": 64,
@@ -23382,6 +23333,13 @@
               "dimension": "base",
               "effective": true,
               "parameter": "RISCV_M",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
               "reason": "deviation outside allow dimensions"
             },
             {
@@ -25279,6 +25237,13 @@
               "reason": "deviation outside allow dimensions"
             },
             {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 32,
               "dimension": "int_range",
               "effective": 64,
@@ -27148,6 +27113,13 @@
               "dimension": "base",
               "effective": true,
               "parameter": "RISCV_M",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
               "reason": "deviation outside allow dimensions"
             },
             {
@@ -29516,6 +29488,13 @@
               "reason": "parameter not present in profile base"
             },
             {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": null,
               "dimension": "base",
               "effective": true,
@@ -31058,6 +31037,13 @@
               "effective": false,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter not present in profile base"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
             },
             {
               "base": null,
@@ -32689,6 +32675,13 @@
               "dimension": "base",
               "effective": true,
               "parameter": "RISCV_M",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
               "reason": "deviation outside allow dimensions"
             },
             {
@@ -34382,6 +34375,13 @@
               "dimension": "base",
               "effective": true,
               "parameter": "RISCV_M",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
               "reason": "deviation outside allow dimensions"
             },
             {
@@ -36080,6 +36080,13 @@
               "reason": "parameter not present in profile base"
             },
             {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 32,
               "dimension": "int_range",
               "effective": 64,
@@ -37536,6 +37543,13 @@
               "effective": false,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter not present in profile base"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
             },
             {
               "base": null,
@@ -39041,6 +39055,13 @@
               "dimension": "base",
               "effective": true,
               "parameter": "RISCV_M",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
               "reason": "deviation outside allow dimensions"
             },
             {
@@ -40743,6 +40764,13 @@
               "reason": "deviation outside allow dimensions"
             },
             {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 32,
               "dimension": "int_range",
               "effective": 64,
@@ -42400,6 +42428,13 @@
               "reason": "deviation outside allow dimensions"
             },
             {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
+            },
+            {
               "base": 32,
               "dimension": "int_range",
               "effective": 64,
@@ -44009,6 +44044,13 @@
               "effective": false,
               "parameter": "SBI_IMPL_RUSTSBI",
               "reason": "parameter not present in profile base"
+            },
+            {
+              "base": 2151677952,
+              "dimension": "base",
+              "effective": 2149580800,
+              "parameter": "SBI_NEXT_ADDR",
+              "reason": "deviation outside allow dimensions"
             },
             {
               "base": null,

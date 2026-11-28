@@ -30,14 +30,15 @@ LINUX_PACK_SCRIPT ?= $(LINUX_PACK_TOOL)
 $(LINUX_PACK_TOOL): $(NPC_BUILD_TOOLS_STAMP)
 	@cp -f "$(NPC_BUILD_TOOLS_BUILD_DIR)/pack_linux_image" "$@"
 
-pack-linux-tool: $(LINUX_PACK_TOOL)
+pack-linux-tool: $(LINUX_PACK_TOOL) | kconfig-generated-check
 .PHONY: pack-linux-tool
 
 SBI_IMPL ?= $(or $(call remove_quote,$(CONFIG_SBI_IMPL)),opensbi)
 SBI_PLATFORM ?= $(or $(call remove_quote,$(CONFIG_SBI_PLATFORM)),npc)
-SBI_FW_BASE ?= $(or $(CONFIG_SBI_FW_BASE),0x80000000)
+SBI_FW_BASE ?= $(or $(CONFIG_SBI_FW_BASE),$(or $(CONFIG_NPC_RAM_BASE),0x80000000))
 SBI_FW_SIZE ?= $(or $(CONFIG_SBI_FW_SIZE),0x00200000)
 # RV32 的 FW_JUMP 目标必须 4 MiB 对齐，RV64 为 2 MiB。
+# schema 的 SBI_NEXT_ADDR 默认值按 XLEN 条件生成，与这里保持一致。
 SBI_XLEN ?= $(or $(CONFIG_XLEN),64)
 SBI_NEXT_ADDR ?= $(or $(CONFIG_SBI_NEXT_ADDR),$(if $(filter 32,$(SBI_XLEN)),0x80400000,0x80200000))
 SBI_BUILD_JOBS ?= $(or $(CONFIG_SBI_BUILD_JOBS),0)
@@ -63,7 +64,7 @@ SBI_DTB_SCRIPT ?= $(SBI_DTB_TOOL)
 $(SBI_DTB_TOOL): $(NPC_BUILD_TOOLS_STAMP)
 	@cp -f "$(NPC_BUILD_TOOLS_BUILD_DIR)/build_dtb" "$@"
 
-build-dtb-tool: $(SBI_DTB_TOOL)
+build-dtb-tool: $(SBI_DTB_TOOL) | kconfig-generated-check
 .PHONY: build-dtb-tool
 SBI_TOOLCHAIN_PREFIX ?= riscv64-unknown-elf-
 # OpenSBI 固件的最小 ISA/ABI 跟随 CPU XLEN：RV32 用 ilp32，RV64 用 lp64。

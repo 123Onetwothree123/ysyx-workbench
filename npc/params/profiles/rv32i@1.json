@@ -59,8 +59,8 @@
   "base": {
     "parameter_count": 169,
     "source": "npc/configs/rv32i_defconfig",
-    "source_effective_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
-    "source_npc_config_hash": "65fc26e772f081d4",
+    "source_effective_hash": "0713ee86c0be17880a2b972e4221732e9d7da97519519ed543d5526e42f8bde6",
+    "source_npc_config_hash": "4ee1851ac307a46a",
     "values": {
       "ALU_ADDER_CARRY_LOOKAHEAD": false,
       "ALU_ADDER_CARRY_SELECT": false,
@@ -210,7 +210,7 @@
       "SBI_ENABLE": false,
       "SBI_FW_BASE": 2147483648,
       "SBI_FW_SIZE": 2097152,
-      "SBI_NEXT_ADDR": 2149580800,
+      "SBI_NEXT_ADDR": 2151677952,
       "SBI_PLATFORM": "npc",
       "SDRAM_USE_AXI": true,
       "SDRAM_XLEN_FOLLOW_APB": true,

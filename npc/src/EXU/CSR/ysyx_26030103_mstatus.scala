@@ -10,22 +10,22 @@ object ysyx_26030103_mstatus {
   // HAS_U=n 时 U 级不存在：MPP/SPP 的最低值固定为 S，从而 MRET/SRET
   // 无法把特权级切回 U。HAS_S=n/HAS_U=y（M+U）时 MPP 仍可保存 U，
   // 但 SPP 不存在；M-only 时 MPP 固定为 M。
-  private val FieldMask = BigInt("007e19aa", 16)
-  val FsMask = BigInt("00006000", 16)
-  val MppMask = BigInt("00001800", 16)
-  val SppMask = BigInt("00000100", 16)
+  private val FieldMask    = BigInt("007e19aa", 16)
+  val FsMask               = BigInt("00006000", 16)
+  val MppMask              = BigInt("00001800", 16)
+  val SppMask              = BigInt("00000100", 16)
   // 只有 S/U 模式存在的字段：SIE/SPIE/SPP/SUM/TVM/TW/TSR。
-  val SOnlyFields = BigInt("00740122", 16)
+  val SOnlyFields          = BigInt("00740122", 16)
   // SUM 只影响 S/U 页表权限；HAS_U=n 时没有 U 级，直接固定为 0。
-  val SumField = BigInt("00040000", 16)
-  private val MachineMpp = BigInt("00001800", 16)
-  val MprvMask = BigInt("00020000", 16)
+  val SumField             = BigInt("00040000", 16)
+  private val MachineMpp   = BigInt("00001800", 16)
+  val MprvMask             = BigInt("00020000", 16)
   val TrapMStatusClearMask = BigInt("00001888", 16)
   val TrapSStatusClearMask = BigInt("00000122", 16)
-  val MieBit = 3
-  val MpieBit = 7
-  val MppShift = 11
-  val SppBit = 8
+  val MieBit               = 3
+  val MpieBit              = 7
+  val MppShift             = 11
+  val SppBit               = 8
 
   def trapEntryMachine(current: UInt, privilege: UInt): UInt =
     (current & ~TrapMStatusClearMask.U(32.W)) |
@@ -38,31 +38,29 @@ object ysyx_26030103_mstatus {
   def mret(current: UInt): UInt = {
     val restored = (current & ~TrapMStatusClearMask.U(32.W)) |
       (current(MpieBit) << MieBit) | (1.U << MpieBit)
-    Mux(current(MppShift + 1, MppShift) === 3.U,
-      restored, restored & ~MprvMask.U(32.W))
+    Mux(current(MppShift + 1, MppShift) === 3.U, restored, restored & ~MprvMask.U(32.W))
   }
 
   def sret(current: UInt): UInt =
     ((current & ~TrapSStatusClearMask.U(32.W)) |
       (current(5) << 1) | (1.U << 5)) & ~MprvMask.U(32.W)
 
-  def resetValue: UInt = MachineMpp.U(32.W)
-  def legalize(value: UInt, hasU: Boolean = true,
-      hasS: Boolean = true, hasF: Boolean = false): UInt = {
-    val extended = value.pad(32)
-    val baseMask = if (hasF) FieldMask | FsMask else FieldMask
+  def resetValue:                                                                               UInt = MachineMpp.U(32.W)
+  def legalize(value: UInt, hasU: Boolean = true, hasS: Boolean = true, hasF: Boolean = false): UInt = {
+    val extended   = value.pad(32)
+    val baseMask   = if (hasF) FieldMask | FsMask else FieldMask
     val activeMask =
       if (!hasS) baseMask & ~SOnlyFields
       else if (!hasU) baseMask & ~SumField
       else baseMask
-    val masked = extended & activeMask.U(32.W)
-    val rawMpp = Mux(masked(12, 11) === 2.U, 0.U(2.W), masked(12, 11))
-    val mpp =
+    val masked     = extended & activeMask.U(32.W)
+    val rawMpp     = Mux(masked(12, 11) === 2.U, 0.U(2.W), masked(12, 11))
+    val mpp        =
       if (hasU && hasS) rawMpp
       else if (hasU) Mux(rawMpp === 1.U, 0.U(2.W), rawMpp)
       else if (hasS) Mux(rawMpp === 0.U, 1.U(2.W), rawMpp)
       else 3.U(2.W)
-    val spp =
+    val spp        =
       if (!hasS) 0.U(1.W)
       else if (hasU) masked(8)
       else 1.U(1.W)
@@ -70,21 +68,26 @@ object ysyx_26030103_mstatus {
   }
 }
 class ysyx_26030103_mstatus(
-    val hasS: Boolean = true,
-    val hasU: Boolean = true,
-    val hasF: Boolean = false
-) extends Module {
-  val io = IO(new Bundle {
-    val clock = Input(Clock())
-    val reset = Input(Bool())
-    val wen = Input(Bool())
-    val wdata = Input(UInt(32.W))
-    val rdata = Output(UInt(32.W))
+  val hasS: Boolean = true,
+  val hasU: Boolean = true,
+  val hasF: Boolean = false)
+    extends Module {
+  val io             = IO(new Bundle {
+    val clock     = Input(Clock())
+    val reset     = Input(Bool())
+    val wen       = Input(Bool())
+    val wdata     = Input(UInt(32.W))
+    val rdata     = Output(UInt(32.W))
+    // 时钟沿之后的值（写入时为 legalize(wdata)）。CSR/State 快照直接
+    // 使用这个已合法化的结果，避免在 CSR 里再展开一遍 legalize。
+    val rdataNext = Output(UInt(32.W))
   })
   import ysyx_26030103_mstatus._
-  val regMstatus = withClockAndReset(io.clock, io.reset) { RegInit(resetValue) }
+  val regMstatus     = withClockAndReset(io.clock, io.reset) { RegInit(resetValue) }
+  val legalizedWdata = legalize(io.wdata, hasU, hasS, hasF)
   when(io.wen) {
-    regMstatus := legalize(io.wdata, hasU, hasS, hasF)
+    regMstatus := legalizedWdata
   }
   io.rdata := regMstatus
+  io.rdataNext := Mux(io.wen, legalizedWdata, regMstatus)
 }

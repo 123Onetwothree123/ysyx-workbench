@@ -34,6 +34,11 @@ target_sources(npc_config_gen PRIVATE
     BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}
     FILES npc.configgen.ixx
 )
+# Generated from the same schema as Kconfig.  It is committed so a fresh
+# checkout can build the tools before the first configuration run.
+target_include_directories(npc_config_gen PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../params/generated
+)
 # CMake 3.30+ 自带 import std 支持；更老的版本用项目提供的 std 模块。
 if(CMAKE_VERSION VERSION_LESS 3.30)
     include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/NPCStdModule.cmake)

@@ -45,6 +45,55 @@ TYPE_KEYWORDS = {"bool", "tristate", "int", "hex", "string"}
 Y = "y"
 DEFAULT_SOURCE_PREFIX = "params/generated"
 SCHEMA_AUTHORITY = "npc/params/schema/schema.json"
+DEFAULTS_HEADER_NAME = "npc_config_defaults.h"
+
+# Defaults consumed by the C++ tools (NPCConfigGEN, KconfigContract and
+# BuildTools).  The header is generated from the same schema as Kconfig so a
+# conditional default can never be copied by hand into one tool and forgotten
+# in another.  Only parameters that the tools actually fall back to are listed;
+# adding one here is intentional, not automatic.
+CPP_DEFAULTS_SYMBOLS: Tuple[str, ...] = (
+    "NPC_RAM_BASE",
+    "NPC_RAM_SIZE",
+    "SBI_FW_BASE",
+    "SBI_FW_SIZE",
+    "SBI_NEXT_ADDR",
+    "SBI_FDT_ADDR",
+    "LINUX_INITRAMFS_ADDR",
+    "NPC_UBOOT_EFI_APP_ADDR",
+    "NPC_UBOOT_INITRAMFS_ADDR",
+    "NPC_UBOOT_KERNEL_ADDR",
+    "PMA_SOC_RESET_ADDR",
+    "PMA_CLINT_BASE",
+    "PMA_CLINT_SIZE",
+    "PMA_SRAM_BASE",
+    "PMA_SRAM_SIZE",
+    "PMA_UART_BASE",
+    "PMA_UART_SIZE",
+    "PMA_SPI_BASE",
+    "PMA_SPI_SIZE",
+    "PMA_GPIO_BASE",
+    "PMA_GPIO_SIZE",
+    "PMA_KEYBOARD_BASE",
+    "PMA_KEYBOARD_SIZE",
+    "PMA_VGA_BASE",
+    "PMA_VGA_SIZE",
+    "PMA_MROM_BASE",
+    "PMA_MROM_SIZE",
+    "PMA_FLASH_BASE",
+    "PMA_FLASH_SIZE",
+    "PMA_PSRAM_BASE",
+    "PMA_PSRAM_SIZE",
+    "PMA_SDRAM_BASE",
+    "PMA_SDRAM_SIZE",
+    "PMA_CHIPLINK_MMIO_BASE",
+    "PMA_CHIPLINK_MMIO_SIZE",
+    "PMA_CHIPLINK_MEM_BASE",
+    "PMA_CHIPLINK_MEM_SIZE",
+    "PLIC_BASE",
+    "PLIC_SIZE",
+    "PLIC_SOURCES",
+)
 
 
 class GenerationError(Exception):
@@ -418,6 +467,231 @@ def write_outputs(outputs: Dict[str, str], out: Path) -> List[Path]:
     return written
 
 
+def _integer_literal(text: Any) -> Optional[int]:
+    try:
+        return int(str(text), 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_numeric_symbol(expr: Any) -> bool:
+    return (
+        isinstance(expr, dict)
+        and expr.get("op") == "symbol"
+        and _integer_literal(expr.get("name")) is not None
+    )
+
+
+def _collect_expr_refs(expr: Any, refs: List[str]) -> None:
+    """Collect free symbol names referenced by a schema condition."""
+    if not isinstance(expr, dict):
+        return
+    op = expr.get("op")
+    if op == "symbol":
+        name = str(expr.get("name", ""))
+        if _integer_literal(name) is None:
+            refs.append(name)
+    elif op == "not":
+        _collect_expr_refs(expr.get("arg"), refs)
+    elif op in ("and", "or"):
+        for arg in expr.get("args", []):
+            _collect_expr_refs(arg, refs)
+    elif op == "eq":
+        for side in ("left", "right"):
+            value = expr.get(side)
+            if isinstance(value, dict) and not _is_numeric_symbol(value):
+                _collect_expr_refs(value, refs)
+
+
+def _render_condition(expr: Any) -> str:
+    if not isinstance(expr, dict):
+        raise GenerationError(f"unsupported default condition: {expr!r}")
+    op = expr.get("op")
+    if op == "const":
+        value = str(expr.get("value"))
+        if value == "y":
+            return "true"
+        if value == "n":
+            return "false"
+        literal = _integer_literal(value)
+        if literal is not None:
+            return f"({literal} != 0)"
+        raise GenerationError(f"unsupported constant condition: {value!r}")
+    if op == "symbol":
+        name = str(expr.get("name"))
+        literal = _integer_literal(name)
+        if literal is not None:
+            return str(literal)
+        return f"({name.lower()} != 0)"
+    if op == "not":
+        return f"(!{_render_condition(expr.get('arg'))})"
+    if op == "and":
+        args = expr.get("args", [])
+        if not args:
+            raise GenerationError("empty 'and' condition")
+        return "(" + " && ".join(_render_condition(arg) for arg in args) + ")"
+    if op == "or":
+        args = expr.get("args", [])
+        if not args:
+            raise GenerationError("empty 'or' condition")
+        return "(" + " || ".join(_render_condition(arg) for arg in args) + ")"
+    if op == "eq":
+        left = _render_operand(expr.get("left"))
+        right = _render_operand(expr.get("right"))
+        return f"({left} == {right})"
+    raise GenerationError(f"unsupported default condition op: {op!r}")
+
+
+def _render_operand(expr: Any) -> str:
+    if not isinstance(expr, dict):
+        raise GenerationError(f"unsupported comparison operand: {expr!r}")
+    op = expr.get("op")
+    if op == "const":
+        value = str(expr.get("value"))
+        literal = _integer_literal(value)
+        return str(literal) if literal is not None else value
+    if op == "symbol":
+        name = str(expr.get("name"))
+        literal = _integer_literal(name)
+        return str(literal) if literal is not None else name.lower()
+    return _render_condition(expr)
+
+
+def _render_default_value(item: Dict[str, Any]) -> str:
+    value = str(item.get("value"))
+    kind = str(item.get("kind", "constant"))
+    if kind == "symbol":
+        literal = _integer_literal(value)
+        if literal is not None:
+            return f"{hex(literal)}LL" if value.lower().startswith("0x") else f"{literal}LL"
+        return f"({value.lower()})"
+    if value == "y":
+        return "1LL"
+    if value == "n":
+        return "0LL"
+    literal = _integer_literal(value)
+    if literal is not None:
+        return f"{hex(literal)}LL" if value.lower().startswith("0x") else f"{literal}LL"
+    return f"({value})"
+
+
+def _cpp_default_name(symbol: str) -> str:
+    return "".join(part.capitalize() for part in symbol.lower().split("_"))
+
+
+def build_defaults_header(schema: Dict[str, Any]) -> str:
+    """Generate the shared C++ fallback table from schema defaults.
+
+    The generated functions mirror Kconfig's ordered ``default ... if`` list:
+    the first matching condition wins.  The final return uses the last declared
+    default so a tool that asks for a value in a configuration where the symbol
+    is hidden still gets the generic branch instead of an uninitialized value.
+    """
+    parameters = {
+        str(entry.get("name")): entry for entry in schema.get("parameters", [])
+    }
+    lines: List[str] = [
+        "// Generated by npc/tools/ParamGen/gen_kconfig.py",
+        "// Source of truth: npc/params/schema/schema.json",
+        "// Do not edit by hand; regenerate from schema.json instead.",
+        "//",
+        "// Shared C++ fallbacks for NPCConfigGEN, KconfigContract and BuildTools.",
+        "// Kconfig remains the runtime authority; these values are only used",
+        "// when a tool consumes a partial/raw config that omits a symbol.",
+        "#pragma once",
+        "",
+        "namespace npc::config_defaults {",
+        "",
+    ]
+    for symbol in CPP_DEFAULTS_SYMBOLS:
+        entry = parameters.get(symbol)
+        if entry is None:
+            raise GenerationError(
+                f"defaults header references unknown schema parameter: {symbol}"
+            )
+        defaults = entry.get("defaults") or []
+        if not defaults:
+            raise GenerationError(
+                f"defaults header parameter has no defaults: {symbol}"
+            )
+        refs: List[str] = []
+        if len(defaults) > 1:
+            for item in defaults:
+                _collect_expr_refs(item.get("condition_expr"), refs)
+        for item in defaults:
+            if item.get("kind") == "symbol":
+                value = str(item.get("value"))
+                if _integer_literal(value) is None and value not in ("y", "n"):
+                    refs.append(value)
+        params: List[str] = []
+        for ref in refs:
+            name = ref.lower()
+            if name not in params:
+                params.append(name)
+        lines.append(f"// {symbol}")
+        if len(defaults) == 1:
+            lines.append(f"//   default {defaults[0].get('value')} (tool fallback)")
+        else:
+            for item in defaults:
+                condition = str(item.get("condition", ""))
+                lines.append(
+                    f"//   default {item.get('value')}"
+                    + (f" if {condition}" if condition and condition != Y else "")
+                )
+        signature = ", ".join(f"long long {name}" for name in params)
+        lines.append(
+            f"inline constexpr long long {_cpp_default_name(symbol)}"
+            f"({signature})"
+        )
+        lines.append("{")
+        if len(defaults) == 1:
+            lines.append(f"    return {_render_default_value(defaults[0])};")
+        else:
+            for item in defaults:
+                condition = _render_condition(item.get("condition_expr"))
+                value = _render_default_value(item)
+                if condition == "true":
+                    lines.append(f"    return {value};")
+                    break
+                lines.append(f"    if ({condition}) {{")
+                lines.append(f"        return {value};")
+                lines.append("    }")
+            else:
+                fallback = _render_default_value(defaults[-1])
+                lines.append(f"    return {fallback};")
+        lines.append("}")
+        lines.append("")
+    lines.append("} // namespace npc::config_defaults")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def defaults_header_path(out: Path) -> Path:
+    return out.resolve().parent / DEFAULTS_HEADER_NAME
+
+
+def write_defaults_header(schema: Dict[str, Any], out: Path) -> Path:
+    path = defaults_header_path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = build_defaults_header(schema).encode("utf-8")
+    if not path.exists() or path.read_bytes() != data:
+        path.write_bytes(data)
+    return path
+
+
+def check_defaults_header(schema: Dict[str, Any], out: Path) -> List[str]:
+    path = defaults_header_path(out)
+    try:
+        expected = build_defaults_header(schema).encode("utf-8")
+    except GenerationError as error:
+        return [f"schema cannot generate defaults header: {error}"]
+    if not path.is_file():
+        return [f"generated defaults header is missing: {path}"]
+    if path.read_bytes() != expected:
+        return [f"generated defaults header is stale: {path}"]
+    return []
+
+
 def validate_schema_source(schema: Dict[str, Any]) -> List[str]:
     """Check that provenance metadata cannot point build tools at stale files.
 
@@ -627,6 +901,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         problems += check_outputs(
             schema, Path(args.out), source_prefix=args.source_prefix
         )
+        problems += check_defaults_header(schema, Path(args.out))
         for problem in problems:
             print(f"[param-kconfig] CHECK FAILED: {problem}", file=sys.stderr)
         return 1 if problems else 0
@@ -636,6 +911,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f"[param-kconfig] ERROR: {error}", file=sys.stderr)
         return 1
     written = write_outputs(outputs, Path(args.out))
+    defaults_header = write_defaults_header(schema, Path(args.out))
     issues = schema.get("generation_issues", [])
     if issues:
         print(
@@ -645,7 +921,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
     print(
         f"[param-kconfig] wrote {written[0]} "
-        f"({len(written) - 1} part file(s))"
+        f"({len(written) - 1} part file(s)) and {defaults_header.name}"
     )
     return 0
 

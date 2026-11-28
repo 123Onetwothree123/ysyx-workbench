@@ -86,8 +86,20 @@ private[cache] trait CacheAliasSupport { this: CacheGeometry =>
     else Cat(tag(set), set.U(params.indexBits.W))
   protected def dmaLineInRange(line: UInt): Bool =
     line >= DMAStartLine && line <= DMAEndLine
-  protected def dmaLineMatch(address: UInt): Bool =
-    dmaLineInRange(LineOf(address))
+  // CPU 请求/已受理请求是否落在 DMA 正在改写的物理行范围内。两个 core
+  // 共用这条判定，但失效动作和响应撤回仍由各自的时序实现。
+  protected def dmaSnoopLineHitNow(dmaValid: Bool, address: UInt): Bool =
+    if (!DMASnoopActive) false.B
+    else dmaValid && dmaLineInRange(LineOf(address))
+  // 在飞 refill 是否与 DMA 范围重叠。refillBusy 由各 core 的 FSM 状态
+  // 组合而成；这里只统一“busy + 行范围”的判定，不要求当前 DMA 事件
+  // valid —— 原实现把它当作在途事务属性，供 ready/replay 一起使用。
+  protected def dmaSnoopRefillHitNow(
+      refillBusy: Bool,
+      address: UInt
+  ): Bool =
+    if (!DMASnoopActive) false.B
+    else refillBusy && dmaLineInRange(LineOf(address))
   protected def DMASnoopHitVec: UInt =
     if (!DMASnoopActive) 0.U(arrayBlocks.W)
     else

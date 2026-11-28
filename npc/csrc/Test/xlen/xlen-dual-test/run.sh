@@ -19,18 +19,9 @@ batch_args=()
 
 mkdir -p "$(dirname -- "$log")"
 
-fail() {
-    local message="$1"
-    shift
-    echo "[FAIL] $message" >&2
-    for file in "$@"; do
-        if [[ -f "$file" ]]; then
-            echo "---- $file (tail) ----" >&2
-            tail -n 30 "$file" >&2 || true
-        fi
-    done
-    exit 1
-}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TEST_RUNNER_FAIL_TAIL_LINES=30
+source "$SCRIPT_DIR/../../common/test_runner.sh"
 
 run_sdb() {
     local regs_log="${log%.log}-regs.log"

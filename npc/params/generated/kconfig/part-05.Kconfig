@@ -46,10 +46,13 @@ menu "固件与启动"
         SBI_FW_BASE + SBI_FW_SIZE 之后，除非显式覆盖 SBI_NEXT_ADDR。
     config SBI_NEXT_ADDR
       hex "SBI 跳转的 next-stage 地址"
+      default 0x80400000 if XLEN = 32
       default 0x80200000
       help
         OpenSBI/RustSBI 启动完成后跳转到的 S 模式入口。
         Linux 通常放在 0x80200000 附近；具体以镜像链接地址为准。
+        RV32 的 FW_JUMP 目标必须按 4 MiB 对齐，因此 XLEN=32 时默认
+        0x80400000；RV64 保持 0x80200000（2 MiB 对齐）。
     config SBI_PLATFORM
       string "SBI 平台名"
       default "npc"

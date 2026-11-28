@@ -1,10 +1,6 @@
-include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
-ARCH ?= $(XLEN_AM_ARCH)
-export ARCH
-ifeq ($(XLEN_IS_64),64)
-$(error smc 是 RV32 专用裸机测试；请在 XLEN=32 配置下运行)
-endif
 NAME = smc
 SRCS = smc.cpp
+AM_TEST_REQUIRE_RV32 := 1
 override COMMON_CFLAGS := -fno-pic -march=rv32i_zicsr_zifencei -mcmodel=medany -mstrict-align -mabi=ilp32
-include ${AM_HOME}/Makefile
+
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../common/am-test.mk)

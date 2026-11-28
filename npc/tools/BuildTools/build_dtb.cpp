@@ -5,21 +5,18 @@
 // interpretation, address validation, ISA/MMU derivation and output metadata
 // live here.
 
+#include "npc_config_defaults.h"
+
 import npc.buildtools;
 import std;
 
 namespace {
 
+namespace defaults = npc::config_defaults;
 using namespace npc::linux_image;
 
-constexpr std::uint64_t kDefaultFdtAddr = 0x80f00000;
-constexpr std::uint64_t kDefaultFwBase = 0x80000000;
-constexpr std::uint64_t kDefaultFwSize = 0x00200000;
-constexpr std::uint64_t kDefaultNextAddr = 0x80200000;
 constexpr std::uint64_t kDefaultFdtReserve = 0x00010000;
 constexpr std::uint64_t kDefaultNextReserve = 0x00001000;
-constexpr std::uint64_t kDefaultRamBase = 0x80000000;
-constexpr std::uint64_t kDefaultRamSize = 0x04000000;
 
 void info(const std::string &text)
 {
@@ -136,21 +133,31 @@ int main(int argc, char **argv)
         if (!config.isJson())
             info("配置 JSON 不存在；使用环境变量和默认值");
 
+        const std::string xlenValue =
+            envOrConfig("SBI_XLEN", config, "CONFIG_XLEN", "64");
+        const std::uint64_t xlenForDefaults =
+            parseU64(xlenValue, "XLEN");
+
         const std::string fdtPathValue =
             envOrConfig("SBI_FDT_PATH", config, "CONFIG_SBI_FDT_PATH",
                         "dts/npc.dts");
         const std::string fdtAddrValue =
             envOrConfig("SBI_FDT_ADDR", config, "CONFIG_SBI_FDT_ADDR",
-                        hexU64(kDefaultFdtAddr));
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::SbiFdtAddr())));
         const std::string fwBaseValue =
             envOrConfig("SBI_FW_BASE", config, "CONFIG_SBI_FW_BASE",
-                        hexU64(kDefaultFwBase));
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::SbiFwBase(defaults::NpcRamBase()))));
         const std::string fwSizeValue =
             envOrConfig("SBI_FW_SIZE", config, "CONFIG_SBI_FW_SIZE",
-                        hexU64(kDefaultFwSize));
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::SbiFwSize())));
         const std::string nextAddrValue =
             envOrConfig("SBI_NEXT_ADDR", config, "CONFIG_SBI_NEXT_ADDR",
-                        hexU64(kDefaultNextAddr));
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::SbiNextAddr(
+                                static_cast<long long>(xlenForDefaults)))));
         const std::string fdtOutDir =
             envDefault("SBI_FDT_OUT_DIR",
                      (fs::path{npcHome} / "build" / "dtb").string());
@@ -159,33 +166,41 @@ int main(int argc, char **argv)
         const std::string nextReserveValue =
             envDefault("SBI_NEXT_RESERVE_SIZE", hexU64(kDefaultNextReserve));
         const std::string ramBaseValue =
-            envDefault("NPC_RAM_BASE", hexU64(kDefaultRamBase));
+            envOrConfig("NPC_RAM_BASE", config, "CONFIG_NPC_RAM_BASE",
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::NpcRamBase())));
         const std::string ramSizeValue =
-            envDefault("NPC_RAM_SIZE", hexU64(kDefaultRamSize));
+            envOrConfig("NPC_RAM_SIZE", config, "CONFIG_NPC_RAM_SIZE",
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::NpcRamSize())));
         const std::string plicBaseValue =
             envOrConfig("PLIC_BASE", config, "CONFIG_PLIC_BASE",
-                        "0x0c000000");
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::PlicBase())));
         const std::string plicSizeValue =
             envOrConfig("PLIC_SIZE", config, "CONFIG_PLIC_SIZE",
-                        "0x00300000");
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::PlicSize())));
         const std::string plicSourcesValue =
             envOrConfig("PLIC_SOURCES", config, "CONFIG_PLIC_SOURCES",
-                        "32");
+                        std::to_string(defaults::PlicSources()));
         const std::string uartBaseValue =
             envOrConfig("UART_BASE", config, "CONFIG_PMA_UART_BASE",
-                        "0x10000000");
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::PmaUartBase())));
         const std::string uartSizeValue =
             envOrConfig("PMA_UART_SIZE", config, "CONFIG_PMA_UART_SIZE",
-                        "0x00001000");
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::PmaUartSize())));
         const std::string clintBaseValue =
             envOrConfig("CLINT_BASE", config, "CONFIG_PMA_CLINT_BASE",
-                        "0x02000000");
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::PmaClintBase())));
         const std::string clintSizeValue =
             envOrConfig("PMA_CLINT_SIZE", config, "CONFIG_PMA_CLINT_SIZE",
-                        "0x00010000");
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::PmaClintSize())));
 
-        const std::string xlenValue =
-            envOrConfig("SBI_XLEN", config, "CONFIG_XLEN", "64");
         const std::string riscvM =
             requireYN("SBI_RISCV_M",
                       boolEnvOrConfig("SBI_RISCV_M", config, "CONFIG_RISCV_M",
@@ -219,11 +234,13 @@ int main(int argc, char **argv)
                       boolEnvOrConfig("SBI_HAS_MMU", config, "CONFIG_HAS_MMU",
                                       true));
         const std::string mmuLevelsValue =
-            envOrConfig("SBI_MMU_LEVELS", config, "CONFIG_MMU_LEVELS", "3");
+            envOrConfig("SBI_MMU_LEVELS", config, "CONFIG_MMU_LEVELS",
+                        xlenForDefaults == 32 ? "2" : "3");
         const std::string mmuPageSizeValue = envOrConfig(
             "SBI_MMU_PAGE_SIZE", config, "CONFIG_MMU_PAGE_SIZE_BYTES", "4096");
         const std::string mmuPteSizeValue = envOrConfig(
-            "SBI_MMU_PTE_SIZE", config, "CONFIG_MMU_PTE_SIZE_BYTES", "8");
+            "SBI_MMU_PTE_SIZE", config, "CONFIG_MMU_PTE_SIZE_BYTES",
+            xlenForDefaults == 32 ? "4" : "8");
         const std::string mmuPageTableSizeValue =
             envOrConfig("SBI_MMU_PAGE_TABLE_SIZE", config,
                         "CONFIG_MMU_PAGE_TABLE_SIZE_BYTES", "4096");
@@ -243,8 +260,11 @@ int main(int argc, char **argv)
                 mmuPteFormat = "custom";
             else if (config.boolean("CONFIG_MMU_PTE_RISCV64", false))
                 mmuPteFormat = "riscv64";
-            else
+            else if (config.boolean("CONFIG_MMU_PTE_RISCV32", false))
                 mmuPteFormat = "riscv32";
+            else
+                mmuPteFormat =
+                    xlenForDefaults == 64 ? "riscv64" : "riscv32";
         }
 
         const std::string pmuEnabledValue =
@@ -267,7 +287,9 @@ int main(int argc, char **argv)
                         "CONFIG_LINUX_INITRAMFS_PATH", "");
         const std::string initramfsAddrValue =
             envOrConfig("SBI_INITRAMFS_ADDR", config,
-                        "CONFIG_LINUX_INITRAMFS_ADDR", "0x82000000");
+                        "CONFIG_LINUX_INITRAMFS_ADDR",
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::LinuxInitramfsAddr())));
         const std::string bootargs =
             envOrConfig("SBI_BOOTARGS", config, "CONFIG_LINUX_BOOTARGS",
                         "console=ttyS0,115200 earlycon=sbi");

@@ -1,6 +1,9 @@
+module;
+#include "npc_config_defaults.h"
 module npc.configgen;
 import std;
 namespace npc::configgen {
+namespace defaults = config_defaults;
 namespace {
 std::string dicArchCounterName(const std::string &key)
 {
@@ -57,15 +60,22 @@ std::string renderModule(const std::map<std::string, std::string> &values,
     out << "    using Unsigned = std::make_unsigned_t<T>;\n";
     out << "    return static_cast<Unsigned>(Value) <= static_cast<Unsigned>(std::numeric_limits<XWord>::max());\n";
     out << "}\n\n";
-    const long long NpcRAMSize = asInt(values, "NPC_RAM_SIZE", 0x04000000);
-    const long long NpcRAMBase = asInt(values, "NPC_RAM_BASE", 0x80000000LL);
+    const long long NpcRAMSize =
+        asInt(values, "NPC_RAM_SIZE", defaults::NpcRamSize());
+    const long long NpcRAMBase =
+        asInt(values, "NPC_RAM_BASE", defaults::NpcRamBase());
     const long long cachePadding = asInt(values, "CACHE_PADDING", 0);
-    const long long pmaMromBase = asInt(values, "PMA_MROM_BASE", 0x20000000LL);
-    const long long pmaMromSize = asInt(values, "PMA_MROM_SIZE", 0x00001000LL);
-    const long long pmaFlashBase = asInt(values, "PMA_FLASH_BASE", 0x30000000LL);
-    const long long pmaFlashSize = asInt(values, "PMA_FLASH_SIZE", 0x10000000LL);
+    const long long pmaMromBase =
+        asInt(values, "PMA_MROM_BASE", defaults::PmaMromBase());
+    const long long pmaMromSize =
+        asInt(values, "PMA_MROM_SIZE", defaults::PmaMromSize());
+    const long long pmaFlashBase =
+        asInt(values, "PMA_FLASH_BASE", defaults::PmaFlashBase());
+    const long long pmaFlashSize =
+        asInt(values, "PMA_FLASH_SIZE", defaults::PmaFlashSize());
     const long long pmaSocResetAddr =
-        asInt(values, "PMA_SOC_RESET_ADDR", 0x20000000LL);
+        asInt(values, "PMA_SOC_RESET_ADDR",
+              defaults::PmaSocResetAddr(pmaMromBase));
     out << "inline constexpr std::uint64_t SocMBase{0x" << std::hex
         << pmaMromBase << "ULL};\n";
     out << "inline constexpr std::uint64_t SocMSize{0x" << std::hex
@@ -83,33 +93,45 @@ std::string renderModule(const std::map<std::string, std::string> &values,
             << std::hex << asInt(values, key, fallback) << "ULL};\n";
         out << std::dec;
     };
-    pmaConst("PmaCLINTBase", "PMA_CLINT_BASE", 0x02000000LL);
-    pmaConst("PmaCLINTSize", "PMA_CLINT_SIZE", 0x00010000LL);
-    pmaConst("PmaSramBase", "PMA_SRAM_BASE", 0x0f000000LL);
-    pmaConst("PmaSramSize", "PMA_SRAM_SIZE", 0x00008000LL);
-    pmaConst("PmaUartBase", "PMA_UART_BASE", 0x10000000LL);
-    pmaConst("PmaUartSize", "PMA_UART_SIZE", 0x00001000LL);
-    pmaConst("PmaSpiBase", "PMA_SPI_BASE", 0x10001000LL);
-    pmaConst("PmaSpiSize", "PMA_SPI_SIZE", 0x00001000LL);
-    pmaConst("PmaGpioBase", "PMA_GPIO_BASE", 0x10002000LL);
-    pmaConst("PmaGpioSize", "PMA_GPIO_SIZE", 0x00000010LL);
-    pmaConst("PmaKeyboardBase", "PMA_KEYBOARD_BASE", 0x10011000LL);
-    pmaConst("PmaKeyboardSize", "PMA_KEYBOARD_SIZE", 0x00000008LL);
-    pmaConst("PmaVgaBase", "PMA_VGA_BASE", 0x21000000LL);
-    pmaConst("PmaVgaSize", "PMA_VGA_SIZE", 0x00200000LL);
-    pmaConst("PmaMromBase", "PMA_MROM_BASE", 0x20000000LL);
-    pmaConst("PmaMromSize", "PMA_MROM_SIZE", 0x00001000LL);
-    pmaConst("PmaFlashBase", "PMA_FLASH_BASE", 0x30000000LL);
-    pmaConst("PmaFlashSize", "PMA_FLASH_SIZE", 0x10000000LL);
-    pmaConst("PmaPsramBase", "PMA_PSRAM_BASE", 0x80000000LL);
-    pmaConst("PmaPsramSize", "PMA_PSRAM_SIZE", 0x00400000LL);
-    pmaConst("PmaSdramBase", "PMA_SDRAM_BASE", 0xa0000000LL);
-    pmaConst("PmaSdramSize", "PMA_SDRAM_SIZE", 0x02000000LL);
-    pmaConst("PmaChipLinkMmioBase", "PMA_CHIPLINK_MMIO_BASE", 0x40000000LL);
-    pmaConst("PmaChipLinkMmioSize", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
-    pmaConst("PmaChipLinkMemBase", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
-    pmaConst("PmaChipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
-    pmaConst("PmaSocResetAddr", "PMA_SOC_RESET_ADDR", 0x20000000LL);
+    const bool linuxMap = asBool(values, "SOC_MEMORY_MAP_LINUX");
+    const bool fpgaOnly = asBool(values, "NPC_MODE_FPGA_ONLY");
+    pmaConst("PmaCLINTBase", "PMA_CLINT_BASE", defaults::PmaClintBase());
+    pmaConst("PmaCLINTSize", "PMA_CLINT_SIZE", defaults::PmaClintSize());
+    pmaConst("PmaSramBase", "PMA_SRAM_BASE", defaults::PmaSramBase());
+    pmaConst("PmaSramSize", "PMA_SRAM_SIZE", defaults::PmaSramSize());
+    pmaConst("PmaUartBase", "PMA_UART_BASE", defaults::PmaUartBase());
+    pmaConst("PmaUartSize", "PMA_UART_SIZE", defaults::PmaUartSize());
+    pmaConst("PmaSpiBase", "PMA_SPI_BASE", defaults::PmaSpiBase());
+    pmaConst("PmaSpiSize", "PMA_SPI_SIZE", defaults::PmaSpiSize());
+    pmaConst("PmaGpioBase", "PMA_GPIO_BASE", defaults::PmaGpioBase());
+    pmaConst("PmaGpioSize", "PMA_GPIO_SIZE", defaults::PmaGpioSize());
+    pmaConst("PmaKeyboardBase", "PMA_KEYBOARD_BASE",
+             defaults::PmaKeyboardBase());
+    pmaConst("PmaKeyboardSize", "PMA_KEYBOARD_SIZE",
+             defaults::PmaKeyboardSize());
+    pmaConst("PmaVgaBase", "PMA_VGA_BASE", defaults::PmaVgaBase());
+    pmaConst("PmaVgaSize", "PMA_VGA_SIZE", defaults::PmaVgaSize());
+    pmaConst("PmaMromBase", "PMA_MROM_BASE", pmaMromBase);
+    pmaConst("PmaMromSize", "PMA_MROM_SIZE", pmaMromSize);
+    pmaConst("PmaFlashBase", "PMA_FLASH_BASE", pmaFlashBase);
+    pmaConst("PmaFlashSize", "PMA_FLASH_SIZE", pmaFlashSize);
+    pmaConst("PmaPsramBase", "PMA_PSRAM_BASE",
+             defaults::PmaPsramBase(linuxMap, fpgaOnly));
+    pmaConst("PmaPsramSize", "PMA_PSRAM_SIZE", defaults::PmaPsramSize());
+    pmaConst("PmaSdramBase", "PMA_SDRAM_BASE",
+             defaults::PmaSdramBase(linuxMap, fpgaOnly));
+    pmaConst("PmaSdramSize", "PMA_SDRAM_SIZE",
+             defaults::PmaSdramSize(linuxMap, fpgaOnly));
+    pmaConst("PmaChipLinkMmioBase", "PMA_CHIPLINK_MMIO_BASE",
+             defaults::PmaChiplinkMmioBase());
+    pmaConst("PmaChipLinkMmioSize", "PMA_CHIPLINK_MMIO_SIZE",
+             defaults::PmaChiplinkMmioSize());
+    pmaConst("PmaChipLinkMemBase", "PMA_CHIPLINK_MEM_BASE",
+             defaults::PmaChiplinkMemBase());
+    pmaConst("PmaChipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE",
+             defaults::PmaChiplinkMemSize());
+    pmaConst("PmaSocResetAddr", "PMA_SOC_RESET_ADDR",
+             defaults::PmaSocResetAddr(pmaMromBase));
     out << "inline constexpr std::uint64_t NpcMBase{0x" << std::hex
         << NpcRAMBase << "ULL};\n";
     out << "inline constexpr std::uint64_t NpcMSize{0x" << std::hex << NpcRAMSize
@@ -214,10 +236,10 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
             << asInt(values, key, fallback) << "L\n";
         out << std::dec;
     };
-    emitVal("PLICBase", "PLIC_BASE", 0x0c000000LL);
-    emitVal("PLICSize", "PLIC_SIZE", 0x00300000LL);
-    emitVal("NpcRamBase", "NPC_RAM_BASE", 0x80000000LL);
-    emitVal("NpcRamSize", "NPC_RAM_SIZE", 0x04000000LL);
+    emitVal("PLICBase", "PLIC_BASE", defaults::PlicBase());
+    emitVal("PLICSize", "PLIC_SIZE", defaults::PlicSize());
+    emitVal("NpcRamBase", "NPC_RAM_BASE", defaults::NpcRamBase());
+    emitVal("NpcRamSize", "NPC_RAM_SIZE", defaults::NpcRamSize());
     out << "  val Pma: ysyx_26030103_PMAOptions = "
            "ysyx_26030103_PMAOptions(\n";
     const auto emitField = [&](const char *name, const char *key,
@@ -226,33 +248,47 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
             << asInt(values, key, fallback) << "L,\n";
         out << std::dec;
     };
-    emitField("CLINTBase", "PMA_CLINT_BASE", 0x02000000LL);
-    emitField("CLINTSize", "PMA_CLINT_SIZE", 0x00010000LL);
-    emitField("sramBase", "PMA_SRAM_BASE", 0x0f000000LL);
-    emitField("sramSize", "PMA_SRAM_SIZE", 0x00008000LL);
-    emitField("UARTBase", "PMA_UART_BASE", 0x10000000LL);
-    emitField("UARTSize", "PMA_UART_SIZE", 0x00001000LL);
-    emitField("SPIBase", "PMA_SPI_BASE", 0x10001000LL);
-    emitField("SPISize", "PMA_SPI_SIZE", 0x00001000LL);
-    emitField("GPIOBase", "PMA_GPIO_BASE", 0x10002000LL);
-    emitField("GPIOSize", "PMA_GPIO_SIZE", 0x00000010LL);
-    emitField("keyboardBase", "PMA_KEYBOARD_BASE", 0x10011000LL);
-    emitField("keyboardSize", "PMA_KEYBOARD_SIZE", 0x00000008LL);
-    emitField("VGABase", "PMA_VGA_BASE", 0x21000000LL);
-    emitField("VGASize", "PMA_VGA_SIZE", 0x00200000LL);
-    emitField("mromBase", "PMA_MROM_BASE", 0x20000000LL);
-    emitField("mromSize", "PMA_MROM_SIZE", 0x00001000LL);
-    emitField("flashBase", "PMA_FLASH_BASE", 0x30000000LL);
-    emitField("flashSize", "PMA_FLASH_SIZE", 0x10000000LL);
-    emitField("psramBase", "PMA_PSRAM_BASE", 0x80000000LL);
-    emitField("psramSize", "PMA_PSRAM_SIZE", 0x00400000LL);
-    emitField("sdramBase", "PMA_SDRAM_BASE", 0xa0000000LL);
-    emitField("sdramSize", "PMA_SDRAM_SIZE", 0x02000000LL);
-    emitField("ChipLinkMMIOBase", "PMA_CHIPLINK_MMIO_BASE", 0x40000000LL);
-    emitField("ChipLinkMMIOSize", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
-    emitField("chipLinkMemBase", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
-    emitField("chipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
-    emitField("SOCResetAddress", "PMA_SOC_RESET_ADDR", 0x20000000LL);
+    const bool linuxMap = asBool(values, "SOC_MEMORY_MAP_LINUX");
+    const bool fpgaOnly = asBool(values, "NPC_MODE_FPGA_ONLY");
+    const long long scalaMromBase =
+        asInt(values, "PMA_MROM_BASE", defaults::PmaMromBase());
+    emitField("CLINTBase", "PMA_CLINT_BASE", defaults::PmaClintBase());
+    emitField("CLINTSize", "PMA_CLINT_SIZE", defaults::PmaClintSize());
+    emitField("sramBase", "PMA_SRAM_BASE", defaults::PmaSramBase());
+    emitField("sramSize", "PMA_SRAM_SIZE", defaults::PmaSramSize());
+    emitField("UARTBase", "PMA_UART_BASE", defaults::PmaUartBase());
+    emitField("UARTSize", "PMA_UART_SIZE", defaults::PmaUartSize());
+    emitField("SPIBase", "PMA_SPI_BASE", defaults::PmaSpiBase());
+    emitField("SPISize", "PMA_SPI_SIZE", defaults::PmaSpiSize());
+    emitField("GPIOBase", "PMA_GPIO_BASE", defaults::PmaGpioBase());
+    emitField("GPIOSize", "PMA_GPIO_SIZE", defaults::PmaGpioSize());
+    emitField("keyboardBase", "PMA_KEYBOARD_BASE",
+              defaults::PmaKeyboardBase());
+    emitField("keyboardSize", "PMA_KEYBOARD_SIZE",
+              defaults::PmaKeyboardSize());
+    emitField("VGABase", "PMA_VGA_BASE", defaults::PmaVgaBase());
+    emitField("VGASize", "PMA_VGA_SIZE", defaults::PmaVgaSize());
+    emitField("mromBase", "PMA_MROM_BASE", scalaMromBase);
+    emitField("mromSize", "PMA_MROM_SIZE", defaults::PmaMromSize());
+    emitField("flashBase", "PMA_FLASH_BASE", defaults::PmaFlashBase());
+    emitField("flashSize", "PMA_FLASH_SIZE", defaults::PmaFlashSize());
+    emitField("psramBase", "PMA_PSRAM_BASE",
+              defaults::PmaPsramBase(linuxMap, fpgaOnly));
+    emitField("psramSize", "PMA_PSRAM_SIZE", defaults::PmaPsramSize());
+    emitField("sdramBase", "PMA_SDRAM_BASE",
+              defaults::PmaSdramBase(linuxMap, fpgaOnly));
+    emitField("sdramSize", "PMA_SDRAM_SIZE",
+              defaults::PmaSdramSize(linuxMap, fpgaOnly));
+    emitField("ChipLinkMMIOBase", "PMA_CHIPLINK_MMIO_BASE",
+              defaults::PmaChiplinkMmioBase());
+    emitField("ChipLinkMMIOSize", "PMA_CHIPLINK_MMIO_SIZE",
+              defaults::PmaChiplinkMmioSize());
+    emitField("chipLinkMemBase", "PMA_CHIPLINK_MEM_BASE",
+              defaults::PmaChiplinkMemBase());
+    emitField("chipLinkMemSize", "PMA_CHIPLINK_MEM_SIZE",
+              defaults::PmaChiplinkMemSize());
+    emitField("SOCResetAddress", "PMA_SOC_RESET_ADDR",
+              defaults::PmaSocResetAddr(scalaMromBase));
     out << "    NpcRAMBase = NpcRamBase\n";
     out << "  )\n";
     const auto emitInt = [&](const char *name, const char *key,
@@ -323,20 +359,20 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("MMUPTWCacheEntries", "MMU_PTW_CACHE_ENTRIES", 16);
     emitInt("MMUPTWCacheWays", "MMU_PTW_CACHE_WAYS", 2);
     emitInt("MMUTLBASIDBits", "MMU_TLB_ASID_BITS", xlen == 64 ? 16 : 9);
-    emitInt("MMUItlbEntries", "ITLB_ENTRIES", 16);
-    emitInt("MMUItlbWays", "ITLB_WAYS", 2);
-    emitInt("MMUDtlbEntries", "DTLB_ENTRIES", 32);
-    emitInt("MMUDtlbWays", "DTLB_WAYS", 4);
-    emitInt("MMUUtlbEntries", "UTLB_ENTRIES", 32);
-    emitInt("MMUUtlbWays", "UTLB_WAYS", 4);
+    emitInt("MMUItlbEntries", "MMU_ITLB_ENTRIES", 16);
+    emitInt("MMUItlbWays", "MMU_ITLB_WAYS", 2);
+    emitInt("MMUDtlbEntries", "MMU_DTLB_ENTRIES", 32);
+    emitInt("MMUDtlbWays", "MMU_DTLB_WAYS", 4);
+    emitInt("MMUUtlbEntries", "MMU_UTLB_ENTRIES", 32);
+    emitInt("MMUUtlbWays", "MMU_UTLB_WAYS", 4);
     emitInt("MMUUtlbLookupPorts", "UTLB_LOOKUP_PORTS", 1);
-    emitInt("MMUTLBSuperpageEntries", "TLB_SUPERPAGE_ENTRIES", 4);
-    emitInt("MMUItlbMissQueueEntries", "ITLB_MISS_QUEUE_ENTRIES", 4);
-    emitInt("MMUDtlbMissQueueEntries", "DTLB_MISS_QUEUE_ENTRIES", 4);
-    emitInt("MMUUtlbMissQueueEntries", "UTLB_MISS_QUEUE_ENTRIES", 8);
-    emitInt("MMUGlobalMissQueueEntries", "GLOBAL_MISS_QUEUE_ENTRIES", 8);
-    emitInt("MMURefillPorts", "TLB_REFILL_PORTS", 1);
-    emitInt("MMUPLICSources", "PLIC_SOURCES", 32);
+    emitInt("MMUTLBSuperpageEntries", "MMU_TLB_SUPERPAGE_ENTRIES", 4);
+    emitInt("MMUItlbMissQueueEntries", "MMU_ITLB_MISS_QUEUE_ENTRIES", 4);
+    emitInt("MMUDtlbMissQueueEntries", "MMU_DTLB_MISS_QUEUE_ENTRIES", 4);
+    emitInt("MMUUtlbMissQueueEntries", "MMU_UTLB_MISS_QUEUE_ENTRIES", 8);
+    emitInt("MMUGlobalMissQueueEntries", "MMU_GLOBAL_MISS_QUEUE_ENTRIES", 8);
+    emitInt("MMURefillPorts", "MMU_TLB_REFILL_PORTS", 1);
+    emitInt("MMUPLICSources", "PLIC_SOURCES", defaults::PlicSources());
     emitInt("MMUPLICPriorityBits", "PLIC_PRIORITY_BITS", 3);
     emitInt("MMUPLICMaxPriority", "PLIC_MAX_PRIORITY", 7);
     emitInt("MMUPMPEntries", "PMP_ENTRIES", 16);
@@ -368,7 +404,12 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("UartTxHoldCycles", "UART_TX_HOLD_CYCLES", 32);
     emitInt("UartTxShiftCycles", "UART_TX_SHIFT_CYCLES", 64);
 
-    emitInt("MDUMulShiftIterBits", "MUL_ITER_BITS", 1);
+    const long long mulIterBitsDefault =
+        (asBool(values, "MUL_ENCODING_BOOTH") &&
+         asBool(values, "MUL_SHIFT_ADD") && asBool(values, "RISCV_M"))
+            ? 2
+            : 1;
+    emitInt("MDUMulShiftIterBits", "MUL_ITER_BITS", mulIterBitsDefault);
     emitInt("MDUMulShiftSplit", "MUL_SPLIT", 1);
     emitInt("MDUMulPipeline", "MUL_PIPELINE", 0);
     emitInt("MDUMulWidth", "MUL_WIDTH", 32);
@@ -379,10 +420,10 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     emitInt("MDUDivNonRestoringIterBits", "DIV_NONRESTORING_ITER_BITS", 1);
     emitInt("MDUDivSRTRadix", "DIV_SRT_RADIX", 2);
     emitInt("MDUDivSRTIterBits", "DIV_SRT_ITER_BITS", 1);
-    emitInt("MDURocketMulUnroll", "MDU_ROCKET_MUL_UNROLL", 1);
-    emitInt("MDURocketDivUnroll", "MDU_ROCKET_DIV_UNROLL", 1);
+    emitInt("MDURocketMulUnroll", "ROCKET_MUL_UNROLL", 1);
+    emitInt("MDURocketDivUnroll", "ROCKET_DIV_UNROLL", 1);
     emitInt("MDURocketDivEarlyOutGranularity",
-            "MDU_ROCKET_DIV_EARLY_OUT_GRANULARITY", 1);
+            "ROCKET_DIV_EARLY_OUT_GRANULARITY", 1);
     emitInt("MDUGpcInputs", "MUL_COMPRESSOR_INPUTS", 3);
     emitInt("MDUGpcOutputs", "MUL_COMPRESSOR_OUTPUTS", 2);
     emitInt("MDUGpcCoutOffset", "MUL_COMPRESSOR_COUT_OFFSET", 1);

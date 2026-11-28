@@ -168,7 +168,7 @@ private[cache] trait ICacheCore extends CacheGeometry with CacheAliasSupport {
   // DMA 写的行失效与 CPU store snoop 使用同一套“同拍命中必须让路”的
   // 规则，但地址范围独立，两个事件可以同拍发生。
   val DMASnoopLineHitNow =
-    if (DMASnoopActive) io.DMASnoopValid && dmaLineMatch(io.FetchAddress)
+    if (DMASnoopActive) dmaSnoopLineHitNow(io.DMASnoopValid, io.FetchAddress)
     else false.B
   val anySnoopLineHitNow = snoopLineHitNow || DMASnoopLineHitNow
   val snoopStage1LineHit =
@@ -178,8 +178,8 @@ private[cache] trait ICacheCore extends CacheGeometry with CacheAliasSupport {
     else false.B
   val DMASnoopStage1LineHit =
     if (DMASnoopActive)
-      io.DMASnoopValid && stage1Valid && stage1PhysicalAddressValid && !accessFaultReg &&
-        dmaLineMatch(fetchAddressReg)
+      dmaSnoopLineHitNow(io.DMASnoopValid, fetchAddressReg) &&
+        stage1Valid && stage1PhysicalAddressValid && !accessFaultReg
     else false.B
   val anySnoopStage1LineHit = snoopStage1LineHit || DMASnoopStage1LineHit
   // refill状态机(单MSHR: 同一时刻只处理一个缺失)
@@ -241,11 +241,14 @@ private[cache] trait ICacheCore extends CacheGeometry with CacheAliasSupport {
   val refillBusy = refillState =/= refillIdle
   val underRefill = refillBusy && refillCacheable && (index === refillIndex)
   val refillReadFire = refillState === refillResponse && io.AXI.R.RVALID
-  val malformedRefillBeatNow =
-    refillReadFire && !io.AXI.R.RLAST &&
-      (!refillCacheable || !burstMode || refillCount === (beatsPerBlock - 1).U)
+  val refillMustBeLast =
+    !refillCacheable || !burstMode || refillCount === (beatsPerBlock - 1).U
+  val malformedRefillBeatNow = ysyx_26030103_CacheControl.MissingLast(
+    refillReadFire, io.AXI.R.RLAST, refillMustBeLast)
   val refillErrorNow =
-    refillReadFire && (io.AXI.R.RRESP =/= 0.U || malformedRefillBeatNow)
+    refillReadFire &&
+      (ysyx_26030103_CacheControl.BeatError(io.AXI.R.RRESP) ||
+        malformedRefillBeatNow)
   final case class HitEval(hit: Bool, partialRefillHit: Bool) {
     def requestHit: Bool = hit || partialRefillHit
   }
@@ -273,7 +276,8 @@ private[cache] trait ICacheCore extends CacheGeometry with CacheAliasSupport {
     refillWordValid := 0.U
     when(!discard && stage1Waits && !stage1Ready) {
       accessFaultReg := true.B
-      accessFaultResponseReg := Mux(readError, io.AXI.R.RRESP, 2.U)
+      accessFaultResponseReg :=
+        ysyx_26030103_CacheControl.FaultResponse(readError, io.AXI.R.RRESP)
       responseDataReg := "h00000013".U
       stage1Ready := true.B
     }
@@ -508,8 +512,8 @@ private[cache] trait ICacheCore extends CacheGeometry with CacheAliasSupport {
   // DMA snoop 握手：如果事件到来时已有属于被改写行的 refill，必须等它
   // 把旧事务排空（discard 已置位）后再放行 DMA B。handled 保证同一个
   // snoop 事件只毒化一次：排空后自动重取的新 refill 读的是 DMA 完成后的内存。
-  val DMASnoopActiveRefill = DMASnoopActive.B && (refillState =/= refillIdle) &&
-    dmaLineMatch(refillAddress)
+  val DMASnoopActiveRefill = dmaSnoopRefillHitNow(
+    refillState =/= refillIdle, refillAddress)
   val DMASnoopStaleRefill = RegInit(false.B)
   val DMASnoopHandled = RegInit(false.B)
   when(!io.DMASnoopValid) { DMASnoopHandled := false.B }
@@ -734,7 +738,9 @@ private[cache] trait ICacheCore extends CacheGeometry with CacheAliasSupport {
           }.otherwise {
             when(!discard && stage1Waits && !stage1Ready) {
               accessFaultReg := true.B
-              accessFaultResponseReg := Mux(readError, io.AXI.R.RRESP, 2.U)
+              accessFaultResponseReg :=
+                ysyx_26030103_CacheControl.FaultResponse(
+                  readError, io.AXI.R.RRESP)
               responseDataReg := "h00000013".U
               stage1Ready := true.B
             }
@@ -746,11 +752,13 @@ private[cache] trait ICacheCore extends CacheGeometry with CacheAliasSupport {
     }
     is(refillDrain) {
       io.AXI.R.RREADY := true.B
-      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
+      when(ysyx_26030103_CacheControl.ReadLastBeat(
+          io.AXI.R.RVALID, io.AXI.R.RLAST)) {
         discard := false.B
         burstMode := false.B
         refillState := refillIdle
-      }.elsewhen(drainTimer === DrainTimeout.U) {
+      }.elsewhen(ysyx_26030103_CacheControl.DrainTimedOut(
+          drainTimer, DrainTimeout)) {
         busFault := true.B
         drainTimer := 0.U
         drainRetryTimer := 0.U
@@ -764,10 +772,12 @@ private[cache] trait ICacheCore extends CacheGeometry with CacheAliasSupport {
       // 期间新取指由受理路径直接以故障响应结束。通道安静时周期性重试
       // refill（清故障标记回空闲）：从设备恢复后系统自动复原，不必等复位。
       io.AXI.R.RREADY := true.B
-      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
+      when(ysyx_26030103_CacheControl.ReadLastBeat(
+          io.AXI.R.RVALID, io.AXI.R.RLAST)) {
         busFault := false.B
         refillState := refillIdle
-      }.elsewhen(drainRetryTimer === DrainTimeout.U && !io.AXI.R.RVALID) {
+      }.elsewhen(ysyx_26030103_CacheControl.DrainRetryQuiet(
+          drainRetryTimer, DrainTimeout, io.AXI.R.RVALID)) {
         busFault := false.B
         drainRetryTimer := 0.U
         refillState := refillIdle

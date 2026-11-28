@@ -12,140 +12,10 @@
 # STRICT=1 把 SKIP 升级为 FAIL，供 F/D 合入后的 CI 使用。
 set -uo pipefail
 
-fail() {
-    echo "[FAIL] $*" >&2
-    exit 1
-}
-
-skip() {
-    if [[ "${STRICT:-0}" == 1 ]]; then
-        fail "STRICT=1: $*"
-    fi
-    echo "[SKIP] $*"
-    exit 0
-}
-
-show_log() {
-    local log="$1"
-    if [[ -f "$log" ]]; then
-        echo "---- $log (tail) ----" >&2
-        tail -n 60 "$log" >&2 || true
-    fi
-}
-
-show_first_divergence() {
-    local log="$1"
-    if grep -q 'DiffTest 校验失败' "$log" 2>/dev/null; then
-        echo "---- 第一次分叉报告 ----" >&2
-        sed -n '/DiffTest 校验失败/,$p' "$log" | head -n 100 >&2 || true
-    fi
-}
-
-require_file() {
-    local path="$1" what="$2"
-    [[ -f "$path" ]] || skip "缺少 $what：$path"
-}
-
-# 运行 NPC。自动适配启用/未启用 SDB 的构建。
-LAST_STATUS=0
-BATCH_MODE="${NPC_BATCH_MODE:-auto}"
-run_npc() {
-    local timeout_s="$1" log="$2" binary="$3" image="$4"
-    shift 4
-    local status=0
-    local -a args=("$binary" "$image" "$@")
-
-    mkdir -p "$(dirname -- "$log")"
-    : >"$log"
-
-    if [[ "$BATCH_MODE" != no ]]; then
-        if timeout "$timeout_s" "${args[@]}" --batch >>"$log" 2>&1; then
-            status=0
-        else
-            status=$?
-        fi
-        if grep -qE -- '--batch 需要在构建时启用 CONFIG_SDB|未知参数: --batch' "$log"; then
-            BATCH_MODE=no
-        fi
-    fi
-
-    if [[ "$BATCH_MODE" == no ]]; then
-        if timeout "$timeout_s" "${args[@]}" >>"$log" 2>&1; then
-            status=0
-        else
-            status=$?
-        fi
-    fi
-
-    LAST_STATUS=$status
-}
-
-# 解释 F/D 探针的返回码。成功返回 0，否则打印原因并返回 1，
-# 或返回 2 表示“扩展未启用”（正向应 SKIP，负向应 PASS）。
-LAST_PROBE_KIND=""
-probe_fpu() {
-    local xlen="$1" binary="$2" probe="$3" log="$4"
-    run_npc 60 "$log" "$binary" "$probe"
-    local status="$LAST_STATUS"
-
-    if grep -Fq 'HIT GOOD TRAP' "$log"; then
-        LAST_PROBE_KIND=ok
-        return 0
-    fi
-    if grep -Eq 'HIT BAD TRAP.*code = 21([, ]|$)' "$log"; then
-        LAST_PROBE_KIND=no_f
-        return 2
-    fi
-    if grep -Eq 'HIT BAD TRAP.*code = 22([, ]|$)' "$log"; then
-        LAST_PROBE_KIND=no_d
-        return 2
-    fi
-    if grep -Eq 'HIT BAD TRAP.*code = 23([, ]|$)' "$log"; then
-        echo "[FAIL] FPU 可执行但 mstatus.FS 未进入 Dirty(3)，实现不完整" >&2
-        show_log "$log"
-        return 1
-    fi
-    if grep -Eq 'HIT BAD TRAP.*code = 25([, ]|$)' "$log"; then
-        echo "[FAIL] D 可执行而 F 不可执行，F/D 配置或译码不一致" >&2
-        show_log "$log"
-        return 1
-    fi
-    if grep -Eq 'HIT BAD TRAP.*code = (30|31)([, ]|$)' "$log"; then
-        echo "[FAIL] F/D 指令未陷入但计算结果错误（不是 SKIP）" >&2
-        show_log "$log"
-        return 1
-    fi
-    if grep -Eq 'HIT BAD TRAP.*code = 40([, ]|$)' "$log"; then
-        echo "[FAIL] 浮点站点产生了非 illegal-instruction 异常" >&2
-        show_log "$log"
-        return 1
-    fi
-    echo "[FAIL] F/D 探针异常（exit=$status，既非正确执行也非明确 illegal）" >&2
-    show_log "$log"
-    return 1
-}
-
-check_diff_log() {
-    local log="$1"
-    local require_fp="${2:-1}"
-    grep -Fq 'DiffTest: ON' "$log" ||
-        fail "DiffTest 未启用（日志缺少 'DiffTest: ON'）"
-    ! grep -Fq 'DiffTest 校验失败' "$log" ||
-        {
-            show_first_divergence "$log"
-            fail "DiffTest 出现分叉；上方为第一次分叉报告"
-        }
-    grep -Fq 'DiffTest: final state PASS' "$log" ||
-        fail "DiffTest 未完成最终状态比对"
-    if [[ "$require_fp" == 1 ]]; then
-        grep -Fq 'DiffTest: 浮点状态 ABI ON' "$log" ||
-            fail "REF/DUT 未启用浮点状态 ABI，本轮没有逐 f 寄存器比较"
-    fi
-    grep -Fq 'HIT GOOD TRAP' "$log" ||
-        fail "guest 未触发 HIT GOOD TRAP"
-    # MMIO/mcycle 由现有 DifftestStep 在退休边界注入，测试镜像只访问 RAM，
-    # 因此这里不要求 injected 计数为 0；只接受现有的非确定性处理机制。
-}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TEST_RUNNER_TAIL_LINES=60
+TEST_RUNNER_DIVERGENCE_LINES=100
+source "$SCRIPT_DIR/../../common/test_runner.sh"
 
 # NEMU REF 能力探针：区分 “DUT 已实现、REF 尚未实现” 与真实分叉。
 LAST_REF_KIND=""
@@ -233,7 +103,7 @@ run_forward() {
             show_log "$log"
             fail "RV${xlen} ${names[$i]} DiffTest 运行失败（exit=$status）"
         }
-        check_diff_log "$log"
+        check_diff_log "$log" 1
         echo "[PASS] RV${xlen} ${names[$i]} DiffTest ($(basename "${images[$i]}"))"
     done
 }
@@ -360,7 +230,7 @@ run_fdiv_shared() {
         show_log "$log"
         fail "RV${xlen} 共享 FDIV/FSQRT 压力 DiffTest 运行失败（exit=$status）"
     }
-    check_diff_log "$log"
+    check_diff_log "$log" 1
     echo "[PASS] RV${xlen} 共享 FDIV/FSQRT 边界+随机 DiffTest"
 }
 

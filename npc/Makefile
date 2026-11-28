@@ -57,14 +57,16 @@ NPC_CONFIG_GEN_SOURCES := $(wildcard $(NPC_CONFIG_GEN_DIR)/*.cpp) \
 	$(wildcard $(NPC_CONFIG_GEN_DIR)/JsonConfig/*.cpp) \
 	$(wildcard $(NPC_CONFIG_GEN_DIR)/DeriveConfig/*.cpp) \
 	$(wildcard $(NPC_CONFIG_GEN_DIR)/ModuleConfig/*.cpp) \
-	$(wildcard $(NPC_CONFIG_GEN_DIR)/TypedConfig/*.cpp)
+	$(wildcard $(NPC_CONFIG_GEN_DIR)/TypedConfig/*.cpp) \
+	$(NPC_HOME)/params/generated/npc_config_defaults.h
 NPC_CONFIG_GEN_MODULE := $(NPC_CONFIG_GEN_DIR)/npc.configgen.ixx
 NPC_CONFIG_GEN_CMAKE := $(NPC_CONFIG_GEN_DIR)/CMakeLists.txt
 NPC_CONFIG_GEN_BUILD_DIR := $(abspath tools/build/NPCConfigGEN)
 NPC_CONFIG_GEN_BIN := $(abspath tools/build/npc_config_gen)
 include $(NPC_CONFIG_GEN_DIR)/build.mk
 NPC_BUILD_TOOLS_DIR := $(abspath tools/BuildTools)
-NPC_BUILD_TOOLS_SOURCES := $(wildcard $(NPC_BUILD_TOOLS_DIR)/*.cpp)
+NPC_BUILD_TOOLS_SOURCES := $(wildcard $(NPC_BUILD_TOOLS_DIR)/*.cpp) \
+	$(NPC_HOME)/params/generated/npc_config_defaults.h
 NPC_BUILD_TOOLS_MODULE := $(NPC_BUILD_TOOLS_DIR)/npc.buildtools.ixx
 NPC_BUILD_TOOLS_CMAKE := $(NPC_BUILD_TOOLS_DIR)/CMakeLists.txt
 NPC_BUILD_TOOLS_BUILD_DIR := $(abspath tools/build/BuildTools)

@@ -17,9 +17,9 @@ private[mem] trait LSUWrite {
     val wbDrivingIssue = wbState === wbIssue || (wbState === wbIdle && wbCanStart)
     val wbHeadIsWide = wbHeadWide
     // 对齐宽访问仍沿用原有的两拍逻辑；分段访问按配置粒度发请求。
-    val wbHeadBusWide = wbHeadIsWide && busWideBit && !wbHeadMisaligned
-    val wbHeadTwoBeat = wbHeadIsWide && !busWideBit && !wbHeadMisaligned
     val wbSegWide = wbHeadMisaligned && (ChunkLog2 == 3).B
+    val wbBeatPlan = ysyx_26030103_LSUAXIBeat.Store(
+      wbHeadSize, wbHeadIsWide, busWide, wbHeadMisaligned, wbSegWide)
     val wbBeat = RegInit(0.U(1.W))
     val wbSegData = wbHeadSegPayload._1
     val wbSegStrobe = wbHeadSegPayload._2
@@ -27,43 +27,34 @@ private[mem] trait LSUWrite {
       io.DataBus.AW.AWVALID := !WbAWDone
       io.DataBus.AW.AWADDR :=
         Mux(wbHeadMisaligned, wbHeadSegPaddr, wbHeadEffectiveAddress)
-      io.DataBus.AW.AWLEN :=
-        Mux(wbHeadTwoBeat, 1.U, 0.U)
-      io.DataBus.AW.AWSIZE :=
-        Mux(wbHeadMisaligned, Mux(wbSegWide, 3.U, 2.U),
-          Mux(wbHeadBusWide, 3.U, wbHeadSize))
+      io.DataBus.AW.AWLEN := wbBeatPlan.len
+      io.DataBus.AW.AWSIZE := wbBeatPlan.size
       io.DataBus.AW.AWBURST := 1.U
       io.DataBus.W.WVALID := !wbWDone
       io.DataBus.W.WDATA :=
         Mux(wbHeadMisaligned,
           Mux(wbSegWide, wbSegData,
             LaneWord(wbSegData(31, 0), wbHeadSegPaddr, busWide)),
-          Mux(wbHeadBusWide, Cat(wbHeadDataHi, wbHeadData),
-            Mux(wbHeadTwoBeat && wbBeat === 1.U, wbHeadDataHi,
-              LaneWord(wbHeadData, wbHeadEffectiveAddress, busWide))))
+          ysyx_26030103_LSUAXIBeat.WriteData(
+            wbHeadData, wbHeadDataHi, wbHeadEffectiveAddress,
+            wbHeadIsWide, busWide, wbBeat))
       io.DataBus.W.WSTRB :=
         Mux(wbHeadMisaligned,
           Mux(wbSegWide, wbSegStrobe,
             LaneStrobe(wbSegStrobe(3, 0), wbHeadSegPaddr, busWide)),
-          Mux(wbHeadBusWide, "hff".U,
-            Mux(wbHeadTwoBeat && wbBeat === 1.U, "hf".U,
-              LaneStrobe(wbHeadStrobe, wbHeadEffectiveAddress, busWide))))
-      io.DataBus.W.WLAST :=
-        Mux(wbHeadMisaligned, true.B,
-          !wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U)
+          ysyx_26030103_LSUAXIBeat.WriteStrobe(
+            wbHeadStrobe, wbHeadEffectiveAddress,
+            wbHeadIsWide, busWide, wbBeat))
+      io.DataBus.W.WLAST := wbBeatPlan.lastBeat(wbBeat)
     }
     // 本拍 W 握手是否完成整笔 store 的全部数据拍。
-    val wbWFinishes = wbWfire && Mux(
-      wbHeadMisaligned,
-      true.B,
-      !wbHeadIsWide || wbHeadBusWide || wbBeat === 1.U
-    )
+    val wbWFinishes = wbWfire && wbBeatPlan.lastBeat(wbBeat)
     switch(wbState) {
       is(wbIdle) {
         when(wbCanStart) {
           when(wbAWfire) { WbAWDone := true.B }
           when(wbWfire) {
-            when(wbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
+            when(wbBeatPlan.multiBeat && !wbBeat) { wbBeat := 1.U }
               .otherwise { wbWDone := true.B }
           }
           when(wbAWfire && wbWFinishes) {
@@ -80,7 +71,7 @@ private[mem] trait LSUWrite {
       is(wbIssue) {
         when(wbAWfire) { WbAWDone := true.B }
         when(wbWfire) {
-          when(wbHeadTwoBeat && wbBeat === 0.U) { wbBeat := 1.U }
+          when(wbBeatPlan.multiBeat && !wbBeat) { wbBeat := 1.U }
             .otherwise { wbWDone := true.B }
         }
         when((WbAWDone || wbAWfire) && (wbWDone || wbWFinishes)) {

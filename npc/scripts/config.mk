@@ -21,6 +21,8 @@ KCONFIG_SCHEMA_PARTS := $(wildcard $(KCONFIG_SCHEMA_PARTS_DIR)/*.json)
 KCONFIG_GENERATOR := $(NPC_HOME)/tools/ParamGen/gen_kconfig.py
 KCONFIG_GENERATED_DIR := $(NPC_HOME)/params/generated
 KCONFIG_GENERATED := $(KCONFIG_GENERATED_DIR)/Kconfig
+KCONFIG_DEFAULTS_HEADER := $(KCONFIG_GENERATED_DIR)/npc_config_defaults.h
+DEFAULTS_CONSISTENCY_CHECK := $(NPC_HOME)/tools/ParamGen/check_defaults_consistency.py
 KCONFIG_GEN_STAMP := $(KCONFIG_GENERATED_DIR)/.generated.stamp
 KCONFIG_GEN_DEPS := $(KCONFIG_SCHEMA) $(KCONFIG_SCHEMA_PARTS) \
 	$(if $(wildcard $(KCONFIG_SCHEMA_PARTS_DIR)),$(KCONFIG_SCHEMA_PARTS_DIR),) \
@@ -57,7 +59,7 @@ $(MERGE_CONFIG): $(NPC_BUILD_TOOLS_STAMP)
 	$(Q)mkdir -p $(@D)
 	$(Q)cp -f "$(NPC_BUILD_TOOLS_BUILD_DIR)/merge_config" "$@"
 
-merge-config-tool: $(MERGE_CONFIG)
+merge-config-tool: $(MERGE_CONFIG) | kconfig-generated-check
 .PHONY: merge-config-tool
 
 KCONFIG_SOURCES := $(wildcard $(KCONFIG_PATH)/*.cpp $(KCONFIG_PATH)/*.ixx $(KCONFIG_PATH)/*.h $(KCONFIG_PATH)/*.hpp $(KCONFIG_PATH)/*.c $(KCONFIG_PATH)/*.y $(KCONFIG_PATH)/*.l $(KCONFIG_PATH)/lxdialog/*.cpp $(KCONFIG_PATH)/lxdialog/*.hpp)
@@ -94,6 +96,11 @@ $(KCONFIG_GENERATED): $(KCONFIG_GEN_STAMP)
 		}; \
 		touch "$(KCONFIG_GEN_STAMP)"; \
 	}
+
+# 共享 C++ 默认值头文件与 Kconfig 同源同一次生成。保留独立修复规则，
+# 这样只缺失头文件的 checkout 不会在解析依赖时直接失败。
+$(KCONFIG_DEFAULTS_HEADER): $(KCONFIG_GEN_STAMP)
+	$(Q)test -f "$@" || $(KCONFIG_GEN_CMD)
 
 # Order-only guard for recipes that invoke c_conf/mconf directly.  It also
 # repairs a checkout where the stamp survived but a generated part is missing.
@@ -249,7 +256,7 @@ $(CONFIG_PROJECTION_DIR)/npc_config.ixx: $(NPC_CONFIG_MODULE_STAGE) | config-has
 	@if test -f "$@" && cmp -s "$(NPC_CONFIG_MODULE_STAGE)" "$@"; then :; else cp -f "$(NPC_CONFIG_MODULE_STAGE)" "$@"; fi
 
 npc-config-json: $(NPC_CONFIG_JSON) $(NPC_CONFIG_AUTOCONF)
-npc-config-tool: $(NPC_CONFIG_GEN_BIN)
+npc-config-tool: $(NPC_CONFIG_GEN_BIN) | kconfig-generated-check
 npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON) $(NPC_CONFIG_SCALA_DEFAULTS) $(NPC_CONFIG_AUTOCONF) | config-hash-require kconfig-generated-check
 	@set -eu; \
 	test -f "$(CONFIG_HASH_SCHEMA)" || { \
@@ -291,7 +298,8 @@ endif
 # PTE 大小、页大小 2 的幂以及 CUSTOM A/D 高位等离散约束。
 # 校验器是纯 C++ 工具，配置阶段和回归都不再依赖 Python。
 KCONFIG_CONTRACT_DIR := $(abspath tools/KconfigContract)
-KCONFIG_CONTRACT_SOURCES := $(wildcard $(KCONFIG_CONTRACT_DIR)/*.cpp)
+KCONFIG_CONTRACT_SOURCES := $(wildcard $(KCONFIG_CONTRACT_DIR)/*.cpp) \
+	$(KCONFIG_DEFAULTS_HEADER)
 KCONFIG_CONTRACT_MODULE := $(KCONFIG_CONTRACT_DIR)/npc.kconfig_contract.ixx
 KCONFIG_CONTRACT_CMAKE := $(KCONFIG_CONTRACT_DIR)/CMakeLists.txt
 KCONFIG_CONTRACT_BUILD_DIR := $(abspath tools/build/KconfigContract)
@@ -321,7 +329,8 @@ endif
 # 重新检查，但检查本身不会让这些目标被误判为需要重建。
 KCONFIG_CONTRACT_TYPED_PREREQ := $(if $(wildcard .config),$(NPC_CONFIG_TYPED_JSON),)
 
-kconfig-contract-check: $(KCONFIG_CONTRACT_BIN) $(KCONFIG_CONTRACT_TYPED_PREREQ)
+kconfig-contract-check: $(KCONFIG_CONTRACT_BIN) $(KCONFIG_CONTRACT_TYPED_PREREQ) | kconfig-generated-check
+	$(Q)python3 "$(DEFAULTS_CONSISTENCY_CHECK)" --npc "$(NPC_HOME)"
 	$(KCONFIG_CONTRACT_BIN) --defconfigs
 	$(KCONFIG_CONTRACT_BIN) --self-test
 	@if [ -f .config ]; then \

@@ -1,16 +1,27 @@
+module;
+#include "npc_config_defaults.h"
 module npc.configgen;
 import std;
 namespace npc::configgen {
+namespace defaults = config_defaults;
+namespace {
+std::string hexString(long long value)
+{
+    std::ostringstream out;
+    out << "0x" << std::hex << value;
+    return out.str();
+}
+}
 void addPlatform(TypedFields &root, const Config &values,
                  long long addressWidth, long long SOCXlen)
 {
     TypedFields platform;
     addField(platform, "ram_size",
              TypedJson::integer(
-                 flatInt(values, "NPC_RAM_SIZE", 0x04000000LL)));
+                 flatInt(values, "NPC_RAM_SIZE", defaults::NpcRamSize())));
     addField(platform, "ram_base",
              TypedJson::integer(
-                 flatInt(values, "NPC_RAM_BASE", 0x80000000LL)));
+                 flatInt(values, "NPC_RAM_BASE", defaults::NpcRamBase())));
     addField(platform, "icache_drain_timeout",
              TypedJson::integer(
                  flatInt(values, "ICACHE_DRAIN_TIMEOUT", 1023)));
@@ -62,37 +73,48 @@ void addPlatform(TypedFields &root, const Config &values,
 void addPma(TypedFields &root, const Config &values)
 {
     TypedFields PMA;
+    const bool linuxMap = flatBool(values, "SOC_MEMORY_MAP_LINUX");
+    const bool fpgaOnly = flatBool(values, "NPC_MODE_FPGA_ONLY");
     const auto add = [&](const char *name, const char *key, long long fallback) {
         addField(PMA, name,
                  TypedJson::integer(flatInt(values, key, fallback)));
     };
-    add("soc_reset_addr", "PMA_SOC_RESET_ADDR", 0x20000000LL);
-    add("clint_base", "PMA_CLINT_BASE", 0x02000000LL);
-    add("clint_size", "PMA_CLINT_SIZE", 0x00010000LL);
-    add("sram_base", "PMA_SRAM_BASE", 0x0f000000LL);
-    add("sram_size", "PMA_SRAM_SIZE", 0x00008000LL);
-    add("uart_base", "PMA_UART_BASE", 0x10000000LL);
-    add("uart_size", "PMA_UART_SIZE", 0x00001000LL);
-    add("spi_base", "PMA_SPI_BASE", 0x10001000LL);
-    add("spi_size", "PMA_SPI_SIZE", 0x00001000LL);
-    add("gpio_base", "PMA_GPIO_BASE", 0x10002000LL);
-    add("gpio_size", "PMA_GPIO_SIZE", 0x00000010LL);
-    add("keyboard_base", "PMA_KEYBOARD_BASE", 0x10011000LL);
-    add("keyboard_size", "PMA_KEYBOARD_SIZE", 0x00000008LL);
-    add("vga_base", "PMA_VGA_BASE", 0x21000000LL);
-    add("vga_size", "PMA_VGA_SIZE", 0x00200000LL);
-    add("mrom_base", "PMA_MROM_BASE", 0x20000000LL);
-    add("mrom_size", "PMA_MROM_SIZE", 0x00001000LL);
-    add("flash_base", "PMA_FLASH_BASE", 0x30000000LL);
-    add("flash_size", "PMA_FLASH_SIZE", 0x10000000LL);
-    add("psram_base", "PMA_PSRAM_BASE", 0x80000000LL);
-    add("psram_size", "PMA_PSRAM_SIZE", 0x00400000LL);
-    add("sdram_base", "PMA_SDRAM_BASE", 0xa0000000LL);
-    add("sdram_size", "PMA_SDRAM_SIZE", 0x02000000LL);
-    add("chiplink_mmio_base", "PMA_CHIPLINK_MMIO_BASE", 0x40000000LL);
-    add("chiplink_mmio_size", "PMA_CHIPLINK_MMIO_SIZE", 0x40000000LL);
-    add("chiplink_mem_base", "PMA_CHIPLINK_MEM_BASE", 0xc0000000LL);
-    add("chiplink_mem_size", "PMA_CHIPLINK_MEM_SIZE", 0x40000000LL);
+    add("soc_reset_addr", "PMA_SOC_RESET_ADDR",
+        defaults::PmaSocResetAddr(
+            flatInt(values, "PMA_MROM_BASE", defaults::PmaMromBase())));
+    add("clint_base", "PMA_CLINT_BASE", defaults::PmaClintBase());
+    add("clint_size", "PMA_CLINT_SIZE", defaults::PmaClintSize());
+    add("sram_base", "PMA_SRAM_BASE", defaults::PmaSramBase());
+    add("sram_size", "PMA_SRAM_SIZE", defaults::PmaSramSize());
+    add("uart_base", "PMA_UART_BASE", defaults::PmaUartBase());
+    add("uart_size", "PMA_UART_SIZE", defaults::PmaUartSize());
+    add("spi_base", "PMA_SPI_BASE", defaults::PmaSpiBase());
+    add("spi_size", "PMA_SPI_SIZE", defaults::PmaSpiSize());
+    add("gpio_base", "PMA_GPIO_BASE", defaults::PmaGpioBase());
+    add("gpio_size", "PMA_GPIO_SIZE", defaults::PmaGpioSize());
+    add("keyboard_base", "PMA_KEYBOARD_BASE", defaults::PmaKeyboardBase());
+    add("keyboard_size", "PMA_KEYBOARD_SIZE", defaults::PmaKeyboardSize());
+    add("vga_base", "PMA_VGA_BASE", defaults::PmaVgaBase());
+    add("vga_size", "PMA_VGA_SIZE", defaults::PmaVgaSize());
+    add("mrom_base", "PMA_MROM_BASE", defaults::PmaMromBase());
+    add("mrom_size", "PMA_MROM_SIZE", defaults::PmaMromSize());
+    add("flash_base", "PMA_FLASH_BASE", defaults::PmaFlashBase());
+    add("flash_size", "PMA_FLASH_SIZE", defaults::PmaFlashSize());
+    add("psram_base", "PMA_PSRAM_BASE",
+        defaults::PmaPsramBase(linuxMap, fpgaOnly));
+    add("psram_size", "PMA_PSRAM_SIZE", defaults::PmaPsramSize());
+    add("sdram_base", "PMA_SDRAM_BASE",
+        defaults::PmaSdramBase(linuxMap, fpgaOnly));
+    add("sdram_size", "PMA_SDRAM_SIZE",
+        defaults::PmaSdramSize(linuxMap, fpgaOnly));
+    add("chiplink_mmio_base", "PMA_CHIPLINK_MMIO_BASE",
+        defaults::PmaChiplinkMmioBase());
+    add("chiplink_mmio_size", "PMA_CHIPLINK_MMIO_SIZE",
+        defaults::PmaChiplinkMmioSize());
+    add("chiplink_mem_base", "PMA_CHIPLINK_MEM_BASE",
+        defaults::PmaChiplinkMemBase());
+    add("chiplink_mem_size", "PMA_CHIPLINK_MEM_SIZE",
+        defaults::PmaChiplinkMemSize());
     addField(root, "PMA", TypedJson::object(std::move(PMA)));
 }
 void addSoc(TypedFields &root, const Config &values, long long xlen,
@@ -170,6 +192,7 @@ void addSoc(TypedFields &root, const Config &values, long long xlen,
 void addBoot(TypedFields &root, const Config &values)
 {
     TypedFields boot;
+    const long long xlen = flatInt(values, "XLEN", 32);
     addField(boot, "sbi_enable",
              TypedJson::boolean(flatBool(values, "SBI_ENABLE")));
     addField(boot, "sbi_impl",
@@ -177,14 +200,18 @@ void addBoot(TypedFields &root, const Config &values)
     addField(boot, "sbi_platform",
              TypedJson::string(flatString(values, "SBI_PLATFORM", "npc")));
     addField(boot, "sbi_fw_base",
-             TypedJson::string(
-                 flatString(values, "SBI_FW_BASE", "0x80000000")));
+             TypedJson::string(flatString(
+                 values, "SBI_FW_BASE",
+                 hexString(defaults::SbiFwBase(
+                     flatInt(values, "NPC_RAM_BASE", defaults::NpcRamBase()))))));
     addField(boot, "sbi_fw_size",
              TypedJson::string(
-                 flatString(values, "SBI_FW_SIZE", "0x00200000")));
+                 flatString(values, "SBI_FW_SIZE",
+                            hexString(defaults::SbiFwSize()))));
     addField(boot, "sbi_next_addr",
              TypedJson::string(
-                 flatString(values, "SBI_NEXT_ADDR", "0x80200000")));
+                 flatString(values, "SBI_NEXT_ADDR",
+                            hexString(defaults::SbiNextAddr(xlen)))));
     addField(boot, "sbi_build_jobs",
              TypedJson::integer(flatInt(values, "SBI_BUILD_JOBS", 0)));
     addField(boot, "sbi_fdt_enable",
@@ -194,7 +221,8 @@ void addBoot(TypedFields &root, const Config &values)
                  flatString(values, "SBI_FDT_PATH", "dts/npc.dts")));
     addField(boot, "sbi_fdt_addr",
              TypedJson::string(
-                 flatString(values, "SBI_FDT_ADDR", "0x80f00000")));
+                 flatString(values, "SBI_FDT_ADDR",
+                            hexString(defaults::SbiFdtAddr()))));
     addField(boot, "linux_boot_enable",
              TypedJson::boolean(flatBool(values, "LINUX_BOOT_ENABLE")));
     addField(boot, "linux_image_path",
@@ -205,7 +233,8 @@ void addBoot(TypedFields &root, const Config &values)
              TypedJson::string(flatString(values, "LINUX_INITRAMFS_PATH")));
     addField(boot, "linux_initramfs_addr",
              TypedJson::string(
-                 flatString(values, "LINUX_INITRAMFS_ADDR", "0x82000000")));
+                 flatString(values, "LINUX_INITRAMFS_ADDR",
+                            hexString(defaults::LinuxInitramfsAddr()))));
     addField(boot, "linux_bootargs",
              TypedJson::string(flatString(values, "LINUX_BOOTARGS")));
     addField(root, "boot", TypedJson::object(std::move(boot)));

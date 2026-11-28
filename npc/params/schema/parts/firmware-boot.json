@@ -3781,9 +3781,37 @@
       "choice_default": false,
       "choice_group": null,
       "choice_option": false,
-      "default": "0x80200000",
+      "default": "0x80400000",
       "default_value": "0x80200000",
       "defaults": [
+        {
+          "condition": "XLEN = 32",
+          "condition_expr": {
+            "left": {
+              "name": "XLEN",
+              "op": "symbol"
+            },
+            "op": "eq",
+            "right": {
+              "name": "32",
+              "op": "symbol"
+            }
+          },
+          "condition_local": "XLEN = 32",
+          "condition_local_expr": {
+            "left": {
+              "name": "XLEN",
+              "op": "symbol"
+            },
+            "op": "eq",
+            "right": {
+              "name": "32",
+              "op": "symbol"
+            }
+          },
+          "kind": "symbol",
+          "value": "0x80400000"
+        },
         {
           "condition": "y",
           "condition_expr": {
@@ -3813,7 +3841,7 @@
       "derived_reason": null,
       "file": "npc/kconfig/Kconfig.sbi",
       "file_order": 9,
-      "help": "OpenSBI/RustSBI 启动完成后跳转到的 S 模式入口。\nLinux 通常放在 0x80200000 附近；具体以镜像链接地址为准。",
+      "help": "OpenSBI/RustSBI 启动完成后跳转到的 S 模式入口。\nLinux 通常放在 0x80200000 附近；具体以镜像链接地址为准。\nRV32 的 FW_JUMP 目标必须按 4 MiB 对齐，因此 XLEN=32 时默认\n0x80400000；RV64 保持 0x80200000（2 MiB 对齐）。",
       "implies": [],
       "is_menuconfig": false,
       "kconfig_type": "hex",

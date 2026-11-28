@@ -1,8 +1,6 @@
 NAME = flash-test
 SRCS = flash.cpp
-# 默认 ARCH 跟随 Kconfig 的 CONFIG_XLEN。
-include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
-ARCH ?= riscv32i-ysyxsoc
-export ARCH
-include ${AM_HOME}/Makefile
-override CXXFLAGS += -std=c++26 -D_GLIBCXX_ASSERTIONS
+AM_TEST_ARCH ?= riscv32i-ysyxsoc
+AM_TEST_CXXFLAGS += -std=c++26 -D_GLIBCXX_ASSERTIONS
+
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../common/am-test.mk)

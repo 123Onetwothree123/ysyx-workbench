@@ -2,9 +2,7 @@ package ysyx_26030103.mem
 
 import chisel3._
 import chisel3.util._
-import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.{
-  LaneStrobe, LaneWord, SelectWord
-}
+import _root_.ysyx_26030103.common.ysyx_26030103_AXI5Lane.SelectWord
 import _root_.ysyx_26030103.common._
 
 private[mem] trait LSUAtomic {
@@ -101,8 +99,8 @@ private[mem] trait LSUAtomic {
   def atomicReadRequestBody(): Unit = {
     io.DataBus.AR.ARVALID := true.B
     io.DataBus.AR.ARADDR := atomicAddressReg
-    io.DataBus.AR.ARLEN := Mux(atomicWide && !busWideBit, 1.U, 0.U)
-    io.DataBus.AR.ARSIZE := Mux(atomicWide && busWideBit, 3.U, 2.U)
+    io.DataBus.AR.ARLEN := atomicBeatPlan.len
+    io.DataBus.AR.ARSIZE := atomicBeatPlan.size
     io.DataBus.AR.ARBURST := 1.U
     // 只有 AR 确实由原子事务驱动时，ARREADY 才算自己的握手。
     when(!dataCacheBusActive && io.DataBus.AR.ARVALID &&
@@ -127,7 +125,7 @@ private[mem] trait LSUAtomic {
             DrainTrap(Mux(responseBad, io.DataBus.R.RRESP, 2.U))
           }
         }.elsewhen(atomicWide) {
-          when(atomicReadBeat === 0.U) {
+          when(atomicBeatPlan.firstBeat(atomicReadBeat)) {
             when(io.DataBus.R.RLAST) {
               // 两拍读在第一个响应就结束：协议错误，按访问故障提交。
               CompleteTrap(true.B, Mux(responseBad,
@@ -156,36 +154,40 @@ private[mem] trait LSUAtomic {
   }
 
   def atomicWriteRequestBody(): Unit = {
-    val atomicWideBus = atomicWide && busWideBit
-    val atomicTwoBeat = atomicWide && !busWideBit
     val atomicHigh =
       if (XLEN == 64) atomicNewData(63, 32) else 0.U(32.W)
     io.DataBus.AW.AWVALID := !AtomicAWDone
     io.DataBus.AW.AWADDR := atomicAddressReg
-    io.DataBus.AW.AWLEN := Mux(atomicTwoBeat, 1.U, 0.U)
-    io.DataBus.AW.AWSIZE := Mux(atomicWideBus, 3.U, 2.U)
+    io.DataBus.AW.AWLEN := atomicBeatPlan.len
+    io.DataBus.AW.AWSIZE := atomicBeatPlan.size
     io.DataBus.AW.AWBURST := 1.U
     io.DataBus.W.WVALID := !atomicWDone
-    io.DataBus.W.WDATA :=
-      Mux(atomicWideBus, Cat(atomicHigh, atomicNewData(31, 0)),
-        Mux(atomicTwoBeat && atomicWBeat, atomicHigh,
-          LaneWord(atomicNewData(31, 0), atomicAddressReg, busWide)))
-    io.DataBus.W.WSTRB :=
-      Mux(atomicWideBus, "hff".U,
-        Mux(atomicTwoBeat && atomicWBeat, "hf".U,
-          LaneStrobe("hf".U, atomicAddressReg, busWide)))
-    io.DataBus.W.WLAST :=
-      !atomicWide || atomicWideBus || atomicWBeat
+    io.DataBus.W.WDATA := ysyx_26030103_LSUAXIBeat.WriteData(
+      atomicNewData(31, 0),
+      atomicHigh,
+      atomicAddressReg,
+      atomicWide,
+      busWide,
+      atomicWBeat
+    )
+    io.DataBus.W.WSTRB := ysyx_26030103_LSUAXIBeat.WriteStrobe(
+      "hf".U,
+      atomicAddressReg,
+      atomicWide,
+      busWide,
+      atomicWBeat
+    )
+    io.DataBus.W.WLAST := atomicBeatPlan.lastBeat(atomicWBeat)
     val AtomicAWFire =
       io.DataBus.AW.AWVALID && io.DataBus.AW.AWREADY
     val atomicWFire =
       io.DataBus.W.WVALID && io.DataBus.W.WREADY
-    val atomicWFinishes =
-      atomicWFire && (!atomicWide || atomicWideBus || atomicWBeat)
+    val atomicWFinishes = atomicWFire && atomicBeatPlan.lastBeat(atomicWBeat)
     when(AtomicAWFire) { AtomicAWDone := true.B }
     when(atomicWFire) {
-      when(atomicTwoBeat && !atomicWBeat) { atomicWBeat := true.B }
-        .otherwise { atomicWDone := true.B }
+      when(atomicBeatPlan.multiBeat && !atomicWBeat) {
+        atomicWBeat := true.B
+      }.otherwise { atomicWDone := true.B }
     }
     when((AtomicAWDone || AtomicAWFire) &&
         (atomicWDone || atomicWFinishes)) {

@@ -2,13 +2,13 @@
   "name": "cpp.guest.sbi.opensbi_payload",
   "tier": "performance",
   "command": [
-    "make",
-    "ARCH=${ARCH}"
+    "make"
   ],
   "timeout": 3600,
   "tags": [
     "guest",
-    "opensbi_payload"
+    "opensbi_payload",
+    "build-only"
   ],
   "enabled": true
 }

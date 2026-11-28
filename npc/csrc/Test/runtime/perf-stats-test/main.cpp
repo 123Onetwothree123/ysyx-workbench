@@ -1,6 +1,8 @@
 import std;
 import npc.DicArchCounterStats;
+import npc.config;
 import npc.NPCSimResult;
+import npc.PerfCounterDescriptors;
 
 namespace
 {
@@ -189,6 +191,126 @@ int main(int argc, char **argv)
               value_for(header_fields, row_fields, "综合面积(um^2)") ==
                   (expect_valid_synth ? "123.5" : "0"),
           "stale synthesis metadata must not be attributed to the current RTL");
+
+
+    // ---- 单一 descriptor 表的一致性检查 -------------------------------
+    // 新增计数器必须同时声明文本/CSV 路由；漏掉任一路由会让下面的
+    // coverage 检查失败，而不是静默地只采样不输出。
+    check(npc::CounterDescriptorCount == 127,
+          "counter descriptor table must cover every statistics field");
+    {
+        std::set<std::string_view> names;
+        std::map<std::string_view, int> expected_csv_labels;
+        for (std::size_t index{0}; index < npc::CounterDescriptorCount; ++index)
+        {
+            const auto &descriptor{npc::CounterDescriptors[index]};
+            check(!descriptor.name.empty(), "descriptor name must not be empty");
+            check(names.insert(descriptor.name).second,
+                  "descriptor names must be unique");
+            check(descriptor.field != nullptr,
+                  "descriptor field pointer must not be null");
+            for (std::size_t other{0}; other < index; ++other)
+            {
+                check(npc::CounterDescriptors[other].field != descriptor.field,
+                      "descriptor fields must be unique");
+            }
+            switch (descriptor.reporting)
+            {
+            case npc::CounterReporting::TextAndCsv:
+                check(descriptor.print_group != npc::PrintGroup::None &&
+                          !descriptor.print_label.empty() &&
+                          !descriptor.csv_label.empty(),
+                      "TextAndCsv descriptor must declare both routes");
+                break;
+            case npc::CounterReporting::TextOnly:
+                check(descriptor.print_group != npc::PrintGroup::None &&
+                          !descriptor.print_label.empty() &&
+                          descriptor.csv_label.empty(),
+                      "TextOnly descriptor must declare only the text route");
+                break;
+            case npc::CounterReporting::InternalOnly:
+                check(descriptor.print_group == npc::PrintGroup::None &&
+                          descriptor.print_label.empty() &&
+                          descriptor.csv_label.empty(),
+                      "InternalOnly descriptor must not declare an output route");
+                break;
+            }
+            if (!descriptor.csv_label.empty())
+                ++expected_csv_labels[descriptor.csv_label];
+        }
+
+        // 读满所有计数器，触发派生行、条件行和 cache 行。
+        DicArchCounterStats full{};
+        for (std::size_t index{0}; index < npc::CounterDescriptorCount; ++index)
+        {
+            full.*npc::CounterDescriptors[index].field = index + 7;
+        }
+        const auto report{
+            npc::FormatDicArchCounterStatistics(full, 1000, 500)};
+        std::string text;
+        for (const auto &line : report.lines)
+        {
+            text += line;
+            text += '\n';
+        }
+        check(text.starts_with(
+                  "数字集成电路计算机体系结构性能计数器\n退休指令: 500\n"),
+              "text report must keep its title and retired-instruction line");
+        check(text.contains(std::format(
+                  "  BTB命中/缺失: {} / {}\n", full.btb_hit, full.btb_miss)),
+              "paired text lines must keep the 'a / b' format");
+        check(text.contains(std::format(
+                  "  AR/AW/R/W/B: {} / {} / {} / {} / {}\n", full.axi_ar,
+                  full.axi_aw, full.axi_r, full.axi_w, full.axi_b)),
+              "five-field text lines must keep order and separators");
+        check(text.contains("分支预测:\n") && text.contains("MMU/TLB:\n") &&
+                  text.contains("指令细分:\n"),
+              "text group headers must stay in the report");
+        if constexpr (npc::HasICache)
+        {
+            check(text.contains("ICache 性能:\n") &&
+                      text.contains(std::format(
+                          "  命中: {} 次\n", full.icache_hit)),
+                  "ICache text section must be generated from descriptors");
+        }
+        if constexpr (npc::HasDCache)
+        {
+            check(text.contains("DCache 性能:\n"),
+                  "DCache text section must be generated from descriptors");
+        }
+        for (std::size_t index{0}; index < npc::CounterDescriptorCount; ++index)
+        {
+            const auto &descriptor{npc::CounterDescriptors[index]};
+            if (descriptor.reporting == npc::CounterReporting::InternalOnly)
+                continue;
+            const bool feature_off{
+                (!npc::HasICache &&
+                 descriptor.print_group == npc::PrintGroup::ICache) ||
+                (!npc::HasDCache &&
+                 descriptor.print_group == npc::PrintGroup::DCache) ||
+                (!npc::HasM &&
+                 descriptor.name.starts_with("mdu_"))};
+            if (!feature_off)
+            {
+                check(report.printed[index],
+                      std::format(
+                          "descriptor '{}' is sampled but never printed",
+                          descriptor.name));
+            }
+        }
+
+        // CSV 表头必须为每个非空 csv_label 出现预期次数（允许基线里
+        // 两个计数器共用同一个列名）。
+        std::map<std::string_view, int> actual_csv_labels;
+        for (const auto &field : header_fields)
+            ++actual_csv_labels[field];
+        for (const auto &[label, count] : expected_csv_labels)
+        {
+            check(actual_csv_labels[label] == count,
+                  std::format(
+                      "CSV column '{}' must appear {} time(s)", label, count));
+        }
+    }
 
     if (failures != 0)
         return 1;

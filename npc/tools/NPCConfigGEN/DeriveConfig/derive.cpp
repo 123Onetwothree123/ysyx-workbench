@@ -1,6 +1,9 @@
+module;
+#include "npc_config_defaults.h"
 module npc.configgen;
 import std;
 namespace npc::configgen {
+namespace defaults = config_defaults;
 // MMU profile 只通过 Kconfig 的 `default ... if MMU_PROFILE_*` 提供
 // 默认值；这里不再按 profile 覆盖 .config。显式写入 .config 的值优先，
 // 需要逐项手调时选择 MMU_PROFILE_CUSTOM。
@@ -133,8 +136,8 @@ void deriveEffectiveConfig(std::map<std::string, std::string> &values)
 
     for (const auto &[key, fallback] :
          std::initializer_list<std::pair<const char *, long long>>{
-             {"PLIC_BASE", 0x0c000000LL},
-             {"PLIC_SIZE", 0x00300000LL}}) {
+             {"PLIC_BASE", defaults::PlicBase()},
+             {"PLIC_SIZE", defaults::PlicSize()}}) {
         if (hasConfigValue(values, key)) {
             std::ostringstream formatted;
             formatted << "0x" << std::hex

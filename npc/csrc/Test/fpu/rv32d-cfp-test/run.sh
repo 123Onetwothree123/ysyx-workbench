@@ -9,73 +9,14 @@
 # 目标已经显式要求 RV32D/C.FP 资产存在。
 set -uo pipefail
 
-fail() {
-    echo "[FAIL] $*" >&2
-    exit 1
-}
-
-show_log() {
-    local log="$1"
-    [[ -f "$log" ]] || return 0
-    echo "---- $log (tail) ----" >&2
-    tail -n 80 "$log" >&2 || true
-}
-
-show_first_divergence() {
-    local log="$1"
-    if grep -q 'DiffTest 校验失败' "$log" 2>/dev/null; then
-        echo "---- 第一次分叉报告 ----" >&2
-        sed -n '/DiffTest 校验失败/,$p' "$log" | head -n 120 >&2 || true
-    fi
-}
-
-require_file() {
-    local path="$1" what="$2"
-    [[ -f "$path" ]] || fail "缺少 $what：$path"
-}
-
-LAST_STATUS=0
-BATCH_MODE="${NPC_BATCH_MODE:-auto}"
-run_npc() {
-    local timeout_s="$1" log="$2" binary="$3" image="$4" ref="$5"
-    local status=0
-    local -a args=("$binary" "$image" --diff "$ref")
-
-    mkdir -p "$(dirname -- "$log")"
-    : >"$log"
-
-    if [[ "$BATCH_MODE" != no ]]; then
-        if timeout "$timeout_s" "${args[@]}" --batch >>"$log" 2>&1; then
-            status=0
-        else
-            status=$?
-        fi
-        if grep -qE -- '--batch 需要在构建时启用 CONFIG_SDB|未知参数: --batch' "$log"; then
-            BATCH_MODE=no
-        fi
-    fi
-    if [[ "$BATCH_MODE" == no ]]; then
-        if timeout "$timeout_s" "${args[@]}" >>"$log" 2>&1; then
-            status=0
-        else
-            status=$?
-        fi
-    fi
-    LAST_STATUS=$status
-}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TEST_RUNNER_TAIL_LINES=80
+TEST_RUNNER_DIVERGENCE_LINES=120
+source "$SCRIPT_DIR/../../common/test_runner.sh"
 
 check_log() {
     local log="$1" xlen="$2"
-    grep -Fq 'DiffTest: ON' "$log" ||
-        fail "RV${xlen} DiffTest 未启用（日志缺少 'DiffTest: ON'）"
-    ! grep -Fq 'DiffTest 校验失败' "$log" || {
-        show_first_divergence "$log"
-        fail "RV${xlen} DiffTest 出现分叉"
-    }
-    grep -Fq 'DiffTest: final state PASS' "$log" ||
-        fail "RV${xlen} DiffTest 未完成最终状态比对"
-    grep -Fq 'HIT GOOD TRAP' "$log" ||
-        fail "RV${xlen} guest 未触发 HIT GOOD TRAP"
+    check_diff_log "$log" 0
     ! grep -q 'HIT BAD TRAP' "$log" ||
         fail "RV${xlen} guest 报告 HIT BAD TRAP"
 }
@@ -84,12 +25,12 @@ run_one() {
     local xlen="$1" binary="$2" image="$3" ref="$4" logdir="$5"
     local log="$logdir/diff-rv${xlen}d-cfp.log"
 
-    require_file "$binary" "RV${xlen} NPC binary"
-    require_file "$image" "RV${xlen}D+C.FP guest 镜像"
-    require_file "$ref" "RV${xlen} NEMU REF"
+    require_file_or_fail "$binary" "RV${xlen} NPC binary"
+    require_file_or_fail "$image" "RV${xlen}D+C.FP guest 镜像"
+    require_file_or_fail "$ref" "RV${xlen} NEMU REF"
 
     echo "[INFO] RV${xlen}D+C.FP DiffTest: $(basename "$image") <-> $(basename "$ref")"
-    run_npc 180 "$log" "$binary" "$image" "$ref"
+    run_npc 180 "$log" "$binary" "$image" --diff "$ref"
     local status="$LAST_STATUS"
     [[ "$status" -eq 0 ]] || {
         show_first_divergence "$log"

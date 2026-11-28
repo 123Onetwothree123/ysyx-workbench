@@ -18,15 +18,9 @@ fi
 
 mkdir -p "$(dirname -- "$log")"
 
-fail() {
-    local message="$1"
-    echo "[FAIL] $message" >&2
-    if [[ -f "$log" ]]; then
-        echo "---- $log (tail) ----" >&2
-        tail -n 60 "$log" >&2 || true
-    fi
-    exit 1
-}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TEST_RUNNER_TAIL_LINES=60
+source "$SCRIPT_DIR/../../common/test_runner.sh"
 
 [[ -x "$npc_bin" ]] || fail "NPC 可执行文件不存在: $npc_bin"
 [[ -f "$guest" ]] || fail "guest 镜像不存在: $guest"
@@ -34,19 +28,19 @@ fail() {
 case "$mode" in
     run)
         timeout 60 "$npc_bin" "$guest" "${batch_args[@]}" >"$log" 2>&1 || \
-            fail "RV${xlen}C guest 运行失败"
+            fail "RV${xlen}C guest 运行失败" "$log"
         grep -Fq 'HIT GOOD TRAP' "$log" ||
-            fail "RV${xlen}C guest 未触发 HIT GOOD TRAP"
+            fail "RV${xlen}C guest 未触发 HIT GOOD TRAP" "$log"
         ;;
     difftest)
         [[ -n "$ref_so" ]] || fail "DiffTest 缺少 REF .so"
         [[ -f "$ref_so" ]] || fail "DiffTest REF 不存在: $ref_so"
         timeout 120 "$npc_bin" "$guest" --diff "$ref_so" "${batch_args[@]}" >"$log" 2>&1 || \
-            fail "RV${xlen}C DiffTest 运行失败"
-        grep -Fq 'DiffTest: ON' "$log" || fail "DiffTest 未启用"
+            fail "RV${xlen}C DiffTest 运行失败" "$log"
+        grep -Fq 'DiffTest: ON' "$log" || fail "DiffTest 未启用" "$log"
         grep -Fq 'DiffTest: final state PASS' "$log" ||
-            fail "DiffTest 未完成最终状态比对"
-        grep -Fq 'HIT GOOD TRAP' "$log" || fail "DiffTest guest 未 GOOD TRAP"
+            fail "DiffTest 未完成最终状态比对" "$log"
+        grep -Fq 'HIT GOOD TRAP' "$log" || fail "DiffTest guest 未 GOOD TRAP" "$log"
         ;;
     *)
         echo "未知 mode: $mode" >&2

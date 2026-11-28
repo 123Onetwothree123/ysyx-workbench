@@ -1,3 +1,5 @@
+module;
+#include "npc_config_defaults.h"
 module npc.kconfig_contract;
 import std;
 constexpr long long kMaxMmuLevels = 8;
@@ -6,6 +8,7 @@ constexpr long long kPageSizeMax = 1LL << 30;
 constexpr long long kPageTableSizeMin = 8;
 constexpr long long kSatpPpnBits = 44;
 namespace npc::kconfig_contract {
+namespace defaults = config_defaults;
 bool standard_pte_layout(const Config& values, long long pte_bits) {
   const long long ppn_high = pte_bits == 32 ? 31 : 53;
   return as_int(values, "MMU_PTE_VALID_BIT", 0) == 0 &&
@@ -97,19 +100,22 @@ std::vector<std::string> validate_soc_rtl(
   };
   const SocAddressExpectation expectations[] = {
       {"UART", "PMA_UART_BASE", "PMA_UART_SIZE", "uartBase", "uartSize",
-       0x10000000LL, 0x00001000LL},
+       defaults::PmaUartBase(), defaults::PmaUartSize()},
       {"GPIO", "PMA_GPIO_BASE", "PMA_GPIO_SIZE", "gpioBase", "gpioSize",
-       0x10002000LL, 0x00000010LL},
+       defaults::PmaGpioBase(), defaults::PmaGpioSize()},
       {"KEYBOARD", "PMA_KEYBOARD_BASE", "PMA_KEYBOARD_SIZE", "keyboardBase",
-       "keyboardSize", 0x10011000LL, 0x00000008LL},
+       "keyboardSize", defaults::PmaKeyboardBase(),
+       defaults::PmaKeyboardSize()},
       {"VGA", "PMA_VGA_BASE", "PMA_VGA_SIZE", "vgaBase", "vgaSize",
-       0x21000000LL, 0x00200000LL},
+       defaults::PmaVgaBase(), defaults::PmaVgaSize()},
       {"SRAM", "PMA_SRAM_BASE", "PMA_SRAM_SIZE", "sramBase", "sramSize",
-       0x0f000000LL, 0x00008000LL},
+       defaults::PmaSramBase(), defaults::PmaSramSize()},
       {"CHIPLINK_MMIO", "PMA_CHIPLINK_MMIO_BASE", "PMA_CHIPLINK_MMIO_SIZE",
-       "chiplinkMmioBase", "chiplinkMmioSize", 0x40000000LL, 0x40000000LL},
+       "chiplinkMmioBase", "chiplinkMmioSize",
+       defaults::PmaChiplinkMmioBase(), defaults::PmaChiplinkMmioSize()},
       {"CHIPLINK_MEM", "PMA_CHIPLINK_MEM_BASE", "PMA_CHIPLINK_MEM_SIZE",
-       "chiplinkMemBase", "chiplinkMemSize", 0xc0000000LL, 0x40000000LL},
+       "chiplinkMemBase", "chiplinkMemSize",
+       defaults::PmaChiplinkMemBase(), defaults::PmaChiplinkMemSize()},
   };
   for (const auto& expectation : expectations) {
     const auto base = addresses.find(expectation.rtlBase);
@@ -207,8 +213,11 @@ std::vector<std::string> validate_config(const Config& values,
         " 非法：只允许 32 或 64。Kconfig 的 int range "
         "无法表达离散集合，33..63 由本校验拒绝");
   }
-  const long long ram_size = as_int(values, "NPC_RAM_SIZE", 0x04000000);
-  const long long ram_base = as_int(values, "NPC_RAM_BASE", 0x80000000);
+  const bool fpga_only = as_bool(values, "NPC_MODE_FPGA_ONLY", false);
+  const long long ram_size =
+      as_int(values, "NPC_RAM_SIZE", defaults::NpcRamSize());
+  const long long ram_base =
+      as_int(values, "NPC_RAM_BASE", defaults::NpcRamBase());
   if (ram_base < 0 || ram_base % 4 != 0) {
     err("NPC_RAM_BASE=" + hex0x(ram_base) + " 必须非负且按 4 字节对齐");
   }
@@ -740,9 +749,12 @@ std::vector<std::string> validate_config(const Config& values,
     if (sbi_impl == "none") {
       err("SBI_ENABLE=y 但未选择 SBI 实现（SBI_IMPL_OPENSBI/RUSTSBI）");
     }
-    const long long base = as_int(values, "SBI_FW_BASE", 0x80000000);
-    const long long size = as_int(values, "SBI_FW_SIZE", 0x00200000);
-    const long long next_addr = as_int(values, "SBI_NEXT_ADDR", 0x80200000);
+    const long long base =
+        as_int(values, "SBI_FW_BASE", defaults::SbiFwBase(ram_base));
+    const long long size =
+        as_int(values, "SBI_FW_SIZE", defaults::SbiFwSize());
+    const long long next_addr =
+        as_int(values, "SBI_NEXT_ADDR", defaults::SbiNextAddr(xlen));
     if (base <= 0 || base % 4096 != 0) {
       err("SBI_FW_BASE=" + hex0x(base) + " 必须是正的 4 KiB 对齐地址");
     }
@@ -764,7 +776,8 @@ std::vector<std::string> validate_config(const Config& values,
       }
     }
     if (as_bool(values, "SBI_FDT_ENABLE", false)) {
-      const long long fdt_addr = as_int(values, "SBI_FDT_ADDR", 0x80F00000);
+      const long long fdt_addr =
+          as_int(values, "SBI_FDT_ADDR", defaults::SbiFdtAddr());
       const std::string fdt_path =
           as_str(values, "SBI_FDT_PATH", "dts/npc.dts");
       if (fdt_path.empty()) {
@@ -829,11 +842,15 @@ std::vector<std::string> validate_config(const Config& values,
     if (as_str(values, "LINUX_IMAGE_PATH", "").empty()) {
       err("LINUX_BOOT_ENABLE=y 但 LINUX_IMAGE_PATH 为空");
     }
-    const long long next_addr = as_int(values, "SBI_NEXT_ADDR", 0x80200000);
-    const long long fdt_addr = as_int(values, "SBI_FDT_ADDR", 0x83F00000);
+    const long long next_addr =
+        as_int(values, "SBI_NEXT_ADDR", defaults::SbiNextAddr(xlen));
+    const long long fdt_addr =
+        as_int(values, "SBI_FDT_ADDR", defaults::SbiFdtAddr());
     constexpr long long fdt_reserve = 0x10000;
-    const long long fw_base = as_int(values, "SBI_FW_BASE", 0x80000000);
-    const long long fw_size = as_int(values, "SBI_FW_SIZE", 0x00200000);
+    const long long fw_base =
+        as_int(values, "SBI_FW_BASE", defaults::SbiFwBase(ram_base));
+    const long long fw_size =
+        as_int(values, "SBI_FW_SIZE", defaults::SbiFwSize());
     const long long fw_end = fw_base + fw_size;
     const std::string mmu_type = linux_mmu_type(values, xlen);
     if (mmu_type.empty()) {
@@ -847,7 +864,7 @@ std::vector<std::string> validate_config(const Config& values,
         err("LINUX_INITRAMFS_ENABLE=y 但 LINUX_INITRAMFS_PATH 为空");
       }
       const long long initrd_addr =
-          as_int(values, "LINUX_INITRAMFS_ADDR", 0x82000000);
+          as_int(values, "LINUX_INITRAMFS_ADDR", defaults::LinuxInitramfsAddr());
       if (initrd_addr % 4096 != 0) {
         err("LINUX_INITRAMFS_ADDR=" + hex0x(initrd_addr) + " 必须按 "
             "4 KiB 对齐");
@@ -879,13 +896,15 @@ std::vector<std::string> validate_config(const Config& values,
     if (!as_bool(values, "SBI_FDT_ENABLE", false)) {
       err("NPC_UBOOT_ENABLE=y 需要 SBI_FDT_ENABLE=y（U-Boot 需要 a1=DTB）");
     }
-    const long long next_addr = as_int(values, "SBI_NEXT_ADDR", 0x80200000);
-    const long long fdt_addr = as_int(values, "SBI_FDT_ADDR", 0x80F00000);
+    const long long next_addr =
+        as_int(values, "SBI_NEXT_ADDR", defaults::SbiNextAddr(xlen));
+    const long long fdt_addr =
+        as_int(values, "SBI_FDT_ADDR", defaults::SbiFdtAddr());
     constexpr long long fdt_reserve = 0x10000;
     const std::vector<std::pair<std::string, long long>> uboot_payloads = {
-        {"NPC_UBOOT_EFI_APP_ADDR", 0x80600000},
-        {"NPC_UBOOT_INITRAMFS_ADDR", 0x80800000},
-        {"NPC_UBOOT_KERNEL_ADDR", 0x81000000},
+        {"NPC_UBOOT_EFI_APP_ADDR", defaults::NpcUbootEfiAppAddr()},
+        {"NPC_UBOOT_INITRAMFS_ADDR", defaults::NpcUbootInitramfsAddr()},
+        {"NPC_UBOOT_KERNEL_ADDR", defaults::NpcUbootKernelAddr()},
     };
     long long previous_end = next_addr + 0x1000;
     for (const auto& [symbol, fallback] : uboot_payloads) {
@@ -1073,91 +1092,103 @@ std::vector<std::string> validate_config(const Config& values,
     }
   }
   // PMA 区域表：检查范围、重叠和复位入口。
-  struct PmaRange {
-    const char *name;
-    const char *baseKey;
-    const char *sizeKey;
-    long long defaultBase;
-    long long defaultSize;
-    bool executable;
-  };
-  const PmaRange pmaRanges[] = {
-      {"CLINT", "PMA_CLINT_BASE", "PMA_CLINT_SIZE", 0x02000000LL,
-       0x00010000LL, false},
-      {"SRAM", "PMA_SRAM_BASE", "PMA_SRAM_SIZE", 0x0f000000LL, 0x00008000LL,
-       true},
-      {"UART", "PMA_UART_BASE", "PMA_UART_SIZE", 0x10000000LL, 0x00001000LL,
-       false},
-      {"SPI", "PMA_SPI_BASE", "PMA_SPI_SIZE", 0x10001000LL, 0x00001000LL,
-       false},
-      {"GPIO", "PMA_GPIO_BASE", "PMA_GPIO_SIZE", 0x10002000LL, 0x00000010LL,
-       false},
-      {"KEYBOARD", "PMA_KEYBOARD_BASE", "PMA_KEYBOARD_SIZE", 0x10011000LL,
-       0x00000008LL, false},
-      {"VGA", "PMA_VGA_BASE", "PMA_VGA_SIZE", 0x21000000LL, 0x00200000LL,
-       false},
-      {"MROM", "PMA_MROM_BASE", "PMA_MROM_SIZE", 0x20000000LL, 0x00001000LL,
-       true},
-      {"FLASH", "PMA_FLASH_BASE", "PMA_FLASH_SIZE", 0x30000000LL,
-       0x10000000LL, true},
-      {"PSRAM", "PMA_PSRAM_BASE", "PMA_PSRAM_SIZE", 0x80000000LL,
-       0x00400000LL, true},
-      {"SDRAM", "PMA_SDRAM_BASE", "PMA_SDRAM_SIZE", 0xa0000000LL,
-       0x02000000LL, true},
-      {"CHIPLINK_MMIO", "PMA_CHIPLINK_MMIO_BASE", "PMA_CHIPLINK_MMIO_SIZE",
-       0x40000000LL, 0x40000000LL, false},
-      {"CHIPLINK_MEM", "PMA_CHIPLINK_MEM_BASE", "PMA_CHIPLINK_MEM_SIZE",
-       0xc0000000LL, 0x40000000LL, true},
-  };
-  struct CheckedPma {
-    const char *name;
-    unsigned long long base;
-    unsigned long long size;
-    bool executable;
-  };
-  std::vector<CheckedPma> checkedPma;
-  const unsigned long long pmaLimit = 1ULL << 32;
-  for (const auto &range : pmaRanges) {
-    const long long base =
-        as_int(values, range.baseKey, range.defaultBase);
-    const long long size =
-        as_int(values, range.sizeKey, range.defaultSize);
-    if (base < 0 || size <= 0 ||
-        static_cast<unsigned long long>(base) +
-                static_cast<unsigned long long>(size) >
-            pmaLimit) {
-      err(std::string("PMA ") + range.name + " 范围非法：base=" +
-          hex0x(base) + ", size=" + hex0x(size));
-      continue;
+  // FPGA-only 下整个 PMA 菜单是隐藏的，Kconfig 不会写出这些符号；此时
+  // 用默认表硬套会检查一份并不存在的地址映射，因此直接跳过。
+  if (!fpga_only) {
+    struct PmaRange {
+      const char *name;
+      const char *baseKey;
+      const char *sizeKey;
+      long long defaultBase;
+      long long defaultSize;
+      bool executable;
+    };
+    const bool linux_map =
+        as_bool(values, "SOC_MEMORY_MAP_LINUX", false);
+    const long long mrom_base =
+        as_int(values, "PMA_MROM_BASE", defaults::PmaMromBase());
+    const PmaRange pmaRanges[] = {
+        {"CLINT", "PMA_CLINT_BASE", "PMA_CLINT_SIZE",
+         defaults::PmaClintBase(), defaults::PmaClintSize(), false},
+        {"SRAM", "PMA_SRAM_BASE", "PMA_SRAM_SIZE", defaults::PmaSramBase(),
+         defaults::PmaSramSize(), true},
+        {"UART", "PMA_UART_BASE", "PMA_UART_SIZE", defaults::PmaUartBase(),
+         defaults::PmaUartSize(), false},
+        {"SPI", "PMA_SPI_BASE", "PMA_SPI_SIZE", defaults::PmaSpiBase(),
+         defaults::PmaSpiSize(), false},
+        {"GPIO", "PMA_GPIO_BASE", "PMA_GPIO_SIZE", defaults::PmaGpioBase(),
+         defaults::PmaGpioSize(), false},
+        {"KEYBOARD", "PMA_KEYBOARD_BASE", "PMA_KEYBOARD_SIZE",
+         defaults::PmaKeyboardBase(), defaults::PmaKeyboardSize(), false},
+        {"VGA", "PMA_VGA_BASE", "PMA_VGA_SIZE", defaults::PmaVgaBase(),
+         defaults::PmaVgaSize(), false},
+        {"MROM", "PMA_MROM_BASE", "PMA_MROM_SIZE", mrom_base,
+         defaults::PmaMromSize(), true},
+        {"FLASH", "PMA_FLASH_BASE", "PMA_FLASH_SIZE",
+         defaults::PmaFlashBase(), defaults::PmaFlashSize(), true},
+        {"PSRAM", "PMA_PSRAM_BASE", "PMA_PSRAM_SIZE",
+         defaults::PmaPsramBase(linux_map, fpga_only),
+         defaults::PmaPsramSize(), true},
+        {"SDRAM", "PMA_SDRAM_BASE", "PMA_SDRAM_SIZE",
+         defaults::PmaSdramBase(linux_map, fpga_only),
+         defaults::PmaSdramSize(linux_map, fpga_only), true},
+        {"CHIPLINK_MMIO", "PMA_CHIPLINK_MMIO_BASE", "PMA_CHIPLINK_MMIO_SIZE",
+         defaults::PmaChiplinkMmioBase(), defaults::PmaChiplinkMmioSize(),
+         false},
+        {"CHIPLINK_MEM", "PMA_CHIPLINK_MEM_BASE", "PMA_CHIPLINK_MEM_SIZE",
+         defaults::PmaChiplinkMemBase(), defaults::PmaChiplinkMemSize(), true},
+    };
+    struct CheckedPma {
+      const char *name;
+      unsigned long long base;
+      unsigned long long size;
+      bool executable;
+    };
+    std::vector<CheckedPma> checkedPma;
+    const unsigned long long pmaLimit = 1ULL << 32;
+    for (const auto &range : pmaRanges) {
+      const long long base =
+          as_int(values, range.baseKey, range.defaultBase);
+      const long long size =
+          as_int(values, range.sizeKey, range.defaultSize);
+      if (base < 0 || size <= 0 ||
+          static_cast<unsigned long long>(base) +
+                  static_cast<unsigned long long>(size) >
+              pmaLimit) {
+        err(std::string("PMA ") + range.name + " 范围非法：base=" +
+            hex0x(base) + ", size=" + hex0x(size));
+        continue;
+      }
+      checkedPma.push_back(
+          {range.name, static_cast<unsigned long long>(base),
+           static_cast<unsigned long long>(size), range.executable});
     }
-    checkedPma.push_back(
-        {range.name, static_cast<unsigned long long>(base),
-         static_cast<unsigned long long>(size), range.executable});
-  }
-  for (std::size_t i = 0; i < checkedPma.size(); ++i) {
-    for (std::size_t j = i + 1; j < checkedPma.size(); ++j) {
-      const auto &lhs = checkedPma[i];
-      const auto &rhs = checkedPma[j];
-      if (lhs.base < rhs.base + rhs.size &&
-          rhs.base < lhs.base + lhs.size) {
-        err(std::string("PMA 区域重叠：") + lhs.name + " 与 " + rhs.name);
+    for (std::size_t i = 0; i < checkedPma.size(); ++i) {
+      for (std::size_t j = i + 1; j < checkedPma.size(); ++j) {
+        const auto &lhs = checkedPma[i];
+        const auto &rhs = checkedPma[j];
+        if (lhs.base < rhs.base + rhs.size &&
+            rhs.base < lhs.base + lhs.size) {
+          err(std::string("PMA 区域重叠：") + lhs.name + " 与 " + rhs.name);
+        }
       }
     }
-  }
-  const long long resetAddr =
-      as_int(values, "PMA_SOC_RESET_ADDR", 0x20000000LL);
-  bool resetInExecutable = false;
-  for (const auto &range : checkedPma) {
-    if (range.executable &&
-        static_cast<unsigned long long>(resetAddr) >= range.base &&
-        static_cast<unsigned long long>(resetAddr) < range.base + range.size) {
-      resetInExecutable = true;
-      break;
+    const long long resetAddr = as_int(
+        values, "PMA_SOC_RESET_ADDR", defaults::PmaSocResetAddr(mrom_base));
+    bool resetInExecutable = false;
+    for (const auto &range : checkedPma) {
+      if (range.executable &&
+          static_cast<unsigned long long>(resetAddr) >= range.base &&
+          static_cast<unsigned long long>(resetAddr) <
+              range.base + range.size) {
+        resetInExecutable = true;
+        break;
+      }
     }
-  }
-  if (!resetInExecutable) {
-    err("PMA_SOC_RESET_ADDR=" + hex0x(resetAddr) +
-        " 必须落在可执行 PMA 区域");
+    if (!resetInExecutable) {
+      err("PMA_SOC_RESET_ADDR=" + hex0x(resetAddr) +
+          " 必须落在可执行 PMA 区域");
+    }
   }
   return errors;
 }

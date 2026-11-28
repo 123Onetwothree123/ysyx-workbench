@@ -130,8 +130,14 @@ void addMDU(TypedFields &root, const Config &values)
                  flatBool(values, "MUL_COMPRESSOR_ALLOW_REDUNDANT")));
 
     TypedFields shiftAdd;
+    const long long mulIterBitsDefault =
+        (flatBool(values, "MUL_ENCODING_BOOTH") &&
+         flatBool(values, "MUL_SHIFT_ADD") && flatBool(values, "RISCV_M"))
+            ? 2
+            : 1;
     addField(shiftAdd, "iter_bits",
-             TypedJson::integer(flatInt(values, "MUL_ITER_BITS", 1)));
+             TypedJson::integer(
+                 flatInt(values, "MUL_ITER_BITS", mulIterBitsDefault)));
     addField(shiftAdd, "split",
              TypedJson::integer(flatInt(values, "MUL_SPLIT", 1)));
     addField(shiftAdd, "early_out",
@@ -159,7 +165,8 @@ void addMDU(TypedFields &root, const Config &values)
     addField(MDU, "div_early_out",
              TypedJson::boolean(flatBool(values, "DIV_EARLY_OUT")));
     addField(MDU, "mul_iter_bits",
-             TypedJson::integer(flatInt(values, "MUL_ITER_BITS", 1)));
+             TypedJson::integer(
+                 flatInt(values, "MUL_ITER_BITS", mulIterBitsDefault)));
     addField(MDU, "mul_pipeline",
              TypedJson::integer(flatInt(values, "MUL_PIPELINE", 0)));
     addField(MDU, "mul_split",

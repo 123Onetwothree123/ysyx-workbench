@@ -23,30 +23,16 @@ private[mem] trait LSUHelpers {
       needsSegments: Bool
   )
 
+  // 分段地址/页 1 判定只有一份实现，见 ysyx_26030103_LSUSegment。
   private[mem] def Page1Va(va: UInt, addressWidth: Int): UInt =
-    Cat(va(addressWidth - 1, 12) + 1.U, 0.U(12.W))
+    ysyx_26030103_LSUSegment.Page1Va(va, addressWidth)
 
   private[mem] def CrossesPage(
       upper: UInt,
       base: UInt,
       addressWidth: Int
   ): Bool =
-    upper(addressWidth - 1, 12) =/= base(addressWidth - 1, 12)
-
-  private[mem] def Page1Paddr(
-      base: UInt,
-      page1Pa: UInt,
-      page1Valid: Bool,
-      va: UInt,
-      addressWidth: Int
-  ): UInt = {
-    val page1Base = Mux(
-      page1Valid,
-      page1Pa & ~"hfff".U(addressWidth.W),
-      (base & ~"hfff".U(addressWidth.W)) + "h1000".U(addressWidth.W)
-    )
-    page1Base | va(11, 0)
-  }
+    ysyx_26030103_LSUSegment.CrossesPage(upper, base, addressWidth)
 
   private[mem] def PlanAccess(
       va: UInt,
@@ -153,11 +139,11 @@ private[mem] trait LSUHelpers {
       GranuleLog2: Int
   ): (UInt, UInt) = {
     val GranuleBytes = 1 << GranuleLog2
-    val SegmentAddress = Cat(address(AddressWidth - 1, GranuleLog2),
-      0.U(GranuleLog2.W)) + (SegmentIndex << GranuleLog2)
+    val GranuleAddress = ysyx_26030103_LSUSegment.SegmentAddress(
+      address, SegmentIndex, GranuleLog2, AddressWidth)
     val endAddress = address + accessByteSize(width)
     val lanes = (0 until GranuleBytes).map { lane =>
-      val byteAddress = SegmentAddress + lane.U
+      val byteAddress = GranuleAddress + lane.U
       val valid = byteAddress >= address && byteAddress < endAddress
       val byteOffset = byteAddress - address
       val byteData = (storeData >> (byteOffset << 3))(7, 0)
@@ -168,10 +154,8 @@ private[mem] trait LSUHelpers {
     (data, strobe)
   }
 
-  private[mem] def axiSizeFor(width: UInt): UInt = MuxLookup(width, 2.U(3.W))(
-    Seq("b00".U -> 0.U(3.W), "b01".U -> 1.U(3.W), "b10".U -> 2.U(3.W),
-      "b11".U -> 2.U(3.W))
-  )
+  private[mem] def axiSizeFor(width: UInt): UInt =
+    ysyx_26030103_LSUAXIBeat.WidthSize(width)
 
   private[mem] def alignStore(
       storeData: UInt,

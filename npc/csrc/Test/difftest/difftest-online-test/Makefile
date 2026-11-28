@@ -11,8 +11,9 @@ DIFFTEST_LOG := $(TEST_DIR)/build/difftest-online.log
 DIFFTEST_REJECT_LOG := $(TEST_DIR)/build/difftest-reject.log
 DIFFTEST_SOC_LOG := $(TEST_DIR)/build/difftest-soc.log
 NPC_BIN := $(NPC_DIR)/build/ysyx_26030103_npc
-NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '*.c' -o -name '*.h' \) -print)
 HOST_CXX ?= g++
+
+include $(TEST_DIR)/../common/nemu_ref.mk
 
 NAME = difftest-online-test
 SRCS = main.cpp
@@ -73,10 +74,7 @@ difftest-soc-run: insert-arg $(REF_SO)
 	@grep -Fq 'DiffTest: final state PASS' $(DIFFTEST_SOC_LOG)
 	@grep -Fq 'HIT GOOD TRAP' $(DIFFTEST_SOC_LOG)
 
-REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
-
-$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
-	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_DIR) share
+$(eval $(call nemu_ref_rule,$(REF_SO),riscv32,$(REF_OBJ_DIR),share))
 
 $(LEGACY_REF_SO): legacy_ref.cpp
 	mkdir -p $(@D)

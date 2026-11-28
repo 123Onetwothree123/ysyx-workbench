@@ -1,11 +1,5 @@
 NAME = cte-handler-test
 SRCS = main.c
+AM_TEST_CFLAGS_AFTER += -std=gnu11
 
-# 默认 ARCH/ISA 跟随 Kconfig 的 CONFIG_XLEN。
-include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
-ARCH ?= $(XLEN_AM_ARCH)
-export ARCH
-
-include $(AM_HOME)/Makefile
-
-override CFLAGS += -std=gnu11
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../common/am-test.mk)

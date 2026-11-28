@@ -2,13 +2,13 @@
   "name": "cpp.nvboard.NVBoardVideoTest",
   "tier": "performance",
   "command": [
-    "make",
-    "ARCH=${ARCH}"
+    "make"
   ],
   "timeout": 3600,
   "tags": [
     "nvboard",
-    "NVBoardVideoTest"
+    "NVBoardVideoTest",
+    "build-only"
   ],
   "enabled": true
 }

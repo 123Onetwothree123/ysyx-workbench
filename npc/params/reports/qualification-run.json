@@ -14,7 +14,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 46
+          "violations": 45
         },
         "rv32i": {
           "predicates": [
@@ -34,7 +34,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 41
+          "violations": 40
         },
         "rv64gc-linux": {
           "predicates": [
@@ -52,12 +52,12 @@
             "soc-xlen-64"
           ],
           "status": "experimental",
-          "violations": 52
+          "violations": 53
         }
       },
       "compatible_profiles": [],
       "defconfig": "mmu_default",
-      "effective_hash": "d613dfbcce4457a42b40546a5dc9a2cf38c3471cce8faed59b1f8883b8073d67",
+      "effective_hash": "4f0c85e059272e1abb5bd5e47bb6267021db354044a94e47879b386510310acf",
       "failed_stage": null,
       "incompatible": {
         "rv32gc-linux": {
@@ -71,7 +71,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 46
+          "violations": 45
         },
         "rv32i": {
           "errors": [],
@@ -91,7 +91,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 41
+          "violations": 40
         },
         "rv64gc-linux": {
           "errors": [],
@@ -109,41 +109,41 @@
             "flat-has-pmp-yes",
             "soc-xlen-64"
           ],
-          "violations": 52
+          "violations": 53
         }
       },
       "l2": null,
-      "npc_config_hash": "e7686f5f7a4427a2",
+      "npc_config_hash": "d1a07abe8002e1d4",
       "path": "npc/configs/mmu_default_defconfig",
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
           "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/mmu_default/logs/l0-defconfig-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/mmu_default/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.014,
-          "log": "/tmp/opencode/paramgen-qualify-all/mmu_default/logs/l0-generated-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/mmu_default/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.017,
-          "log": "/tmp/opencode/paramgen-qualify-all/mmu_default/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.018,
+          "log": "/tmp/opencode/paramgen-qualify/mmu_default/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.023,
-          "log": "/tmp/opencode/paramgen-qualify-all/mmu_default/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.018,
+          "log": "/tmp/opencode/paramgen-qualify/mmu_default/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.016,
-          "log": "/tmp/opencode/paramgen-qualify-all/mmu_default/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/mmu_default/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -164,7 +164,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 19
+          "violations": 18
         },
         "rv32i": {
           "predicates": [
@@ -186,7 +186,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 14
+          "violations": 13
         },
         "rv64gc-linux": {
           "predicates": [
@@ -204,12 +204,12 @@
             "soc-xlen-64"
           ],
           "status": "experimental",
-          "violations": 33
+          "violations": 34
         }
       },
       "compatible_profiles": [],
       "defconfig": "nanos",
-      "effective_hash": "99345e5b2e3dc4099d010599dfeb0f09d9a3b51c246ecade4435c2a1070a373e",
+      "effective_hash": "a36377cf8ca76837e7c9f9693475ee66fe5b60df48958bb0cde2044bad06f039",
       "failed_stage": null,
       "incompatible": {
         "rv32gc-linux": {
@@ -223,7 +223,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 19
+          "violations": 18
         },
         "rv32i": {
           "errors": [],
@@ -245,7 +245,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 14
+          "violations": 13
         },
         "rv64gc-linux": {
           "errors": [],
@@ -263,41 +263,41 @@
             "flat-has-pmp-yes",
             "soc-xlen-64"
           ],
-          "violations": 33
+          "violations": 34
         }
       },
       "l2": null,
-      "npc_config_hash": "92c5d63da371b1e5",
+      "npc_config_hash": "4bb49052f8068953",
       "path": "npc/configs/nanos_defconfig",
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
           "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/nanos/logs/l0-defconfig-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/nanos/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/nanos/logs/l0-generated-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/nanos/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.016,
-          "log": "/tmp/opencode/paramgen-qualify-all/nanos/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.019,
+          "log": "/tmp/opencode/paramgen-qualify/nanos/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.009,
-          "log": "/tmp/opencode/paramgen-qualify-all/nanos/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.019,
+          "log": "/tmp/opencode/paramgen-qualify/nanos/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.026,
-          "log": "/tmp/opencode/paramgen-qualify-all/nanos/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/nanos/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -319,7 +319,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 78
+          "violations": 77
         },
         "rv32i": {
           "predicates": [
@@ -341,7 +341,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 73
+          "violations": 72
         },
         "rv64gc-linux": {
           "predicates": [
@@ -360,12 +360,12 @@
             "soc-xlen-64"
           ],
           "status": "experimental",
-          "violations": 83
+          "violations": 84
         }
       },
       "compatible_profiles": [],
       "defconfig": "rv32_c",
-      "effective_hash": "a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a",
+      "effective_hash": "d978e8baa610074c1e4d8f5bf9ff72e2622ea314b8f3cba6718606ade1918256",
       "failed_stage": null,
       "incompatible": {
         "rv32gc-linux": {
@@ -380,7 +380,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 78
+          "violations": 77
         },
         "rv32i": {
           "errors": [],
@@ -402,7 +402,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 73
+          "violations": 72
         },
         "rv64gc-linux": {
           "errors": [],
@@ -421,41 +421,41 @@
             "flat-has-pmp-yes",
             "soc-xlen-64"
           ],
-          "violations": 83
+          "violations": 84
         }
       },
       "l2": null,
-      "npc_config_hash": "578501289129d1dc",
+      "npc_config_hash": "d0048d29751ef04a",
       "path": "npc/configs/rv32_c_defconfig",
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
           "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_c/logs/l0-defconfig-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32_c/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_c/logs/l0-generated-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_c/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
           "duration_s": 0.008,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_c/logs/l0-kconfig-defconfig.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32_c/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
           "duration_s": 0.008,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_c/logs/l0-kconfig-syncconfig.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32_c/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
           "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_c/logs/l1-npc-config-gen.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32_c/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -476,7 +476,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 75
+          "violations": 74
         },
         "rv32i": {
           "predicates": [
@@ -500,7 +500,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 83
+          "violations": 82
         },
         "rv64gc-linux": {
           "predicates": [
@@ -518,12 +518,12 @@
             "soc-xlen-64"
           ],
           "status": "experimental",
-          "violations": 80
+          "violations": 81
         }
       },
       "compatible_profiles": [],
       "defconfig": "rv32_f",
-      "effective_hash": "e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3",
+      "effective_hash": "cedee85baae8dbac3316542a7e2bbceb873ce6c51b965c64e897c2efb366fb72",
       "failed_stage": null,
       "incompatible": {
         "rv32gc-linux": {
@@ -537,7 +537,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 75
+          "violations": 74
         },
         "rv32i": {
           "errors": [],
@@ -561,7 +561,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 83
+          "violations": 82
         },
         "rv64gc-linux": {
           "errors": [],
@@ -579,201 +579,201 @@
             "flat-has-pmp-yes",
             "soc-xlen-64"
           ],
-          "violations": 80
+          "violations": 81
         }
       },
       "l2": null,
-      "npc_config_hash": "9305fd044e7d886c",
+      "npc_config_hash": "7f6b2d803eab2eda",
       "path": "npc/configs/rv32_f_defconfig",
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_f/logs/l0-defconfig-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_f/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
           "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_f/logs/l0-generated-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32_f/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
           "duration_s": 0.008,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_f/logs/l0-kconfig-defconfig.log",
-          "ok": true,
-          "returncode": 0
-        },
-        "l0-kconfig-syncconfig": {
-          "duration_s": 0.008,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_f/logs/l0-kconfig-syncconfig.log",
-          "ok": true,
-          "returncode": 0
-        },
-        "l1-npc-config-gen": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_f/logs/l1-npc-config-gen.log",
-          "ok": true,
-          "returncode": 0
-        }
-      },
-      "status": "experimental"
-    },
-    {
-      "best_profile": "rv32i",
-      "classification": {
-        "rv32gc-linux": {
-          "predicates": [
-            "mmu",
-            "flat-sbi-enable-yes",
-            "flat-sbi-impl-opensbi-yes",
-            "flat-sbi-fdt-enable-yes",
-            "flat-linux-boot-enable-yes",
-            "flat-has-pmp-yes"
-          ],
-          "status": "experimental",
-          "violations": 72
-        },
-        "rv32i": {
-          "predicates": [
-            "isa-m-no",
-            "isa-a-no",
-            "isa-c-no",
-            "isa-f-no",
-            "isa-d-no",
-            "isa-s-no",
-            "isa-u-no"
-          ],
-          "status": "experimental",
-          "violations": 53
-        },
-        "rv32imac-linux": {
-          "predicates": [
-            "mmu",
-            "isa-f-no",
-            "isa-d-no",
-            "flat-sbi-enable-yes",
-            "flat-sbi-impl-opensbi-yes",
-            "flat-sbi-fdt-enable-yes",
-            "flat-linux-boot-enable-yes",
-            "flat-has-pmp-yes"
-          ],
-          "status": "experimental",
-          "violations": 83
-        },
-        "rv64gc-linux": {
-          "predicates": [
-            "xlen-64",
-            "mmu",
-            "mmu-pte-format",
-            "mmu-pte-size",
-            "mmu-levels",
-            "flat-sbi-enable-yes",
-            "flat-sbi-impl-opensbi-yes",
-            "flat-sbi-fdt-enable-yes",
-            "flat-linux-boot-enable-yes",
-            "flat-has-pmp-yes",
-            "soc-xlen-64"
-          ],
-          "status": "experimental",
-          "violations": 77
-        }
-      },
-      "compatible_profiles": [],
-      "defconfig": "rv32_fd",
-      "effective_hash": "0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152",
-      "failed_stage": null,
-      "incompatible": {
-        "rv32gc-linux": {
-          "errors": [],
-          "predicates": [
-            "mmu",
-            "flat-sbi-enable-yes",
-            "flat-sbi-impl-opensbi-yes",
-            "flat-sbi-fdt-enable-yes",
-            "flat-linux-boot-enable-yes",
-            "flat-has-pmp-yes"
-          ],
-          "violations": 72
-        },
-        "rv32i": {
-          "errors": [],
-          "predicates": [
-            "isa-m-no",
-            "isa-a-no",
-            "isa-c-no",
-            "isa-f-no",
-            "isa-d-no",
-            "isa-s-no",
-            "isa-u-no"
-          ],
-          "violations": 53
-        },
-        "rv32imac-linux": {
-          "errors": [],
-          "predicates": [
-            "mmu",
-            "isa-f-no",
-            "isa-d-no",
-            "flat-sbi-enable-yes",
-            "flat-sbi-impl-opensbi-yes",
-            "flat-sbi-fdt-enable-yes",
-            "flat-linux-boot-enable-yes",
-            "flat-has-pmp-yes"
-          ],
-          "violations": 83
-        },
-        "rv64gc-linux": {
-          "errors": [],
-          "predicates": [
-            "xlen-64",
-            "mmu",
-            "mmu-pte-format",
-            "mmu-pte-size",
-            "mmu-levels",
-            "flat-sbi-enable-yes",
-            "flat-sbi-impl-opensbi-yes",
-            "flat-sbi-fdt-enable-yes",
-            "flat-linux-boot-enable-yes",
-            "flat-has-pmp-yes",
-            "soc-xlen-64"
-          ],
-          "violations": 77
-        }
-      },
-      "l2": null,
-      "npc_config_hash": "5211331fd3a72962",
-      "path": "npc/configs/rv32_fd_defconfig",
-      "reason": "",
-      "stages": {
-        "l0-defconfig-contract": {
-          "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_fd/logs/l0-defconfig-contract.log",
-          "ok": true,
-          "returncode": 0
-        },
-        "l0-generated-contract": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_fd/logs/l0-generated-contract.log",
-          "ok": true,
-          "returncode": 0
-        },
-        "l0-kconfig-defconfig": {
-          "duration_s": 0.007,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_fd/logs/l0-kconfig-defconfig.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32_f/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
           "duration_s": 0.021,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_fd/logs/l0-kconfig-syncconfig.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32_f/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.005,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_fd/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_f/logs/l1-npc-config-gen.log",
+          "ok": true,
+          "returncode": 0
+        }
+      },
+      "status": "experimental"
+    },
+    {
+      "best_profile": "rv32i",
+      "classification": {
+        "rv32gc-linux": {
+          "predicates": [
+            "mmu",
+            "flat-sbi-enable-yes",
+            "flat-sbi-impl-opensbi-yes",
+            "flat-sbi-fdt-enable-yes",
+            "flat-linux-boot-enable-yes",
+            "flat-has-pmp-yes"
+          ],
+          "status": "experimental",
+          "violations": 71
+        },
+        "rv32i": {
+          "predicates": [
+            "isa-m-no",
+            "isa-a-no",
+            "isa-c-no",
+            "isa-f-no",
+            "isa-d-no",
+            "isa-s-no",
+            "isa-u-no"
+          ],
+          "status": "experimental",
+          "violations": 53
+        },
+        "rv32imac-linux": {
+          "predicates": [
+            "mmu",
+            "isa-f-no",
+            "isa-d-no",
+            "flat-sbi-enable-yes",
+            "flat-sbi-impl-opensbi-yes",
+            "flat-sbi-fdt-enable-yes",
+            "flat-linux-boot-enable-yes",
+            "flat-has-pmp-yes"
+          ],
+          "status": "experimental",
+          "violations": 82
+        },
+        "rv64gc-linux": {
+          "predicates": [
+            "xlen-64",
+            "mmu",
+            "mmu-pte-format",
+            "mmu-pte-size",
+            "mmu-levels",
+            "flat-sbi-enable-yes",
+            "flat-sbi-impl-opensbi-yes",
+            "flat-sbi-fdt-enable-yes",
+            "flat-linux-boot-enable-yes",
+            "flat-has-pmp-yes",
+            "soc-xlen-64"
+          ],
+          "status": "experimental",
+          "violations": 78
+        }
+      },
+      "compatible_profiles": [],
+      "defconfig": "rv32_fd",
+      "effective_hash": "97c02c22ad4ac450250e1139affabc5f20b3a895c73e50d15b733475fc6561b0",
+      "failed_stage": null,
+      "incompatible": {
+        "rv32gc-linux": {
+          "errors": [],
+          "predicates": [
+            "mmu",
+            "flat-sbi-enable-yes",
+            "flat-sbi-impl-opensbi-yes",
+            "flat-sbi-fdt-enable-yes",
+            "flat-linux-boot-enable-yes",
+            "flat-has-pmp-yes"
+          ],
+          "violations": 71
+        },
+        "rv32i": {
+          "errors": [],
+          "predicates": [
+            "isa-m-no",
+            "isa-a-no",
+            "isa-c-no",
+            "isa-f-no",
+            "isa-d-no",
+            "isa-s-no",
+            "isa-u-no"
+          ],
+          "violations": 53
+        },
+        "rv32imac-linux": {
+          "errors": [],
+          "predicates": [
+            "mmu",
+            "isa-f-no",
+            "isa-d-no",
+            "flat-sbi-enable-yes",
+            "flat-sbi-impl-opensbi-yes",
+            "flat-sbi-fdt-enable-yes",
+            "flat-linux-boot-enable-yes",
+            "flat-has-pmp-yes"
+          ],
+          "violations": 82
+        },
+        "rv64gc-linux": {
+          "errors": [],
+          "predicates": [
+            "xlen-64",
+            "mmu",
+            "mmu-pte-format",
+            "mmu-pte-size",
+            "mmu-levels",
+            "flat-sbi-enable-yes",
+            "flat-sbi-impl-opensbi-yes",
+            "flat-sbi-fdt-enable-yes",
+            "flat-linux-boot-enable-yes",
+            "flat-has-pmp-yes",
+            "soc-xlen-64"
+          ],
+          "violations": 78
+        }
+      },
+      "l2": null,
+      "npc_config_hash": "09c20cc48bcaa5b4",
+      "path": "npc/configs/rv32_fd_defconfig",
+      "reason": "",
+      "stages": {
+        "l0-defconfig-contract": {
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_fd/logs/l0-defconfig-contract.log",
+          "ok": true,
+          "returncode": 0
+        },
+        "l0-generated-contract": {
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_fd/logs/l0-generated-contract.log",
+          "ok": true,
+          "returncode": 0
+        },
+        "l0-kconfig-defconfig": {
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_fd/logs/l0-kconfig-defconfig.log",
+          "ok": true,
+          "returncode": 0
+        },
+        "l0-kconfig-syncconfig": {
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_fd/logs/l0-kconfig-syncconfig.log",
+          "ok": true,
+          "returncode": 0
+        },
+        "l1-npc-config-gen": {
+          "duration_s": 0.017,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_fd/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -797,7 +797,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 93
+          "violations": 92
         },
         "rv32i": {
           "predicates": [
@@ -818,7 +818,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 88
+          "violations": 87
         },
         "rv64gc-linux": {
           "predicates": [
@@ -839,12 +839,12 @@
             "soc-xlen-64"
           ],
           "status": "experimental",
-          "violations": 98
+          "violations": 99
         }
       },
       "compatible_profiles": [],
       "defconfig": "rv32_noc",
-      "effective_hash": "3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283",
+      "effective_hash": "88079e6aca37deb8e1644745b52211d0118bcaa470740ab322bcf250bd2bda57",
       "failed_stage": null,
       "incompatible": {
         "rv32gc-linux": {
@@ -861,7 +861,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 93
+          "violations": 92
         },
         "rv32i": {
           "errors": [],
@@ -882,7 +882,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 88
+          "violations": 87
         },
         "rv64gc-linux": {
           "errors": [],
@@ -903,41 +903,41 @@
             "flat-has-pmp-yes",
             "soc-xlen-64"
           ],
-          "violations": 98
+          "violations": 99
         }
       },
       "l2": null,
-      "npc_config_hash": "58eefbaa8ecc6fa7",
+      "npc_config_hash": "3f22271a58a0de59",
       "path": "npc/configs/rv32_noc_defconfig",
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_noc/logs/l0-defconfig-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_noc/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
           "duration_s": 0.012,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_noc/logs/l0-generated-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32_noc/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.024,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_noc/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_noc/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.01,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_noc/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.018,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_noc/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.003,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32_noc/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/rv32_noc/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -966,7 +966,7 @@
             "flat-linux-boot-enable-no"
           ],
           "status": "experimental",
-          "violations": 124
+          "violations": 123
         },
         "rv32imac-linux": {
           "predicates": [
@@ -1009,7 +1009,7 @@
             "flat-sbi-enable-no",
             "flat-linux-boot-enable-no"
           ],
-          "violations": 124
+          "violations": 123
         },
         "rv32imac-linux": {
           "errors": [],
@@ -1033,8 +1033,8 @@
       },
       "l2": {
         "artifacts": 45,
-        "duration_s": 9.548,
-        "log": "/tmp/opencode/paramgen-qualify-all/rv32gc_linux/logs/l2-elaboration.log",
+        "duration_s": 8.498,
+        "log": "/tmp/opencode/paramgen-qualify/rv32gc_linux/logs/l2-elaboration.log",
         "ok": true
       },
       "npc_config_hash": "0d9806715ce75b95",
@@ -1042,32 +1042,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.019,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32gc_linux/logs/l0-defconfig-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv32gc_linux/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
           "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32gc_linux/logs/l0-generated-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32gc_linux/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.016,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32gc_linux/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv32gc_linux/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.006,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32gc_linux/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv32gc_linux/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.012,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32gc_linux/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/rv32gc_linux/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -1091,7 +1091,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 118
+          "violations": 117
         },
         "rv32i": {
           "predicates": [],
@@ -1110,7 +1110,7 @@
             "flat-has-pmp-yes"
           ],
           "status": "experimental",
-          "violations": 113
+          "violations": 112
         },
         "rv64gc-linux": {
           "predicates": [
@@ -1131,14 +1131,14 @@
             "soc-xlen-64"
           ],
           "status": "experimental",
-          "violations": 115
+          "violations": 116
         }
       },
       "compatible_profiles": [
         "rv32i"
       ],
       "defconfig": "rv32i",
-      "effective_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
+      "effective_hash": "0713ee86c0be17880a2b972e4221732e9d7da97519519ed543d5526e42f8bde6",
       "failed_stage": null,
       "incompatible": {
         "rv32gc-linux": {
@@ -1155,7 +1155,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 118
+          "violations": 117
         },
         "rv32imac-linux": {
           "errors": [],
@@ -1169,7 +1169,7 @@
             "flat-linux-boot-enable-yes",
             "flat-has-pmp-yes"
           ],
-          "violations": 113
+          "violations": 112
         },
         "rv64gc-linux": {
           "errors": [],
@@ -1190,46 +1190,46 @@
             "flat-has-pmp-yes",
             "soc-xlen-64"
           ],
-          "violations": 115
+          "violations": 116
         }
       },
       "l2": {
         "artifacts": 23,
-        "duration_s": 4.628,
-        "log": "/tmp/opencode/paramgen-qualify-all/rv32i/logs/l2-elaboration.log",
+        "duration_s": 4.226,
+        "log": "/tmp/opencode/paramgen-qualify/rv32i/logs/l2-elaboration.log",
         "ok": true
       },
-      "npc_config_hash": "65fc26e772f081d4",
+      "npc_config_hash": "4ee1851ac307a46a",
       "path": "npc/configs/rv32i_defconfig",
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.003,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32i/logs/l0-defconfig-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv32i/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32i/logs/l0-generated-contract.log",
+          "duration_s": 0.014,
+          "log": "/tmp/opencode/paramgen-qualify/rv32i/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.027,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32i/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv32i/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.021,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32i/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.02,
+          "log": "/tmp/opencode/paramgen-qualify/rv32i/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
           "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32i/logs/l1-npc-config-gen.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32i/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -1259,7 +1259,7 @@
             "flat-linux-boot-enable-no"
           ],
           "status": "experimental",
-          "violations": 113
+          "violations": 112
         },
         "rv32imac-linux": {
           "predicates": [],
@@ -1307,7 +1307,7 @@
             "flat-sbi-enable-no",
             "flat-linux-boot-enable-no"
           ],
-          "violations": 113
+          "violations": 112
         },
         "rv64gc-linux": {
           "errors": [],
@@ -1325,8 +1325,8 @@
       },
       "l2": {
         "artifacts": 45,
-        "duration_s": 8.539,
-        "log": "/tmp/opencode/paramgen-qualify-all/rv32imac_linux/logs/l2-elaboration.log",
+        "duration_s": 7.988,
+        "log": "/tmp/opencode/paramgen-qualify/rv32imac_linux/logs/l2-elaboration.log",
         "ok": true
       },
       "npc_config_hash": "471867b844ac9d02",
@@ -1334,32 +1334,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32imac_linux/logs/l0-defconfig-contract.log",
+          "duration_s": 0.003,
+          "log": "/tmp/opencode/paramgen-qualify/rv32imac_linux/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
           "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32imac_linux/logs/l0-generated-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv32imac_linux/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.02,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32imac_linux/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.013,
+          "log": "/tmp/opencode/paramgen-qualify/rv32imac_linux/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.02,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32imac_linux/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.013,
+          "log": "/tmp/opencode/paramgen-qualify/rv32imac_linux/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv32imac_linux/logs/l1-npc-config-gen.log",
+          "duration_s": 0.015,
+          "log": "/tmp/opencode/paramgen-qualify/rv32imac_linux/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -1399,7 +1399,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 40
+          "violations": 41
         },
         "rv32imac-linux": {
           "predicates": [
@@ -1468,7 +1468,7 @@
             "isa-u-no",
             "soc-xlen-32"
           ],
-          "violations": 40
+          "violations": 41
         },
         "rv32imac-linux": {
           "errors": [],
@@ -1508,32 +1508,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_c/logs/l0-defconfig-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_c/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.003,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_c/logs/l0-generated-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_c/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.02,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_c/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_c/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.019,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_c/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_c/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_c/logs/l1-npc-config-gen.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_c/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -1572,7 +1572,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 100
+          "violations": 101
         },
         "rv32imac-linux": {
           "predicates": [
@@ -1642,7 +1642,7 @@
             "no-mmu",
             "soc-xlen-32"
           ],
-          "violations": 100
+          "violations": 101
         },
         "rv32imac-linux": {
           "errors": [],
@@ -1684,32 +1684,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_deep/logs/l0-defconfig-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_deep/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.012,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_deep/logs/l0-generated-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_deep/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.017,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_deep/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.01,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_deep/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.008,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_deep/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.034,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_deep/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.014,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_deep/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_deep/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -1749,7 +1749,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 100
+          "violations": 101
         },
         "rv32imac-linux": {
           "predicates": [
@@ -1822,7 +1822,7 @@
             "no-mmu",
             "soc-xlen-32"
           ],
-          "violations": 100
+          "violations": 101
         },
         "rv32imac-linux": {
           "errors": [],
@@ -1867,31 +1867,31 @@
       "stages": {
         "l0-defconfig-contract": {
           "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_large/logs/l0-defconfig-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_large/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_large/logs/l0-generated-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_large/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.02,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_large/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.009,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_large/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.014,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_large/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.012,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_large/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.015,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_large/logs/l1-npc-config-gen.log",
+          "duration_s": 0.003,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_large/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -1931,7 +1931,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 100
+          "violations": 101
         },
         "rv32imac-linux": {
           "predicates": [
@@ -2003,7 +2003,7 @@
             "no-mmu",
             "soc-xlen-32"
           ],
-          "violations": 100
+          "violations": 101
         },
         "rv32imac-linux": {
           "errors": [],
@@ -2046,32 +2046,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.012,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_page/logs/l0-defconfig-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_page/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_page/logs/l0-generated-contract.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_page/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.018,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_page/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_page/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.018,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_page/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.033,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_page/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
           "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_custom_page/logs/l1-npc-config-gen.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_custom_page/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -2111,7 +2111,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 51
+          "violations": 52
         },
         "rv32imac-linux": {
           "predicates": [
@@ -2180,7 +2180,7 @@
             "isa-u-no",
             "soc-xlen-32"
           ],
-          "violations": 51
+          "violations": 52
         },
         "rv32imac-linux": {
           "errors": [],
@@ -2220,32 +2220,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_fd/logs/l0-defconfig-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_fd/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
           "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_fd/logs/l0-generated-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_fd/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.017,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_fd/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.031,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_fd/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.022,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_fd/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_fd/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
           "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_fd/logs/l1-npc-config-gen.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_fd/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -2282,7 +2282,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 123
+          "violations": 124
         },
         "rv32imac-linux": {
           "predicates": [
@@ -2337,7 +2337,7 @@
             "flat-linux-boot-enable-no",
             "soc-xlen-32"
           ],
-          "violations": 123
+          "violations": 124
         },
         "rv32imac-linux": {
           "errors": [],
@@ -2355,8 +2355,8 @@
       },
       "l2": {
         "artifacts": 45,
-        "duration_s": 17.872,
-        "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux/logs/l2-elaboration.log",
+        "duration_s": 14.919,
+        "log": "/tmp/opencode/paramgen-qualify/rv64_linux/logs/l2-elaboration.log",
         "ok": true
       },
       "npc_config_hash": "32940dec601fd510",
@@ -2364,32 +2364,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.003,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux/logs/l0-defconfig-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
           "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux/logs/l0-generated-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.036,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.016,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.02,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
           "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux/logs/l1-npc-config-gen.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -2429,7 +2429,7 @@
             "ram-64m"
           ],
           "status": "experimental",
-          "violations": 125
+          "violations": 126
         },
         "rv32imac-linux": {
           "predicates": [
@@ -2490,7 +2490,7 @@
             "soc-xlen-32",
             "ram-64m"
           ],
-          "violations": 125
+          "violations": 126
         },
         "rv32imac-linux": {
           "errors": [],
@@ -2522,32 +2522,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux_uboot_128m/logs/l0-defconfig-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux_uboot_128m/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.003,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux_uboot_128m/logs/l0-generated-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux_uboot_128m/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.019,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux_uboot_128m/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux_uboot_128m/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.02,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux_uboot_128m/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux_uboot_128m/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
           "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_linux_uboot_128m/logs/l1-npc-config-gen.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_linux_uboot_128m/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -2585,7 +2585,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 99
+          "violations": 100
         },
         "rv32imac-linux": {
           "predicates": [
@@ -2650,7 +2650,7 @@
             "no-mmu",
             "soc-xlen-32"
           ],
-          "violations": 99
+          "violations": 100
         },
         "rv32imac-linux": {
           "errors": [],
@@ -2688,32 +2688,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.003,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_mmu/logs/l0-defconfig-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_mmu/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_mmu/logs/l0-generated-contract.log",
+          "duration_s": 0.019,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_mmu/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.016,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_mmu/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_mmu/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.024,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_mmu/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.006,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_mmu/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.016,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_mmu/logs/l1-npc-config-gen.log",
+          "duration_s": 0.015,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_mmu/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -2753,7 +2753,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 117
+          "violations": 118
         },
         "rv32imac-linux": {
           "predicates": [
@@ -2820,7 +2820,7 @@
             "no-mmu",
             "soc-xlen-32"
           ],
-          "violations": 117
+          "violations": 118
         },
         "rv32imac-linux": {
           "errors": [],
@@ -2858,32 +2858,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_nanos_gc/logs/l0-defconfig-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_nanos_gc/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.019,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_nanos_gc/logs/l0-generated-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_nanos_gc/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.006,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_nanos_gc/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_nanos_gc/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.033,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_nanos_gc/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.006,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_nanos_gc/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_nanos_gc/logs/l1-npc-config-gen.log",
+          "duration_s": 0.015,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_nanos_gc/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -2920,7 +2920,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 105
+          "violations": 106
         },
         "rv32imac-linux": {
           "predicates": [
@@ -2978,7 +2978,7 @@
             "flat-sbi-enable-no",
             "soc-xlen-32"
           ],
-          "violations": 105
+          "violations": 106
         },
         "rv32imac-linux": {
           "errors": [],
@@ -3010,32 +3010,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi/logs/l0-defconfig-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi/logs/l0-generated-contract.log",
+          "duration_s": 0.016,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.018,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.007,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.021,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.019,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
           "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi/logs/l1-npc-config-gen.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -3071,7 +3071,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 108
+          "violations": 109
         },
         "rv32imac-linux": {
           "predicates": [
@@ -3126,7 +3126,7 @@
             "flat-sbi-enable-no",
             "soc-xlen-32"
           ],
-          "violations": 108
+          "violations": 109
         },
         "rv32imac-linux": {
           "errors": [],
@@ -3156,32 +3156,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.003,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi_fdt/logs/l0-defconfig-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi_fdt/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.003,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi_fdt/logs/l0-generated-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi_fdt/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.016,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi_fdt/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi_fdt/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.021,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi_fdt/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi_fdt/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sbi_fdt/logs/l1-npc-config-gen.log",
+          "duration_s": 0.003,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sbi_fdt/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -3219,7 +3219,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 102
+          "violations": 103
         },
         "rv32imac-linux": {
           "predicates": [
@@ -3284,7 +3284,7 @@
             "no-mmu",
             "soc-xlen-32"
           ],
-          "violations": 102
+          "violations": 103
         },
         "rv32imac-linux": {
           "errors": [],
@@ -3322,32 +3322,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_soft/logs/l0-defconfig-contract.log",
+          "duration_s": 0.002,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_soft/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.011,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_soft/logs/l0-generated-contract.log",
+          "duration_s": 0.015,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_soft/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.02,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_soft/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_soft/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.009,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_soft/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_soft/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.022,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_soft/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_soft/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -3385,7 +3385,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 102
+          "violations": 103
         },
         "rv32imac-linux": {
           "predicates": [
@@ -3450,7 +3450,7 @@
             "no-mmu",
             "soc-xlen-32"
           ],
-          "violations": 102
+          "violations": 103
         },
         "rv32imac-linux": {
           "errors": [],
@@ -3489,31 +3489,31 @@
       "stages": {
         "l0-defconfig-contract": {
           "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sv48/logs/l0-defconfig-contract.log",
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sv48/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sv48/logs/l0-generated-contract.log",
+          "duration_s": 0.015,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sv48/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.007,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sv48/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sv48/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.03,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sv48/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sv48/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.005,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_sv48/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_sv48/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -3552,7 +3552,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 100
+          "violations": 101
         },
         "rv32imac-linux": {
           "predicates": [
@@ -3618,7 +3618,7 @@
             "no-mmu",
             "soc-xlen-32"
           ],
-          "violations": 100
+          "violations": 101
         },
         "rv32imac-linux": {
           "errors": [],
@@ -3656,32 +3656,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.002,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_xv6/logs/l0-defconfig-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_xv6/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.016,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_xv6/logs/l0-generated-contract.log",
+          "duration_s": 0.017,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_xv6/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.015,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_xv6/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_xv6/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.01,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_xv6/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_xv6/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.014,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64_xv6/logs/l1-npc-config-gen.log",
+          "duration_s": 0.019,
+          "log": "/tmp/opencode/paramgen-qualify/rv64_xv6/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -3718,7 +3718,7 @@
             "soc-xlen-32"
           ],
           "status": "experimental",
-          "violations": 123
+          "violations": 124
         },
         "rv32imac-linux": {
           "predicates": [
@@ -3773,7 +3773,7 @@
             "flat-linux-boot-enable-no",
             "soc-xlen-32"
           ],
-          "violations": 123
+          "violations": 124
         },
         "rv32imac-linux": {
           "errors": [],
@@ -3791,8 +3791,8 @@
       },
       "l2": {
         "artifacts": 45,
-        "duration_s": 17.881,
-        "log": "/tmp/opencode/paramgen-qualify-all/rv64gc_linux/logs/l2-elaboration.log",
+        "duration_s": 15.92,
+        "log": "/tmp/opencode/paramgen-qualify/rv64gc_linux/logs/l2-elaboration.log",
         "ok": true
       },
       "npc_config_hash": "32940dec601fd510",
@@ -3800,32 +3800,32 @@
       "reason": "",
       "stages": {
         "l0-defconfig-contract": {
-          "duration_s": 0.001,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64gc_linux/logs/l0-defconfig-contract.log",
+          "duration_s": 0.02,
+          "log": "/tmp/opencode/paramgen-qualify/rv64gc_linux/logs/l0-defconfig-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-generated-contract": {
-          "duration_s": 0.004,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64gc_linux/logs/l0-generated-contract.log",
+          "duration_s": 0.001,
+          "log": "/tmp/opencode/paramgen-qualify/rv64gc_linux/logs/l0-generated-contract.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-defconfig": {
-          "duration_s": 0.014,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64gc_linux/logs/l0-kconfig-defconfig.log",
+          "duration_s": 0.027,
+          "log": "/tmp/opencode/paramgen-qualify/rv64gc_linux/logs/l0-kconfig-defconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l0-kconfig-syncconfig": {
-          "duration_s": 0.01,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64gc_linux/logs/l0-kconfig-syncconfig.log",
+          "duration_s": 0.008,
+          "log": "/tmp/opencode/paramgen-qualify/rv64gc_linux/logs/l0-kconfig-syncconfig.log",
           "ok": true,
           "returncode": 0
         },
         "l1-npc-config-gen": {
-          "duration_s": 0.01,
-          "log": "/tmp/opencode/paramgen-qualify-all/rv64gc_linux/logs/l1-npc-config-gen.log",
+          "duration_s": 0.004,
+          "log": "/tmp/opencode/paramgen-qualify/rv64gc_linux/logs/l1-npc-config-gen.log",
           "ok": true,
           "returncode": 0
         }
@@ -3833,48 +3833,26 @@
       "status": "qualified"
     }
   ],
-  "generated_at": "2026-11-28T06:24:05+00:00",
+  "generated_at": "2026-11-28T10:40:05+00:00",
   "git_dirty": true,
   "git_dirty_paths": [
-    "D npc/params/profiles/archive/linux-rv64@1.json",
-    " D npc/params/profiles/archive/small-rv32@1.json",
-    " D npc/params/profiles/archive/standard-rv64@1.json",
-    " D npc/params/profiles/linux-rv64@2.json",
-    " D npc/params/profiles/rv32-mmu@1.json",
-    " D npc/params/profiles/rv64-mmu@1.json",
-    " D npc/params/profiles/rv64-sbi@1.json",
-    " D npc/params/profiles/small-rv32@2.json",
-    " D npc/params/profiles/standard-rv64@2.json",
-    " M npc/params/reports/current-config-example.json",
+    "M npc/params/generated/kconfig/part-05.Kconfig",
+    " M npc/params/profiles/rv32i@1.json",
     " M npc/params/reports/defconfig-classification-summary.json",
     " M npc/params/reports/defconfig-classification.csv",
+    " M npc/params/reports/defconfig-support-policy.json",
     " M npc/params/reports/qualification-run.csv",
     " M npc/params/reports/qualification-run.json",
-    " D npc/support/qualified/archive/linux-rv64@1.json",
-    " D npc/support/qualified/archive/small-rv32@1.json",
-    " D npc/support/qualified/archive/standard-rv64@1.json",
-    " D npc/support/qualified/linux-rv64@2.json",
-    " D npc/support/qualified/rv32-mmu@1.json",
-    " D npc/support/qualified/rv64-mmu@1.json",
-    " D npc/support/qualified/rv64-sbi@1.json",
-    " D npc/support/qualified/small-rv32@2.json",
-    " D npc/support/qualified/standard-rv64@2.json",
-    " M npc/tools/ParamGen/classify_defconfigs.py",
-    " M npc/tools/ParamGen/gen_profiles.py",
-    " M npc/tools/ParamGen/param_tool.py",
-    " M npc/tools/ParamGen/paramlib.py",
-    " M npc/tools/ParamGen/qualify.py",
-    " M npc/tools/ParamGen/selftest.py",
-    "?? npc/params/profiles/rv32gc-linux@1.json",
-    "?? npc/params/profiles/rv32i@1.json",
-    "?? npc/params/profiles/rv32imac-linux@1.json",
-    "?? npc/params/profiles/rv64gc-linux@1.json",
-    "?? npc/support/qualified/rv32gc-linux@1.json",
-    "?? npc/support/qualified/rv32i@1.json",
-    "?? npc/support/qualified/rv32imac-linux@1.json",
-    "?? npc/support/qualified/rv64gc-linux@1.json"
+    " M npc/params/schema/parts/firmware-boot.json",
+    " M npc/support/qualified/rv32gc-linux@1.json",
+    " M npc/support/qualified/rv32i@1.json",
+    " M npc/support/qualified/rv32imac-linux@1.json",
+    " M npc/support/qualified/rv64gc-linux@1.json",
+    " M npc/tools/ParamGen/gen_kconfig.py",
+    "?? npc/params/generated/npc_config_defaults.h",
+    "?? npc/tools/ParamGen/check_defaults_consistency.py"
   ],
-  "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
+  "git_head": "875e77b30fdd5676867ece431d4f7bd0dd497536",
   "manifest_updates": {
     "rv32gc-linux": {
       "entries": 1,
@@ -3904,7 +3882,7 @@
     "rv64gc-linux@1"
   ],
   "repo_config_after": {
-    ".config": "671d57e2d8c83620d09e841223e7a86b46b97b30d9926303279023ba381b9e8c",
+    ".config": "35b159ebdd1ddd2608ec5f25a737c9d9b8ccce4996c278dff577cad38b6b7960",
     "include/config/alu/adder/impl.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/alu/adder/native.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/alu/impl.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -3913,7 +3891,7 @@
     "include/config/apb/device/freq.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/apb/xlen/follow/soc.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/arbiter/grant/timeout.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "include/config/auto.conf": "1e9634bcd28d38f3bf0f49ed3e6b9670b79880ab8ef8aaa10779fbd3db717de7",
+    "include/config/auto.conf": "02679965bb13ab4b1dd263c805c4f2d811d50b116fa4159ea34a337fdffd08ad",
     "include/config/auto.conf.cmd": "24a7abfbc546038ca6d1c80d5715edff21ce0722a3f51fd74477c6c69ed15c56",
     "include/config/autoflush.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/axi/arb/cpu/resp/queue/depth.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -4365,11 +4343,11 @@
     "include/config/x/assign/fast.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/x/initial/fast.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/xlen.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "include/generated/autoconf.h": "923964695588911a0d11cc10ee9f8ce081fd4422f4175fee466fc4a210e97a00",
-    "include/generated/npc_config.json": "8db4fc4541be36e4c9b433bd9003a149205b3437155e224095b83b02b610d5eb"
+    "include/generated/autoconf.h": "3a64a3ae89619ec8855dfee4acdc85553a3794a111e8f9bc94a2011f3713c171",
+    "include/generated/npc_config.json": "ce2ef871c93738ca92f83927dfb719b959fa083facf3444d5e3d45700705ae75"
   },
   "repo_config_before": {
-    ".config": "671d57e2d8c83620d09e841223e7a86b46b97b30d9926303279023ba381b9e8c",
+    ".config": "35b159ebdd1ddd2608ec5f25a737c9d9b8ccce4996c278dff577cad38b6b7960",
     "include/config/alu/adder/impl.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/alu/adder/native.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/alu/impl.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -4378,7 +4356,7 @@
     "include/config/apb/device/freq.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/apb/xlen/follow/soc.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/arbiter/grant/timeout.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "include/config/auto.conf": "1e9634bcd28d38f3bf0f49ed3e6b9670b79880ab8ef8aaa10779fbd3db717de7",
+    "include/config/auto.conf": "02679965bb13ab4b1dd263c805c4f2d811d50b116fa4159ea34a337fdffd08ad",
     "include/config/auto.conf.cmd": "24a7abfbc546038ca6d1c80d5715edff21ce0722a3f51fd74477c6c69ed15c56",
     "include/config/autoflush.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/axi/arb/cpu/resp/queue/depth.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -4830,8 +4808,8 @@
     "include/config/x/assign/fast.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/x/initial/fast.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "include/config/xlen.h": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-    "include/generated/autoconf.h": "923964695588911a0d11cc10ee9f8ce081fd4422f4175fee466fc4a210e97a00",
-    "include/generated/npc_config.json": "8db4fc4541be36e4c9b433bd9003a149205b3437155e224095b83b02b610d5eb"
+    "include/generated/autoconf.h": "3a64a3ae89619ec8855dfee4acdc85553a3794a111e8f9bc94a2011f3713c171",
+    "include/generated/npc_config.json": "ce2ef871c93738ca92f83927dfb719b959fa083facf3444d5e3d45700705ae75"
   },
   "repo_config_untouched": true,
   "schema": 1,
@@ -4852,5 +4830,5 @@
     "profile_compatible": 2,
     "qualified": 3
   },
-  "workdir": "/tmp/opencode/paramgen-qualify-all"
+  "workdir": "/tmp/opencode/paramgen-qualify"
 }

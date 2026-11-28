@@ -20,25 +20,6 @@
       "cwd": "../../../bug-confirm"
     },
     {
-      "name": "scala.ysyx_26030103.config.ysyx_26030103_FPUConfigRegressionTest",
-      "tier": "functional",
-      "command": [
-        "mill",
-        "--no-server",
-        "-j",
-        "1",
-        "test.testOnly",
-        "ysyx_26030103.config.ysyx_26030103_FPUConfigRegressionTest"
-      ],
-      "timeout": 120,
-      "tags": [
-        "scala",
-        "config"
-      ],
-      "enabled": true,
-      "cwd": "../../../bug-confirm"
-    },
-    {
       "name": "scala.ysyx_26030103.config.ysyx_26030103_FPUConfigTest",
       "tier": "functional",
       "command": [

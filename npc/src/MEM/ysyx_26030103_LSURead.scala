@@ -16,8 +16,8 @@ private[mem] trait LSURead {
     } else {
       io.DataBus.AR.ARVALID := true.B
       io.DataBus.AR.ARADDR := addressOf(activeInstruction.ALUResult)
-      io.DataBus.AR.ARLEN := Mux(readIsWide && !busWideBit, 1.U, 0.U)
-      io.DataBus.AR.ARSIZE := Mux(readIsWide && busWideBit, 3.U, AXISize)
+      io.DataBus.AR.ARLEN := readBeatPlan.len
+      io.DataBus.AR.ARSIZE := readBeatPlan.size
       when(io.DataBus.AR.ARREADY) { state := stateReadResponse }
     }
   }
@@ -69,8 +69,8 @@ private[mem] trait LSURead {
           accessFaultResponseReg := io.DataBus.R.RRESP
         }
         if (wideMem && !busWide) {
-          when(readIsWide) {
-            when(loadBeat === 0.U) {
+          when(readBeatPlan.multiBeat) {
+            when(!readBeatPlan.lastBeat(loadBeat)) {
               when(io.DataBus.R.RLAST) {
                 // 两拍读在第一个响应就结束：按协议错误提交访问故障。
                 accessFaultReg := true.B

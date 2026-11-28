@@ -1,3 +1,23 @@
 {
-  "tests": []
+  "tests": [
+    {
+      "name": "scala.ysyx_26030103.cache.ysyx_26030103_CacheControlTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.cache.ysyx_26030103_CacheControlTest"
+      ],
+      "timeout": 180,
+      "tags": [
+        "scala",
+        "cache"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    }
+  ]
 }

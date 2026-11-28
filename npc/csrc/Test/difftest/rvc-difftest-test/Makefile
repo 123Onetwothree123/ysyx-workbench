@@ -22,9 +22,8 @@ include $(TEST_DIR)/../../xlen.mk
 NEMU_DIR ?= $(abspath $(NPC_DIR)/../nemu)
 BUILD_DIR := $(TEST_DIR)/build
 LOG_DIR ?= /tmp/opencode/rvc-difftest
-NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \
-	\( -name '*.c' -o -name '*.h' \) -print 2>/dev/null)
-REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
+
+include $(TEST_DIR)/../common/nemu_ref.mk
 
 CROSS_RV32 ?= riscv32-unknown-elf-
 CROSS_RV64 ?= riscv64-unknown-elf-
@@ -74,7 +73,7 @@ GUEST_MISMATCH ?= $(PROBE_RV$(MISMATCH_XLEN))
 STRICT ?= 0
 
 .PHONY: all guests refs ref-rv32 ref-rv64 rv32 rv64 negative mismatch \
-	test test-all strict-test clean clean-logs
+	test test-positive test-all strict-test clean clean-logs
 
 all: guests
 
@@ -110,11 +109,8 @@ $(MISMATCH_SHIM): $(TEST_DIR)/../common/corrupt_ref.cpp | $(BUILD_DIR)
 		-o $@ $< -ldl
 
 # 用 rvc-ref 配置构建隔离的 NEMU REF（RV32IMAC / RV64IMAC）。
-$(REF_RV32): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER) | $(BUILD_DIR)
-	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_RV32) share 0 0 rvc
-
-$(REF_RV64): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER) | $(BUILD_DIR)
-	$(REF_BUILDER) riscv64 $@ $(REF_OBJ_RV64) share 0 0 rvc
+$(eval $(call nemu_ref_rule,$(REF_RV32),riscv32,$(REF_OBJ_RV32),share,0,0,rvc))
+$(eval $(call nemu_ref_rule,$(REF_RV64),riscv64,$(REF_OBJ_RV64),share,0,0,rvc))
 
 ref-rv32: $(REF_RV32)
 ref-rv64: $(REF_RV64)
@@ -140,10 +136,16 @@ mismatch: $(PROBE_RV$(MISMATCH_XLEN)) $(MISMATCH_SHIM)
 		"$(BIN_MISMATCH)" "$(GUEST_MISMATCH)" "$(MISMATCH_SHIM)" \
 		"$(REF_MISMATCH)" "$(LOG_DIR)"
 
-# 默认按当前 NPC 配置的 XLEN 跑正向 + 负向。RVC 合入后建议用 STRICT=1。
+# 只跑与当前 CONFIG_XLEN 匹配的正向用例。负向用例需要独立的
+# RISCV_C=n DUT，不能默认复用当前 C=y 的 binary（见 negative）。
+test-positive: guests
+	@$(MAKE) --no-print-directory rv$(NPC_XLEN)
+
+# 默认按当前 NPC 配置的 XLEN 跑正向 + 负向。负向在 C=y 的 DUT 上会明确
+# SKIP；注册表只登记 test-positive，避免把必然 SKIP 计入 PASS。
 test: guests
 	@status=0; \
-	$(MAKE) --no-print-directory rv$(NPC_XLEN) || status=1; \
+	$(MAKE) --no-print-directory test-positive || status=1; \
 	$(MAKE) --no-print-directory negative || status=1; \
 	exit $$status
 

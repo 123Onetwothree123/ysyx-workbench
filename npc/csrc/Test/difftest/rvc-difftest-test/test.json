@@ -5,7 +5,7 @@
       "tier": "performance",
       "command": [
         "make",
-        "test"
+        "test-positive"
       ],
       "timeout": 3600,
       "tags": [
@@ -13,6 +13,24 @@
         "rvc-difftest-test"
       ],
       "enabled": true
+    },
+    {
+      "name": "cpp.difftest.rvc-difftest-negative-requires-noc-build",
+      "tier": "performance",
+      "command": [
+        "make",
+        "negative",
+        "BIN_NOC=/path/to/riscv-c-off/npc"
+      ],
+      "timeout": 3600,
+      "tags": [
+        "difftest",
+        "rvc-difftest-test",
+        "negative",
+        "requires-riscv-c-n"
+      ],
+      "enabled": false,
+      "skip_reason": "负向用例需要显式构建 RISCV_C=n 的 NPC；默认 C=y 的 DUT 上会 SKIP，故不注册为 PASS。手动运行：make negative BIN_NOC=/path/to/noc/npc"
     },
     {
       "name": "cpp.difftest.rvc-difftest-mismatch-test",

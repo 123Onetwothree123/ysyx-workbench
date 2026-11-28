@@ -27,6 +27,9 @@ foreach(tool IN LISTS NPC_BUILD_TOOLS)
         FILES npc.buildtools.ixx
     )
     npc_add_std_module(${tool})
+    target_include_directories(${tool} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../params/generated
+    )
     target_compile_options(${tool} PRIVATE -Wall -Wextra)
     set_target_properties(${tool} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}

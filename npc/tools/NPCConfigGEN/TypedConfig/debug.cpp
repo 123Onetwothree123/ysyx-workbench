@@ -1,6 +1,9 @@
+module;
+#include "npc_config_defaults.h"
 module npc.configgen;
 import std;
 namespace npc::configgen {
+namespace defaults = config_defaults;
 void addCSR(TypedFields &root, const Config &values)
 {
     TypedFields CSR;
@@ -40,7 +43,8 @@ void addInterrupt(TypedFields &root, const Config &values)
                  flatBool(values, "HAS_S_EXTERNAL_IRQ", true)));
     TypedFields PLIC;
     addField(PLIC, "sources",
-             TypedJson::integer(flatInt(values, "PLIC_SOURCES", 32)));
+             TypedJson::integer(
+                 flatInt(values, "PLIC_SOURCES", defaults::PlicSources())));
     addField(PLIC, "priority_bits",
              TypedJson::integer(
                  flatInt(values, "PLIC_PRIORITY_BITS", 3)));
@@ -49,10 +53,10 @@ void addInterrupt(TypedFields &root, const Config &values)
                  flatInt(values, "PLIC_MAX_PRIORITY", 7)));
     addField(PLIC, "base",
              TypedJson::integer(
-                 flatInt(values, "PLIC_BASE", 0x0c000000LL)));
+                 flatInt(values, "PLIC_BASE", defaults::PlicBase())));
     addField(PLIC, "size",
              TypedJson::integer(
-                 flatInt(values, "PLIC_SIZE", 0x00300000LL)));
+                 flatInt(values, "PLIC_SIZE", defaults::PlicSize())));
     addField(interrupt, "PLIC", TypedJson::object(std::move(PLIC)));
     addField(root, "interrupt", TypedJson::object(std::move(interrupt)));
 }

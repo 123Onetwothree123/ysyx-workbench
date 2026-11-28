@@ -10,7 +10,8 @@ REF_SO := $(BUILD_DIR)/riscv32-nemu-interpreter-so
 REF_OBJ_DIR := $(BUILD_DIR)/nemu-obj
 REF_RVE_SO := $(BUILD_DIR)/riscv32e-nemu-interpreter-so
 REF_RVE_OBJ_DIR := $(BUILD_DIR)/nemu-rve-fixed-obj
-NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '*.c' -o -name '*.h' \) -print)
+
+include $(TEST_DIR)/../common/nemu_ref.mk
 
 CXX ?= g++
 
@@ -22,13 +23,8 @@ run: all
 	$(BIN) $(REF_SO)
 	$(BIN) $(REF_RVE_SO) --rve
 
-REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
-
-$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
-	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_DIR) share
-
-$(REF_RVE_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
-	$(REF_BUILDER) riscv32e $@ $(REF_RVE_OBJ_DIR) share 0 1
+$(eval $(call nemu_ref_rule,$(REF_SO),riscv32,$(REF_OBJ_DIR),share))
+$(eval $(call nemu_ref_rule,$(REF_RVE_SO),riscv32e,$(REF_RVE_OBJ_DIR),share,0,1))
 
 $(BIN): main.cpp
 	mkdir -p $(BUILD_DIR)

@@ -54,7 +54,7 @@
 | `npc/params/generated/kconfig/part-02.Kconfig` | 766 | `f61a8253a5040f0771d10781d8aa6bb4…` |
 | `npc/params/generated/kconfig/part-03.Kconfig` | 393 | `672f9b1a77bc8981f58271f774bf2f2f…` |
 | `npc/params/generated/kconfig/part-04.Kconfig` | 709 | `bd84cd8e391fd12819e1d34deaf1d4ba…` |
-| `npc/params/generated/kconfig/part-05.Kconfig` | 387 | `1f0b7e57444123c738d162857b35c540…` |
+| `npc/params/generated/kconfig/part-05.Kconfig` | 390 | `d88dad6813842ac29131d2ff0238423b…` |
 | `npc/params/generated/kconfig/part-06.Kconfig` | 641 | `e063bdc7df40db5c5efc560d28aedd01…` |
 
 `npc/Kconfig` 只包含 `mainmenu` 和 `source "params/generated/Kconfig"`；生成入口只包含 `source`；每个顶层菜单生成一个 `params/generated/kconfig/part-NN.Kconfig`。生成器只读取 `schema.json`，不读取旧的 `npc/kconfig/Kconfig.*`。
@@ -79,14 +79,14 @@ effective hash 使用与 `npc/params/reports/defconfig-classification.csv` 相�
 
 | defconfig | current effective hash | generated effective hash | match | recorded |
 | --- | --- | --- | :---: | :---: |
-| `mmu_default` | `d613dfbcce4457a42b40546a5dc9a2cf38c3471cce8faed59b1f8883b8073d67` | `d613dfbcce4457a42b40546a5dc9a2cf38c3471cce8faed59b1f8883b8073d67` | ✅ | ✅ |
-| `nanos` | `99345e5b2e3dc4099d010599dfeb0f09d9a3b51c246ecade4435c2a1070a373e` | `99345e5b2e3dc4099d010599dfeb0f09d9a3b51c246ecade4435c2a1070a373e` | ✅ | ✅ |
-| `rv32_c` | `a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a` | `a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a` | ✅ | ✅ |
-| `rv32_f` | `e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3` | `e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3` | ✅ | ✅ |
-| `rv32_fd` | `0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152` | `0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152` | ✅ | ✅ |
-| `rv32_noc` | `3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283` | `3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283` | ✅ | ✅ |
+| `mmu_default` | `4f0c85e059272e1abb5bd5e47bb6267021db354044a94e47879b386510310acf` | `4f0c85e059272e1abb5bd5e47bb6267021db354044a94e47879b386510310acf` | ✅ | ✅ |
+| `nanos` | `a36377cf8ca76837e7c9f9693475ee66fe5b60df48958bb0cde2044bad06f039` | `a36377cf8ca76837e7c9f9693475ee66fe5b60df48958bb0cde2044bad06f039` | ✅ | ✅ |
+| `rv32_c` | `d978e8baa610074c1e4d8f5bf9ff72e2622ea314b8f3cba6718606ade1918256` | `d978e8baa610074c1e4d8f5bf9ff72e2622ea314b8f3cba6718606ade1918256` | ✅ | ✅ |
+| `rv32_f` | `cedee85baae8dbac3316542a7e2bbceb873ce6c51b965c64e897c2efb366fb72` | `cedee85baae8dbac3316542a7e2bbceb873ce6c51b965c64e897c2efb366fb72` | ✅ | ✅ |
+| `rv32_fd` | `97c02c22ad4ac450250e1139affabc5f20b3a895c73e50d15b733475fc6561b0` | `97c02c22ad4ac450250e1139affabc5f20b3a895c73e50d15b733475fc6561b0` | ✅ | ✅ |
+| `rv32_noc` | `88079e6aca37deb8e1644745b52211d0118bcaa470740ab322bcf250bd2bda57` | `88079e6aca37deb8e1644745b52211d0118bcaa470740ab322bcf250bd2bda57` | ✅ | ✅ |
 | `rv32gc_linux` | `67f5c141d32f2abee2eadfbe1e9ecd08010dee30db4c5ffada03d635415fe55d` | `67f5c141d32f2abee2eadfbe1e9ecd08010dee30db4c5ffada03d635415fe55d` | ✅ | ✅ |
-| `rv32i` | `db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0` | `db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0` | ✅ | ✅ |
+| `rv32i` | `0713ee86c0be17880a2b972e4221732e9d7da97519519ed543d5526e42f8bde6` | `0713ee86c0be17880a2b972e4221732e9d7da97519519ed543d5526e42f8bde6` | ✅ | ✅ |
 | `rv32imac_linux` | `b0162d92a5806524a175c0b08edd53ef7bab912280c3cc7a6b15e2a190157c12` | `b0162d92a5806524a175c0b08edd53ef7bab912280c3cc7a6b15e2a190157c12` | ✅ | ✅ |
 | `rv64_c` | `5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e` | `5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e` | ✅ | ✅ |
 | `rv64_custom_deep` | `7b1a6230ae5c2cff4874121dd97b7d2d4b010fae7568910c142ab18bf9158e11` | `7b1a6230ae5c2cff4874121dd97b7d2d4b010fae7568910c142ab18bf9158e11` | ✅ | ✅ |

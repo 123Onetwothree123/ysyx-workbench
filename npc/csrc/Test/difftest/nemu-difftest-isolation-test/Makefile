@@ -12,7 +12,8 @@ NEMU_SOC_BIN := $(BUILD_DIR)/riscv32-nemu-ysyxsoc-interpreter
 NEMU_SOC_OBJ_DIR := $(BUILD_DIR)/soc-dut-obj
 RVE_LOG := $(BUILD_DIR)/rve-difftest.log
 SOC_LOG := $(BUILD_DIR)/soc-difftest.log
-NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '*.c' -o -name '*.h' \) -print)
+
+include $(TEST_DIR)/../common/nemu_ref.mk
 
 NAME = nemu-difftest-isolation-test
 SRCS = main.cpp
@@ -49,13 +50,6 @@ soc-check-inner: insert-arg $(REF_SO) $(NEMU_SOC_BIN)
 	@grep -Fq 'Differential testing:' $(SOC_LOG)
 	@grep -Fq 'HIT GOOD TRAP' $(SOC_LOG)
 
-REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
-
-$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
-	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_DIR) share
-
-$(NEMU_RVE_BIN): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
-	$(REF_BUILDER) riscv32e $@ $(NEMU_RVE_OBJ_DIR) native 1 1
-
-$(NEMU_SOC_BIN): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
-	$(REF_BUILDER) riscv32 $@ $(NEMU_SOC_OBJ_DIR) native 1 0
+$(eval $(call nemu_ref_rule,$(REF_SO),riscv32,$(REF_OBJ_DIR),share))
+$(eval $(call nemu_ref_rule,$(NEMU_RVE_BIN),riscv32e,$(NEMU_RVE_OBJ_DIR),native,1,1))
+$(eval $(call nemu_ref_rule,$(NEMU_SOC_BIN),riscv32,$(NEMU_SOC_OBJ_DIR),native,1,0))

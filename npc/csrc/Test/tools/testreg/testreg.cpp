@@ -318,6 +318,11 @@ bool Match(const TestCase &t, const std::string &tier, const std::string &tag,
     return true;
 }
 
+// build-only 条目只验证“能构建”，不计入 PASS；失败仍计 FAIL，超时仍计 HANG。
+bool IsBuildOnly(const TestCase &t) {
+    return std::find(t.tags.begin(), t.tags.end(), "build-only") != t.tags.end();
+}
+
 std::string Sanitize(std::string s) {
     for (char &c : s) if (c == '/' || c == ' ' || c == ':') c = '_';
     return s;
@@ -411,7 +416,8 @@ std::string Usage() {
            "  testreg config 打印当前生效的选择\n"
            "  testreg menu\n"
            "  testreg clean\n"
-           "环境变量 ARCH 可作为 --arch 的默认值。\n";
+           "环境变量 ARCH 可作为 --arch 的默认值。\n"
+           "带 build-only 标签的条目只验证构建，结果记为 BUILD，不计入 PASS。\n";
 }
 
 } // namespace
@@ -579,13 +585,27 @@ int main(int argc, char **argv) {
         }
     }
     const fs::path logDir = testDir / "build" / "test-logs";
-    int pass = 0, fail = 0, hang = 0;
+    int pass = 0, fail = 0, hang = 0, buildOnly = 0;
     for (const auto &t : tests) {
         if (!Match(t, tier, tag, nameFilter, arch, allTiers)) continue;
         TestCase tc = t;
         if (retryOverride >= 0) tc.retry = retryOverride;
         if (timeoutScale > 1) tc.timeout *= timeoutScale;
         auto r = Run(tc, arch, logDir);
+        if (IsBuildOnly(t)) {
+            if (r == Result::Pass) {
+                std::println("BUILD {}", t.name);
+                ++buildOnly;
+            } else if (r == Result::Hang) {
+                std::println("HANG {} (>{}s, build-only)", t.name, t.timeout);
+                ++hang;
+            } else {
+                std::println("FAIL {} (build-only)", t.name);
+                ++fail;
+            }
+            std::fflush(nullptr);
+            continue;
+        }
         switch (r) {
             case Result::Pass: std::println("PASS {}", t.name); ++pass; break;
             case Result::Fail: std::println("FAIL {}", t.name); ++fail; break;
@@ -594,6 +614,7 @@ int main(int argc, char **argv) {
         std::fflush(nullptr);
     }
     std::println("----------------------------------------");
-    std::println("total={} pass={} fail={} hang={}", pass + fail + hang, pass, fail, hang);
+    std::println("total={} pass={} fail={} hang={} build-only={}",
+                 pass + fail + hang + buildOnly, pass, fail, hang, buildOnly);
     return (fail + hang) == 0 ? 0 : 1;
 }

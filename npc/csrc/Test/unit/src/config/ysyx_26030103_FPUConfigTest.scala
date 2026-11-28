@@ -42,6 +42,20 @@ class ysyx_26030103_FPUConfigTest extends AnyFlatSpec with Matchers {
         FPULen = 32
       )
     }
+    error.getMessage should include("FPU_FLEN=64")
+  }
+
+  it should "拒绝 RV64F 配 FLEN=32（RV64 浮点寄存器固定 64 位）" in {
+    val error = intercept[IllegalArgumentException] {
+      ysyx_26030103_NPCConfig(
+        XLEN = 64,
+        AddressWidth = 64,
+        UseF = true,
+        UseD = false,
+        FPUImpl = ysyx_26030103_FPUImpl.HardFloat,
+        FPULen = 32
+      )
+    }
     error.getMessage should include("FPU_FLEN 必须为 64")
   }
 

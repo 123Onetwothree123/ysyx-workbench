@@ -180,6 +180,8 @@ class ysyx_26030103_LSU(
   val atomicAddressReg = Reg(UInt(AddressWidth.W))
   // 原子宽度：true=.D(8B)，false=.W(4B)。RV32 恒为 .W。
   val atomicWide = RegInit(false.B)
+  // LR/SC/AMO 的读/写两拍协议形状（.D 在 32 位总线上拆两拍）。
+  val atomicBeatPlan = ysyx_26030103_LSUAXIBeat.Atomic(atomicWide, busWide)
   val atomicOpReg = RegInit(0.U(ysyx_26030103_AtomicOp.Width.W))
   val atomicNewData = RegInit(0.U(XLEN.W))
   val atomicResultData = RegInit(0.U(XLEN.W))
@@ -441,6 +443,9 @@ class ysyx_26030103_LSU(
   val loadWord0Reg = RegInit(0.U(32.W))
   val loadBeat = RegInit(0.U(1.W))
   val readIsWide = activeInstruction.WidthSelect === "b11".U
+  // 普通 load 的 AXI 拍形状；与原子/写 helper 共用同一套 LEN/SIZE/beat 规则。
+  val readBeatPlan = ysyx_26030103_LSUAXIBeat.Read(
+    activeInstruction.WidthSelect, readIsWide, busWide)
   // 非对齐访存段状态。所有子访问都是 4B 对齐的字，最多 3 段。
   val MisalignedSegmentIndex = RegInit(0.U(SegmentIndexWidth.W))
   val MisalignedWordRegisters = RegInit(
@@ -460,10 +465,12 @@ class ysyx_26030103_LSU(
   val activeSegCount = accessGranuleCount(
     activeVa, activeInstruction.WidthSelect, ChunkLog2)
   val activePage1Va = Page1Va(activeVa, AddressWidth)
-  val MisalignedSegmentVirtualAddress = Cat(activeVa(AddressWidth - 1, ChunkLog2),
-    0.U(ChunkLog2.W)) + (MisalignedSegmentIndex << ChunkLog2)
+  val MisalignedSegmentVirtualAddress =
+    ysyx_26030103_LSUSegment.SegmentAddress(
+      activeVa, MisalignedSegmentIndex, ChunkLog2, AddressWidth)
   val MisalignedSegmentUsesPage1 =
-    CrossesPage(MisalignedSegmentVirtualAddress, activeVa, AddressWidth)
+    ysyx_26030103_LSUSegment.SegmentUsesPage1(
+      MisalignedSegmentVirtualAddress, activeVa, AddressWidth)
   val MisalignedBasePhysicalAddress =
     if (dataVIPTParallel) physicalAddressReg else addressOf(activeInstruction.ALUResult)
   val MisalignedBaseReady = if (dataVIPTParallel) physicalAddressValidReg else true.B
@@ -473,18 +480,16 @@ class ysyx_26030103_LSU(
   val MisalignedPage1Ready = !UseMMU.B || MisalignedPage1TranslationValid
   val MisalignedSegmentReady = MisalignedBaseReady && (!MisalignedSegmentUsesPage1 || MisalignedPage1Ready)
   // 有第二页翻译结果就用它；无 MMU 时按连续物理页外推。
-  val MisalignedSegmentPhysicalAddress = Mux(
-    MisalignedSegmentUsesPage1,
-    Page1Paddr(
+  val MisalignedSegmentPhysicalAddress =
+    ysyx_26030103_LSUSegment.SegmentPaddr(
       MisalignedBasePhysicalAddress,
       xlatePaReg,
       MisalignedPage1TranslationValid,
       MisalignedSegmentVirtualAddress,
+      activeVa,
+      true.B,
       AddressWidth
-    ),
-    (MisalignedBasePhysicalAddress & ~"hfff".U(AddressWidth.W)) |
-      MisalignedSegmentVirtualAddress(11, 0)
-  )
+    )
   val directWord =
     SelectWord(io.DataBus.R.RDATA, activeInstruction.ALUResult, busWide)
   val directLoadData =
@@ -737,22 +742,16 @@ class ysyx_26030103_LSU(
   val wbHeadEffectiveAddress =
     if (wbNeedsPhysicalAddress) wbHeadPhysicalAddress else wbHeadAddress
   val wbHeadWidth = Mux(wbHeadWide, 3.U, wbHeadSize)
-  val wbHeadSegVa = Cat(
-    wbHeadVirtualAddress(AddressWidth - 1, ChunkLog2),
-    0.U(ChunkLog2.W)) + (wbSegIndex << ChunkLog2)
-  val wbHeadSegUsesPage1 = wbHeadCrossPage &&
-    CrossesPage(wbHeadSegVa, wbHeadVirtualAddress, AddressWidth)
-  val wbHeadSegPaddr = Mux(
-    wbHeadSegUsesPage1,
-    Page1Paddr(
-      wbHeadEffectiveAddress,
-      wbHeadPage1Pa,
-      wbHeadPage1Valid,
-      wbHeadSegVa,
-      AddressWidth
-    ),
-    (wbHeadEffectiveAddress & ~"hfff".U(AddressWidth.W)) |
-      wbHeadSegVa(11, 0)
+  val wbHeadSegVa = ysyx_26030103_LSUSegment.SegmentAddress(
+    wbHeadVirtualAddress, wbSegIndex, ChunkLog2, AddressWidth)
+  val wbHeadSegPaddr = ysyx_26030103_LSUSegment.SegmentPaddr(
+    wbHeadEffectiveAddress,
+    wbHeadPage1Pa,
+    wbHeadPage1Valid,
+    wbHeadSegVa,
+    wbHeadVirtualAddress,
+    wbHeadCrossPage,
+    AddressWidth
   )
   val wbHeadSegPayload = segmentedStorePayload(
     wbHeadStoreData,

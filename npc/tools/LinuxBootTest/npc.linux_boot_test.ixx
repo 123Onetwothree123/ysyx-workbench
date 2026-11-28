@@ -6,6 +6,12 @@ using std::uint8_t;
 using std::uint32_t;
 using std::uint64_t;
 
+// Test-only layout.  LinuxBootTest is deliberately an independent oracle:
+// it does not import npc.buildtools or npc_config_defaults, so a bug in the
+// product defaults cannot silently change the test expectations.  The FDT
+// address here (0x83F00000) matches the Linux presets, not the generic
+// Kconfig default (0x80f00000); the pack/dtb tests always pass these values
+// explicitly through the environment.
 inline constexpr uint64_t IMAGE_ADDR = 0x80200000;
 inline constexpr uint64_t INITRAMFS_ADDR = 0x82000000;
 inline constexpr uint64_t FDT_ADDR = 0x83F00000;

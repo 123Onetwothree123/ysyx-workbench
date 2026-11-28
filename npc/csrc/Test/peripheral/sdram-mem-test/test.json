@@ -11,7 +11,7 @@
     "sdram-mem-test"
   ],
   "archs": [
-    "riscv32e-npc"
+    "riscv32i-ysyxsoc"
   ],
   "enabled": true
 }

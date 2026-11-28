@@ -1,22 +1,22 @@
 {
   "evidence_scope": "l0-l2",
-  "generated_at": "2026-11-28T06:24:05+00:00",
+  "generated_at": "2026-11-28T10:40:05+00:00",
   "generated_by": "npc/tools/ParamGen/qualify.py",
   "hashes": [
     {
       "defconfig": "rv32i",
-      "effective_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
+      "effective_hash": "0713ee86c0be17880a2b972e4221732e9d7da97519519ed543d5526e42f8bde6",
       "evidence": {
         "l0_kconfig_contract": "pass",
         "l1_npc_config_gen": "pass",
         "l2_chisel_elaboration": "pass",
         "scope": "l0-l2"
       },
-      "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
-      "npc_config_hash": "65fc26e772f081d4",
+      "git_head": "875e77b30fdd5676867ece431d4f7bd0dd497536",
+      "npc_config_hash": "4ee1851ac307a46a",
       "profile": "rv32i",
       "profile_version": 1,
-      "qualified_at": "2026-11-28T06:24:05+00:00",
+      "qualified_at": "2026-11-28T10:40:05+00:00",
       "source": "npc/configs/rv32i_defconfig"
     }
   ],
@@ -30,7 +30,7 @@
   "profile_version": 1,
   "run": {
     "git_dirty": true,
-    "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
+    "git_head": "875e77b30fdd5676867ece431d4f7bd0dd497536",
     "note": "L3 full Verilator build and L4 simulation are not part of this manifest.",
     "selected_defconfigs": [
       "mmu_default",

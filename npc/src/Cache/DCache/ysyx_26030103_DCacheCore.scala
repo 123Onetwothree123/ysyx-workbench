@@ -128,8 +128,8 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
   )
   // DMA snoop 与 CPU 请求同拍时，失效必须优先于命中：否则本拍会锁存
   // DMA 之前的旧数据，而该 B 恰好在本拍完成后对软件可见。
-  private val DMARequestLineHit = DMASnoopActive.B && io.DMASnoopValid &&
-    dmaLineInRange(io.request.bits.address(AddressWidth - 1, BlockSizeLog2))
+  private val DMARequestLineHit =
+    dmaSnoopLineHitNow(io.DMASnoopValid, io.request.bits.address)
   val hit =
     cacheable && valid(indexSafe) && tag(indexSafe) === requestTag &&
       !DMARequestLineHit // 这个直接拿来做一个命中条件
@@ -166,8 +166,8 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
     CacheableMask,
     PMARegions
   )
-  private val DMAResolveLineHit = DMASnoopActive.B && io.DMASnoopValid &&
-    dmaLineInRange(resolvePhysicalAddress(AddressWidth - 1, BlockSizeLog2))
+  private val DMAResolveLineHit =
+    dmaSnoopLineHitNow(io.DMASnoopValid, resolvePhysicalAddress)
   // SRAM 的早读数据晚一拍到达，命中判定要等数据就绪；Reg 恒就绪。
   val resolveReady: Bool =
     if (useSramStorage) resolveVirtualAddressMatch && (waitDataValidValue || waitSramReadValue)
@@ -280,7 +280,8 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
     refillError := true.B
     refillWordValid := 0.U
     when(!demandResponseDone && !responseValid) {
-      RaiseFault(Mux(readError, io.AXI.R.RRESP, 2.U))
+      RaiseFault(
+        ysyx_26030103_CacheControl.FaultResponse(readError, io.AXI.R.RRESP))
     }
     state := stateDrain
   }
@@ -290,10 +291,9 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
       state := stateIdle
     }.otherwise {
       responseFault := true.B
-      responseFaultResponse := Mux(
-        io.AXI.R.RRESP =/= 0.U,
-        io.AXI.R.RRESP,
-        2.U
+      responseFaultResponse := ysyx_26030103_CacheControl.FaultResponse(
+        ysyx_26030103_CacheControl.BeatError(io.AXI.R.RRESP),
+        io.AXI.R.RRESP
       )
       state := stateDrain
     }
@@ -322,9 +322,10 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
   private val DMASnoopResponseAddress: UInt =
     if (useSramStorage) Mux(sramResponsePendingValue, sramRequestAddressValue, responseAddressReg)
     else responseAddressReg
-  private val DMASnoopRefillLineHit = DMASnoopActive.B && refillActive &&
-    (state === stateReadResponse || state === stateDrain) &&
-    dmaLineInRange(refillBaseReg(AddressWidth - 1, BlockSizeLog2))
+  private val DMASnoopRefillLineHit = dmaSnoopRefillHitNow(
+    refillActive && (state === stateReadResponse || state === stateDrain),
+    refillBaseReg
+  )
   private val DMASnoopResponseMatch = DMASnoopActive.B && DMASnoopResponseValid &&
     dmaLineInRange(DMASnoopResponseAddress(AddressWidth - 1, BlockSizeLog2))
   private val DMASnoopResponseReplay = DMASnoopResponseMatch &&
@@ -480,10 +481,12 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
   // RefillError要到下一拍才生效；将本拍RRESP错误和“必须为单拍末尾却缺
   // RLAST”的协议错误直接旁路进ready，避免错误被采样的同拍仍接受partial hit。
   val refillBeatArrives = state === stateReadResponse && refillActive && io.AXI.R.RVALID
-  val requiredLastMissing = refillBeatArrives && !io.AXI.R.RLAST &&
-    (lastRefillBeat || !refillBurst)
+  val requiredLastMissing = ysyx_26030103_CacheControl.MissingLast(
+    refillBeatArrives, io.AXI.R.RLAST, lastRefillBeat || !refillBurst)
   val refillFaultNow =
-    (refillBeatArrives && io.AXI.R.RRESP =/= 0.U) || requiredLastMissing
+    (refillBeatArrives &&
+      ysyx_26030103_CacheControl.BeatError(io.AXI.R.RRESP)) ||
+      requiredLastMissing
   // 同拍成功store会在时钟沿才写入cache阵列；若此时接受同一行的load，响应
   // 会锁存store之前的旧值，因此保守地将该load反压一拍。
   val storeConflictsRequest = io.StoreValid && storeCacheable && cacheable &&
@@ -1077,7 +1080,8 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
                 RaiseFault(Mux(
                   refillErrorResponse =/= 0.U,
                   refillErrorResponse,
-                  Mux(beatError, io.AXI.R.RRESP, 2.U)
+                  ysyx_26030103_CacheControl.FaultResponse(
+                    beatError, io.AXI.R.RRESP)
                 ))
               }
               refillActive := false.B
@@ -1149,10 +1153,9 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
             when(requestWidthReg === 3.U) {
               when(wideBeat === 0.U) {
                 when(io.AXI.R.RLAST) {
-                  RaiseFault(Mux(
-                    io.AXI.R.RRESP =/= 0.U,
-                    io.AXI.R.RRESP,
-                    2.U
+                  RaiseFault(ysyx_26030103_CacheControl.FaultResponse(
+                    ysyx_26030103_CacheControl.BeatError(io.AXI.R.RRESP),
+                    io.AXI.R.RRESP
                   ))
                   state := stateIdle
                 }.otherwise {
@@ -1163,10 +1166,9 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
               }.otherwise {
                 when(io.AXI.R.RLAST) {
                   when(wideLowFault || io.AXI.R.RRESP =/= 0.U) {
-                    RaiseFault(Mux(
-                      io.AXI.R.RRESP =/= 0.U,
-                      io.AXI.R.RRESP,
-                      2.U
+                    RaiseFault(ysyx_26030103_CacheControl.FaultResponse(
+                      ysyx_26030103_CacheControl.BeatError(io.AXI.R.RRESP),
+                      io.AXI.R.RRESP
                     ))
                   }.otherwise {
                     responseData := formatLoad(
@@ -1182,10 +1184,9 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
                   state := stateIdle
                 }.otherwise {
                   when(!demandResponseDone && !responseOccupied) {
-                    RaiseFault(Mux(
-                      io.AXI.R.RRESP =/= 0.U,
-                      io.AXI.R.RRESP,
-                      2.U
+                    RaiseFault(ysyx_26030103_CacheControl.FaultResponse(
+                      ysyx_26030103_CacheControl.BeatError(io.AXI.R.RRESP),
+                      io.AXI.R.RRESP
                     ))
                   }
                   state := stateDrain
@@ -1212,13 +1213,15 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
     }
     is(stateDrain) {
       io.AXI.R.RREADY := true.B
-      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
+      when(ysyx_26030103_CacheControl.ReadLastBeat(
+          io.AXI.R.RVALID, io.AXI.R.RLAST)) {
         refillActive := false.B
         refillBurst := false.B
         refillWordValid := 0.U
         suppressFill := false.B
         state := stateIdle
-      }.elsewhen(drainTimer === DrainTimeout.U) {
+      }.elsewhen(ysyx_26030103_CacheControl.DrainTimedOut(
+          drainTimer, DrainTimeout)) {
         // 从设备长期不给 RLAST：为尚未交付的 demand 产生 fault，缓存行
         // 保持无效，然后进入吸收态，迟到的 beat 不能再被后续请求使用。
         // 已经 valid 的响应可能正被下游反压，Decoupled payload 必须保持
@@ -1241,9 +1244,11 @@ private[cache] trait ysyx_26030103_DCacheCore extends CacheGeometry with CacheAl
     is(stateDrainFault) {
       // 继续吸收违规从设备的迟到拍，直到 RLAST 使总线重新同步。
       io.AXI.R.RREADY := true.B
-      when(io.AXI.R.RVALID && io.AXI.R.RLAST) {
+      when(ysyx_26030103_CacheControl.ReadLastBeat(
+          io.AXI.R.RVALID, io.AXI.R.RLAST)) {
         state := stateIdle
-      }.elsewhen(drainRetryTimer === DrainTimeout.U && !io.AXI.R.RVALID) {
+      }.elsewhen(ysyx_26030103_CacheControl.DrainRetryQuiet(
+          drainRetryTimer, DrainTimeout, io.AXI.R.RVALID)) {
         // 通道已安静足够久：放弃这笔无法同步的事务，恢复服务。
         state := stateIdle
       }.otherwise {

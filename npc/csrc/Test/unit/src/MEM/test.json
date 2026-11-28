@@ -1,3 +1,44 @@
 {
-  "tests": []
+  "tests": [
+    {
+      "name": "scala.ysyx_26030103.mem.ysyx_26030103_LSUHelpersTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.mem.ysyx_26030103_LSUHelpersTest"
+      ],
+      "timeout": 180,
+      "tags": [
+        "scala",
+        "mem",
+        "lsu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    },
+    {
+      "name": "scala.ysyx_26030103.mem.ysyx_26030103_LSUSegmentTest",
+      "tier": "functional",
+      "command": [
+        "mill",
+        "--no-server",
+        "-j",
+        "1",
+        "test.testOnly",
+        "ysyx_26030103.mem.ysyx_26030103_LSUSegmentTest"
+      ],
+      "timeout": 180,
+      "tags": [
+        "scala",
+        "mem",
+        "lsu"
+      ],
+      "enabled": true,
+      "cwd": "../../../bug-confirm"
+    }
+  ]
 }

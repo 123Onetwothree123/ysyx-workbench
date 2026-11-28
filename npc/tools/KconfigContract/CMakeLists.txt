@@ -16,5 +16,8 @@ target_sources(kconfig_contract PRIVATE
     FILES npc.kconfig_contract.ixx
 )
 npc_add_std_module(kconfig_contract)
+target_include_directories(kconfig_contract PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../params/generated
+)
 target_compile_options(kconfig_contract PRIVATE -Wall -Wextra)
 set_target_properties(kconfig_contract PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})

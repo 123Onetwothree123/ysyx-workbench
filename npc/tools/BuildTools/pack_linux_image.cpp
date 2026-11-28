@@ -4,6 +4,8 @@
 // This is the C++ implementation of the former shell body.  The shell entry
 // point remains as a compatibility wrapper for NEMU and direct callers.
 
+#include "npc_config_defaults.h"
+
 #include <unistd.h>
 
 import npc.buildtools;
@@ -11,15 +13,8 @@ import std;
 
 namespace {
 
+namespace defaults = npc::config_defaults;
 using namespace npc::linux_image;
-
-constexpr std::uint64_t kDefaultRamBase = 0x80000000;
-constexpr std::uint64_t kDefaultRamSize = 0x04000000;
-constexpr std::uint64_t kDefaultFwBase = 0x80000000;
-constexpr std::uint64_t kDefaultFwSize = 0x00200000;
-constexpr std::uint64_t kDefaultNextAddr = 0x80200000;
-constexpr std::uint64_t kDefaultFdtAddr = 0x80f00000;
-constexpr std::uint64_t kDefaultInitramfsAddr = 0x82000000;
 
 void info(const std::string &text)
 {
@@ -258,6 +253,11 @@ int main(int argc, char **argv)
         const std::string workbenchHome = locateWorkbenchHome(npcHome);
         ConfigReader config{npcHome, workbenchHome};
 
+        const std::string xlenValue =
+            envOrConfig("SBI_XLEN", config, "CONFIG_XLEN", "64");
+        const std::uint64_t xlenForDefaults =
+            parseU64(xlenValue, "XLEN");
+
         const std::string linuxBootEnable = requireYN(
             "LINUX_BOOT_ENABLE",
             boolEnvOrConfig("LINUX_BOOT_ENABLE", config,
@@ -275,7 +275,9 @@ int main(int argc, char **argv)
             "CONFIG_LINUX_INITRAMFS_PATH", "");
         const std::string linuxInitramfsAddr = fallbackEnv(
             "LINUX_INITRAMFS_ADDR", "SBI_INITRAMFS_ADDR", config,
-            "CONFIG_LINUX_INITRAMFS_ADDR", hexU64(kDefaultInitramfsAddr));
+            "CONFIG_LINUX_INITRAMFS_ADDR",
+            hexU64(static_cast<std::uint64_t>(
+                defaults::LinuxInitramfsAddr())));
         const std::string linuxBootargs = fallbackEnv(
             "LINUX_BOOTARGS", "SBI_BOOTARGS", config,
             "CONFIG_LINUX_BOOTARGS", "console=ttyS0,115200 earlycon=sbi");
@@ -293,20 +295,25 @@ int main(int argc, char **argv)
                      (fs::path{npcHome} / "build" / sbiImpl).string());
         const std::string fwBaseValue =
             envOrConfig("SBI_FW_BASE", config, "CONFIG_SBI_FW_BASE",
-                        hexU64(kDefaultFwBase));
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::SbiFwBase(defaults::NpcRamBase()))));
         const std::string fwSizeValue =
             envOrConfig("SBI_FW_SIZE", config, "CONFIG_SBI_FW_SIZE",
-                        hexU64(kDefaultFwSize));
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::SbiFwSize())));
         const std::string nextAddrValue =
             envOrConfig("SBI_NEXT_ADDR", config, "CONFIG_SBI_NEXT_ADDR",
-                        hexU64(kDefaultNextAddr));
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::SbiNextAddr(
+                                static_cast<long long>(xlenForDefaults)))));
         const std::string fdtEnable = requireYN(
             "SBI_FDT_ENABLE",
             boolEnvOrConfig("SBI_FDT_ENABLE", config,
                             "CONFIG_SBI_FDT_ENABLE", false));
         const std::string fdtAddrValue =
             envOrConfig("SBI_FDT_ADDR", config, "CONFIG_SBI_FDT_ADDR",
-                        hexU64(kDefaultFdtAddr));
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::SbiFdtAddr())));
         const std::string fdtPathValue =
             envOrConfig("SBI_FDT_PATH", config, "CONFIG_SBI_FDT_PATH",
                         "dts/npc.dts");
@@ -315,9 +322,13 @@ int main(int argc, char **argv)
                      (fs::path{linuxOutDir} / "dtb").string());
         const std::string timebaseFreq = envValue("SBI_TIMEBASE_FREQ");
         const std::string ramBaseValue =
-            envDefault("NPC_RAM_BASE", hexU64(kDefaultRamBase));
+            envOrConfig("NPC_RAM_BASE", config, "CONFIG_NPC_RAM_BASE",
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::NpcRamBase())));
         const std::string ramSizeValue =
-            envDefault("NPC_RAM_SIZE", hexU64(kDefaultRamSize));
+            envOrConfig("NPC_RAM_SIZE", config, "CONFIG_NPC_RAM_SIZE",
+                        hexU64(static_cast<std::uint64_t>(
+                            defaults::NpcRamSize())));
 
         if (linuxBootEnable != "y")
             throw std::runtime_error(

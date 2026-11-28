@@ -1,17 +1,14 @@
 NAME = locale-wide-test
 SRCS = main.cpp include-order.cpp
 
+include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../common/am-test.mk)
+
 # cpp-smoke 的 ISA 位宽跟随 Kconfig，不再写死 riscv32。
-include $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../../xlen.mk)
-ARCH ?= $(XLEN_AM_ARCH)
-export ARCH
 ifeq ($(XLEN_IS_64),64)
 CPP_SMOKE_DEFS := -D__ISA__=\"riscv64\" -D__ISA_RISCV64__
 else
 CPP_SMOKE_DEFS := -D__ISA__=\"riscv32\" -D__ISA_RISCV32__
 endif
-
-include $(AM_HOME)/Makefile
 
 cpp-smoke:
 	$(CXX) -march=$(XLEN_GUEST_MARCH) -mabi=$(XLEN_GUEST_MABI) -std=gnu++17 \

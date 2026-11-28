@@ -9,20 +9,17 @@ BUILD_DIR := $(TEST_DIR)/build
 TEST_BIN := $(BUILD_DIR)/difftest-tval-abi-test
 ROOT_DIR := $(abspath $(TEST_DIR)/../../../../..)
 NEMU_DIR := $(ROOT_DIR)/nemu
-NEMU_SRCS := $(shell find $(NEMU_DIR)/src $(NEMU_DIR)/include -type f \( -name '*.c' -o -name '*.h' \) -print)
-REF_BUILDER := $(TEST_DIR)/../common/build_nemu_ref.sh
 REF_OBJ_DIR := $(BUILD_DIR)/nemu-ref-obj
 REF_OBJ_RV32_DIR := $(BUILD_DIR)/nemu-ref-rv32-obj
+
+include $(TEST_DIR)/../common/nemu_ref.mk
 
 .PHONY: all run run-rv32 clean
 
 all: $(TEST_BIN) $(REF_SO)
 
-$(REF_SO): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
-	$(REF_BUILDER) riscv64 $@ $(REF_OBJ_DIR) share
-
-$(REF_SO_RV32): $(NEMU_SRCS) $(TEST_DIR)/Makefile $(REF_BUILDER)
-	$(REF_BUILDER) riscv32 $@ $(REF_OBJ_RV32_DIR) share
+$(eval $(call nemu_ref_rule,$(REF_SO),riscv64,$(REF_OBJ_DIR),share))
+$(eval $(call nemu_ref_rule,$(REF_SO_RV32),riscv32,$(REF_OBJ_RV32_DIR),share))
 
 $(TEST_BIN): main.cpp | $(BUILD_DIR)
 	$(HOST_CXX) -std=c++20 -O2 -Wall -Wextra -Werror -o $@ $< -ldl
