@@ -15,14 +15,6 @@ clean:
 	-@rm -rf "$(CONFIG_BUILD_DIR)" \
 		"$(LEGACY_BIN)" "$(LEGACY_BIN_NPC)" "$(LEGACY_GSIM_BIN)" \
 		"$(BUILD_DIR)/compile_commands.json" itrace.txt
-	@if [ -n "$(CONFIG_HASH)" ] && [ -n "$(BUILD_SIGNATURE)" ]; then \
-		echo "clean: 只删除当前配置+签名目录 $(CONFIG_BUILD_DIR)；其他 hash/signature 目录保留。"; \
-		echo "       配置投影 $(CONFIG_PROJECTION_DIR) 保留给同一配置的其他签名。"; \
-		echo "       如需删除整个 build（所有 hash/signature），请运行 make distclean。"; \
-	else \
-		echo "clean: 未能确定 CONFIG_HASH/BUILD_SIGNATURE，只删除旧路径 symlink。"; \
-		echo "       如需删除整个 build（所有 hash/signature），请运行 make distclean。"; \
-	fi
 
 CACHESIM_DIR  := $(CSRC_DIR)/tools/cachesim
 CACHESIM_BIN  := $(CACHESIM_DIR)/build/cachesim

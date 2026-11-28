@@ -1,9 +1,15 @@
-COLOR_RED := $(shell echo "\033[1;31m")
-COLOR_END := $(shell echo "\033[0m")
+# 配置/清理类目标本来就不要求已有 .config；只有真正构建时才提示。
+NPC_CONFIG_WARN_GOALS := $(filter-out clean distclean menuconfig menuconfig-clean \
+	savedefconfig profile-defconfig %defconfig %_profile,$(MAKECMDGOALS))
+ifeq ($(strip $(MAKECMDGOALS)),)
+NPC_CONFIG_WARN_GOALS := default
+endif
 
 ifeq ($(wildcard .config),)
-$(warning $(COLOR_RED)Warning: .config does not exist!$(COLOR_END))
-$(warning $(COLOR_RED)To build the project, first run 'make menuconfig'.$(COLOR_END))
+ifneq ($(strip $(NPC_CONFIG_WARN_GOALS)),)
+$(warning Warning: .config does not exist!)
+$(warning To build the project, first run 'make menuconfig'.)
+endif
 endif
 
 Q            := @
