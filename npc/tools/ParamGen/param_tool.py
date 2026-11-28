@@ -5,6 +5,7 @@ Examples:
     python3 npc/tools/ParamGen/param_tool.py schema \
         --out /tmp/opencode/schema.json --summary /tmp/opencode/schema-summary.json
     python3 npc/tools/ParamGen/param_tool.py hash --typed /tmp/current.typed.json
+    python3 npc/tools/ParamGen/param_tool.py schema-hash
     python3 npc/tools/ParamGen/param_tool.py check \
         --config /tmp/current.typed.json \
         --profile npc/params/profiles/rv64gc-linux@1.json
@@ -53,6 +54,11 @@ def cmd_hash(args: argparse.Namespace) -> int:
         print(document["effective_hash"])
         if args.out:
             print(f"canonical: {args.out}", file=sys.stderr)
+    return 0
+
+
+def cmd_schema_hash(args: argparse.Namespace) -> int:
+    print(p.schema_bundle_sha256(args.schema))
     return 0
 
 
@@ -112,7 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     schema = sub.add_parser(
         "schema",
-        help="parse npc/Kconfig into a migration snapshot (schema.json is authoritative)",
+        help="parse npc/Kconfig into a single-file migration snapshot (never overwrites the authoritative manifest)",
     )
     schema.add_argument("--kconfig", default=str(p.REPO_ROOT / "npc/Kconfig"))
     schema.add_argument(
@@ -124,16 +130,26 @@ def build_parser() -> argparse.ArgumentParser:
     schema.add_argument(
         "--allow-schema-overwrite",
         action="store_true",
-        help="allow an intentional re-migration over authoritative schema.json",
+        help="deprecated; gen_schema.py rejects writing the authoritative manifest",
     )
     schema.set_defaults(func=cmd_schema)
 
     hash_cmd = sub.add_parser("hash", help="compute the canonical effective hash")
     hash_cmd.add_argument("--typed", required=True, help="npc_config_gen typed JSON")
-    hash_cmd.add_argument("--schema", help="schema snapshot (default npc/params/schema/schema.json)")
+    hash_cmd.add_argument("--schema", help="schema manifest or legacy snapshot (default npc/params/schema/schema.json)")
     hash_cmd.add_argument("--out", help="write canonical JSON document")
     hash_cmd.add_argument("--json", action="store_true", help="print the canonical document")
     hash_cmd.set_defaults(func=cmd_hash)
+
+    schema_hash = sub.add_parser(
+        "schema-hash",
+        help="print the stable manifest+parts bundle SHA256",
+    )
+    schema_hash.add_argument(
+        "--schema",
+        help="schema manifest or legacy snapshot (default npc/params/schema/schema.json)",
+    )
+    schema_hash.set_defaults(func=cmd_schema_hash)
 
     check = sub.add_parser("check", help="classify one config against one profile")
     check.add_argument("--config", required=True, help="typed or canonical effective JSON")

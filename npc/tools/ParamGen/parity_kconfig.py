@@ -862,7 +862,7 @@ def check_schema_migration(
             str(summary),
         ]
     )
-    original = p.read_json(schema_path)
+    original = p.load_schema(schema_path)
     migrated = p.read_json(out)
     original_params = {
         entry["name"]: schema_parameter_semantics(entry)
@@ -909,7 +909,7 @@ def check_schema_migration(
         "parameter_count": len(migrated_params),
         "choice_count": len(migrated_choices),
         "menu_count": len(migrated.get("menus", [])),
-        "schema_sha256": sha256_file(schema_path),
+        "schema_sha256": p.schema_bundle_sha256(schema_path),
         "regenerated_schema_sha256": sha256_file(out),
         "regenerated_summary_sha256": sha256_file(summary),
     }
@@ -1412,7 +1412,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise p.ParamError(
             f"generated Kconfig missing: {generated_top}; run gen_kconfig.py first"
         )
-    schema = p.read_json(schema_path)
+    schema = p.load_schema(schema_path)
 
     print("[parity] schema migration check", file=sys.stderr)
     schema_migration = check_schema_migration(
@@ -1623,7 +1623,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "schema": {
             "path": repo_relative(schema_path),
             "version": schema.get("schema_version"),
-            "sha256": sha256_file(schema_path),
+            "sha256": p.schema_bundle_sha256(schema_path),
+            "manifest_sha256": sha256_file(schema_path),
             "generation_issues": schema.get("generation_issues", []),
         },
         "generated_kconfig": {

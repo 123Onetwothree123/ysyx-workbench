@@ -7,12 +7,14 @@ Usage (migration validation only after the schema switch):
         --out /tmp/opencode/schema.json \
         --summary /tmp/opencode/schema-summary.json
 
-``npc/params/schema/schema.json`` is now the authoritative parameter source.
+``npc/params/schema/schema.json`` is now a small authoritative manifest; the
+parameter/choice/layout payload lives in ``npc/params/schema/parts/*.json``.
 ``gen_schema.py`` is kept to prove that the switched ``npc/Kconfig`` wrapper
 still parses and to compare semantic fields during migration.  Regenerating
-into the authoritative path is blocked unless ``--allow-schema-overwrite`` is
-passed, because doing so would replace the authority with a snapshot derived
-from the generated files (``file``/``line``/``tier`` metadata would drift).
+into the authoritative manifest path is always blocked: a migration snapshot
+is a single-file reverse parse and must not replace the split authority.  Write
+it to a temporary directory and compare with ``split_schema.py --check`` /
+``parity_kconfig.py``.
 
 The snapshot is intentionally *generated* rather than hand-reviewed.  It
 records what Kconfig currently says; it is not a whitelist and it does not
@@ -1155,17 +1157,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--allow-schema-overwrite",
         action="store_true",
         help=(
-            "allow writing the authoritative schema.json; schema is now the "
-            "source of truth, so only use this for an explicit re-migration"
+            "deprecated and rejected: the authoritative schema is the split "
+            "manifest plus parts; write migration snapshots to a temporary "
+            "--out path instead"
         ),
     )
     args = parser.parse_args(argv)
     authoritative = (REPO_ROOT / "npc/params/schema/schema.json").resolve()
-    if Path(args.out).resolve() == authoritative and not args.allow_schema_overwrite:
+    if Path(args.out).resolve() == authoritative:
         parser.error(
             "refusing to overwrite authoritative npc/params/schema/schema.json; "
-            "write migration snapshots to a temporary --out path, or pass "
-            "--allow-schema-overwrite for an intentional re-migration"
+            "write migration snapshots to a temporary --out path; the "
+            "authoritative schema is maintained as schema.json + parts/ "
+            "(use split_schema.py to re-split a merged schema)"
         )
 
     kconfig_path = Path(args.kconfig)

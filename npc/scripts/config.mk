@@ -9,17 +9,23 @@ endif
 Q            := @
 KCONFIG_PATH := $(NPC_HOME)/tools/kconfig
 Kconfig      := $(NPC_HOME)/Kconfig
-# schema.json is the parameter authority.  npc/Kconfig is only the stable
-# entry point; the actual symbol/menu tree is generated before every config
-# tool invocation.  The stamp makes schema/generator changes rebuild the
-# saved config projection without touching the generated files on no-op runs.
+# schema.json is the parameter authority manifest; parts/ holds one file per
+# top-level menu.  npc/Kconfig is only the stable entry point; the actual
+# symbol/menu tree is generated before every config tool invocation.  The
+# stamp makes manifest/part/generator changes rebuild the saved config
+# projection without touching the generated files on no-op runs.
 KCONFIG_SCHEMA := $(NPC_HOME)/params/schema/schema.json
+KCONFIG_SCHEMA_DIR := $(dir $(KCONFIG_SCHEMA))
+KCONFIG_SCHEMA_PARTS_DIR := $(KCONFIG_SCHEMA_DIR)parts
+KCONFIG_SCHEMA_PARTS := $(wildcard $(KCONFIG_SCHEMA_PARTS_DIR)/*.json)
 KCONFIG_GENERATOR := $(NPC_HOME)/tools/ParamGen/gen_kconfig.py
 KCONFIG_GENERATED_DIR := $(NPC_HOME)/params/generated
 KCONFIG_GENERATED := $(KCONFIG_GENERATED_DIR)/Kconfig
 KCONFIG_GEN_STAMP := $(KCONFIG_GENERATED_DIR)/.generated.stamp
-KCONFIG_GEN_DEPS := $(KCONFIG_SCHEMA) $(KCONFIG_GENERATOR) \
-	$(NPC_HOME)/tools/ParamGen/paramlib.py
+KCONFIG_GEN_DEPS := $(KCONFIG_SCHEMA) $(KCONFIG_SCHEMA_PARTS) \
+	$(if $(wildcard $(KCONFIG_SCHEMA_PARTS_DIR)),$(KCONFIG_SCHEMA_PARTS_DIR),) \
+	$(if $(wildcard $(KCONFIG_SCHEMA_DIR)),$(KCONFIG_SCHEMA_DIR),) \
+	$(KCONFIG_GENERATOR) $(NPC_HOME)/tools/ParamGen/paramlib.py
 KCONFIG_GEN_CMD = python3 "$(KCONFIG_GENERATOR)" \
 	--schema "$(KCONFIG_SCHEMA)" --out "$(KCONFIG_GENERATED)"
 CONFIG_CONTRACT := $(NPC_HOME)/tools/build/kconfig_contract

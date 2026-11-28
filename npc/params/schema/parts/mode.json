@@ -1,0 +1,596 @@
+{
+  "choices": [
+    {
+      "default_option": "NPC_MODE_YSYX_ONLY",
+      "defaults": [
+        {
+          "condition": "y",
+          "condition_expr": {
+            "op": "const",
+            "value": "y"
+          },
+          "condition_local": "y",
+          "condition_local_expr": {
+            "op": "const",
+            "value": "y"
+          },
+          "kind": "symbol",
+          "value": "NPC_MODE_YSYX_ONLY"
+        }
+      ],
+      "depends_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_on": "y",
+      "depends_on_local": "y",
+      "derived": false,
+      "file": "npc/kconfig/Kconfig.fpga",
+      "file_order": 2,
+      "help": "FPGA 模式：只生成独立 FPGA 顶层，关闭一生一芯 Verilator 仿真，\n不依赖 ysyxSoC 的 APB、PSRAM、PMA 和板级外设。\n一生一芯模式：只保留 ysyxSoC Verilator 仿真，关闭 FPGA 部署。\n双模式：同时生成 ysyxSoC 仿真顶层和独立 FPGA 顶层，两套顶层\n互不依赖；不是在一个顶层里同时实例化两套 SoC。",
+      "id": "NPC_MODE",
+      "line": 3,
+      "menu_path": [
+        "NPC配置菜单",
+        "运行模式"
+      ],
+      "name": null,
+      "node_count": 1,
+      "options": [
+        "NPC_MODE_BOTH",
+        "NPC_MODE_FPGA_ONLY",
+        "NPC_MODE_YSYX_ONLY"
+      ],
+      "options_in_order": [
+        "NPC_MODE_FPGA_ONLY",
+        "NPC_MODE_YSYX_ONLY",
+        "NPC_MODE_BOTH"
+      ],
+      "order": 364,
+      "prompt": "目标运行模式",
+      "prompt_condition": "y",
+      "prompt_condition_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "prompt_condition_local": "y",
+      "prompt_condition_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "prompt_exists": true,
+      "tier": "platform",
+      "type": "choice",
+      "visibility": "visible",
+      "visible_if": "y",
+      "visible_if_expr": {
+        "op": "const",
+        "value": "y"
+      }
+    }
+  ],
+  "layout": {
+    "depends_expr": {
+      "op": "const",
+      "value": "y"
+    },
+    "depends_local_expr": {
+      "op": "const",
+      "value": "y"
+    },
+    "depends_on": "y",
+    "depends_on_local": "y",
+    "file": "npc/kconfig/Kconfig.fpga",
+    "items": [
+      {
+        "file": "npc/kconfig/Kconfig.fpga",
+        "id": "NPC_MODE",
+        "kind": "choice",
+        "line": 3,
+        "menu_path": [
+          "NPC配置菜单",
+          "运行模式"
+        ],
+        "name": null,
+        "options": [
+          "NPC_MODE_FPGA_ONLY",
+          "NPC_MODE_YSYX_ONLY",
+          "NPC_MODE_BOTH"
+        ],
+        "order": 364
+      },
+      {
+        "file": "npc/kconfig/Kconfig.fpga",
+        "kind": "symbol",
+        "line": 20,
+        "menu_path": [
+          "NPC配置菜单",
+          "运行模式"
+        ],
+        "name": "NPC_TARGET_MODE",
+        "order": 368
+      },
+      {
+        "file": "npc/kconfig/Kconfig.fpga",
+        "kind": "symbol",
+        "line": 28,
+        "menu_path": [
+          "NPC配置菜单",
+          "运行模式"
+        ],
+        "name": "NPC_BUILD_YSYXSOC",
+        "order": 369
+      },
+      {
+        "file": "npc/kconfig/Kconfig.fpga",
+        "kind": "symbol",
+        "line": 32,
+        "menu_path": [
+          "NPC配置菜单",
+          "运行模式"
+        ],
+        "name": "NPC_BUILD_FPGA",
+        "order": 370
+      }
+    ],
+    "kind": "menu",
+    "line": 1,
+    "menu_path": [
+      "NPC配置菜单",
+      "运行模式"
+    ],
+    "order": 363,
+    "prompt": "运行模式",
+    "visible_if": "y",
+    "visible_if_expr": {
+      "op": "const",
+      "value": "y"
+    }
+  },
+  "menu_prompt": "运行模式",
+  "menus": [
+    {
+      "depends_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_on": "y",
+      "depends_on_local": "y",
+      "depth": 1,
+      "file": "npc/kconfig/Kconfig.fpga",
+      "line": 1,
+      "order": 363,
+      "path": [
+        "NPC配置菜单",
+        "运行模式"
+      ],
+      "prompt": "运行模式",
+      "visible_if": "y",
+      "visible_if_expr": {
+        "op": "const",
+        "value": "y"
+      }
+    }
+  ],
+  "parameters": [
+    {
+      "choice_default": false,
+      "choice_group": null,
+      "choice_option": false,
+      "default": "y",
+      "default_value": "n",
+      "defaults": [
+        {
+          "condition": "NPC_MODE_FPGA_ONLY || NPC_MODE_BOTH",
+          "condition_expr": {
+            "args": [
+              {
+                "name": "NPC_MODE_FPGA_ONLY",
+                "op": "symbol"
+              },
+              {
+                "name": "NPC_MODE_BOTH",
+                "op": "symbol"
+              }
+            ],
+            "op": "or"
+          },
+          "condition_local": "NPC_MODE_FPGA_ONLY || NPC_MODE_BOTH",
+          "condition_local_expr": {
+            "args": [
+              {
+                "name": "NPC_MODE_FPGA_ONLY",
+                "op": "symbol"
+              },
+              {
+                "name": "NPC_MODE_BOTH",
+                "op": "symbol"
+              }
+            ],
+            "op": "or"
+          },
+          "kind": "constant",
+          "value": "y"
+        }
+      ],
+      "depends_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_on": "y",
+      "depends_on_local": "y",
+      "derived": true,
+      "derived_reason": "no_prompt",
+      "file": "npc/kconfig/Kconfig.fpga",
+      "file_order": 8,
+      "help": null,
+      "implies": [],
+      "is_menuconfig": false,
+      "kconfig_type": "bool",
+      "line": 32,
+      "menu_path": [
+        "NPC配置菜单",
+        "运行模式"
+      ],
+      "name": "NPC_BUILD_FPGA",
+      "node_count": 1,
+      "order": 370,
+      "prompt": null,
+      "prompt_condition": null,
+      "prompt_condition_expr": null,
+      "prompt_condition_local": null,
+      "prompt_condition_local_expr": null,
+      "prompt_exists": false,
+      "range": [],
+      "range_max": null,
+      "range_min": null,
+      "selects": [],
+      "tier": "platform",
+      "type": "bool",
+      "visibility": "hidden"
+    },
+    {
+      "choice_default": false,
+      "choice_group": null,
+      "choice_option": false,
+      "default": "y",
+      "default_value": "y",
+      "defaults": [
+        {
+          "condition": "!NPC_MODE_FPGA_ONLY",
+          "condition_expr": {
+            "arg": {
+              "name": "NPC_MODE_FPGA_ONLY",
+              "op": "symbol"
+            },
+            "op": "not"
+          },
+          "condition_local": "!NPC_MODE_FPGA_ONLY",
+          "condition_local_expr": {
+            "arg": {
+              "name": "NPC_MODE_FPGA_ONLY",
+              "op": "symbol"
+            },
+            "op": "not"
+          },
+          "kind": "constant",
+          "value": "y"
+        }
+      ],
+      "depends_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_on": "y",
+      "depends_on_local": "y",
+      "derived": true,
+      "derived_reason": "no_prompt",
+      "file": "npc/kconfig/Kconfig.fpga",
+      "file_order": 7,
+      "help": null,
+      "implies": [],
+      "is_menuconfig": false,
+      "kconfig_type": "bool",
+      "line": 28,
+      "menu_path": [
+        "NPC配置菜单",
+        "运行模式"
+      ],
+      "name": "NPC_BUILD_YSYXSOC",
+      "node_count": 1,
+      "order": 369,
+      "prompt": null,
+      "prompt_condition": null,
+      "prompt_condition_expr": null,
+      "prompt_condition_local": null,
+      "prompt_condition_local_expr": null,
+      "prompt_exists": false,
+      "range": [],
+      "range_max": null,
+      "range_min": null,
+      "selects": [],
+      "tier": "platform",
+      "type": "bool",
+      "visibility": "hidden"
+    },
+    {
+      "choice_default": false,
+      "choice_group": "NPC_MODE",
+      "choice_option": true,
+      "default": null,
+      "default_value": "n",
+      "defaults": [],
+      "depends_expr": {
+        "name": "NPC_MODE",
+        "op": "choice"
+      },
+      "depends_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_on": "choice:NPC_MODE",
+      "depends_on_local": "y",
+      "derived": false,
+      "derived_reason": null,
+      "file": "npc/kconfig/Kconfig.fpga",
+      "file_order": 5,
+      "help": null,
+      "implies": [],
+      "is_menuconfig": false,
+      "kconfig_type": "bool",
+      "line": 16,
+      "menu_path": [
+        "NPC配置菜单",
+        "运行模式"
+      ],
+      "name": "NPC_MODE_BOTH",
+      "node_count": 1,
+      "order": 367,
+      "prompt": "FPGA + 一生一芯同时开启",
+      "prompt_condition": "choice:NPC_MODE",
+      "prompt_condition_expr": {
+        "name": "NPC_MODE",
+        "op": "choice"
+      },
+      "prompt_condition_local": "y",
+      "prompt_condition_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "prompt_exists": true,
+      "range": [],
+      "range_max": null,
+      "range_min": null,
+      "selects": [],
+      "tier": "platform",
+      "type": "choice",
+      "visibility": "visible"
+    },
+    {
+      "choice_default": false,
+      "choice_group": "NPC_MODE",
+      "choice_option": true,
+      "default": null,
+      "default_value": "n",
+      "defaults": [],
+      "depends_expr": {
+        "name": "NPC_MODE",
+        "op": "choice"
+      },
+      "depends_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_on": "choice:NPC_MODE",
+      "depends_on_local": "y",
+      "derived": false,
+      "derived_reason": null,
+      "file": "npc/kconfig/Kconfig.fpga",
+      "file_order": 3,
+      "help": null,
+      "implies": [],
+      "is_menuconfig": false,
+      "kconfig_type": "bool",
+      "line": 12,
+      "menu_path": [
+        "NPC配置菜单",
+        "运行模式"
+      ],
+      "name": "NPC_MODE_FPGA_ONLY",
+      "node_count": 1,
+      "order": 365,
+      "prompt": "FPGA 模式（关闭一生一芯仿真）",
+      "prompt_condition": "choice:NPC_MODE",
+      "prompt_condition_expr": {
+        "name": "NPC_MODE",
+        "op": "choice"
+      },
+      "prompt_condition_local": "y",
+      "prompt_condition_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "prompt_exists": true,
+      "range": [],
+      "range_max": null,
+      "range_min": null,
+      "selects": [],
+      "tier": "platform",
+      "type": "choice",
+      "visibility": "visible"
+    },
+    {
+      "choice_default": true,
+      "choice_group": "NPC_MODE",
+      "choice_option": true,
+      "default": null,
+      "default_value": "y",
+      "defaults": [],
+      "depends_expr": {
+        "name": "NPC_MODE",
+        "op": "choice"
+      },
+      "depends_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_on": "choice:NPC_MODE",
+      "depends_on_local": "y",
+      "derived": false,
+      "derived_reason": null,
+      "file": "npc/kconfig/Kconfig.fpga",
+      "file_order": 4,
+      "help": null,
+      "implies": [],
+      "is_menuconfig": false,
+      "kconfig_type": "bool",
+      "line": 14,
+      "menu_path": [
+        "NPC配置菜单",
+        "运行模式"
+      ],
+      "name": "NPC_MODE_YSYX_ONLY",
+      "node_count": 1,
+      "order": 366,
+      "prompt": "一生一芯模式（关闭 FPGA）",
+      "prompt_condition": "choice:NPC_MODE",
+      "prompt_condition_expr": {
+        "name": "NPC_MODE",
+        "op": "choice"
+      },
+      "prompt_condition_local": "y",
+      "prompt_condition_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "prompt_exists": true,
+      "range": [],
+      "range_max": null,
+      "range_min": null,
+      "selects": [],
+      "tier": "platform",
+      "type": "choice",
+      "visibility": "visible"
+    },
+    {
+      "choice_default": false,
+      "choice_group": null,
+      "choice_option": false,
+      "default": "fpga",
+      "default_value": "ysyx",
+      "defaults": [
+        {
+          "condition": "NPC_MODE_FPGA_ONLY",
+          "condition_expr": {
+            "name": "NPC_MODE_FPGA_ONLY",
+            "op": "symbol"
+          },
+          "condition_local": "NPC_MODE_FPGA_ONLY",
+          "condition_local_expr": {
+            "name": "NPC_MODE_FPGA_ONLY",
+            "op": "symbol"
+          },
+          "kind": "constant",
+          "value": "fpga"
+        },
+        {
+          "condition": "NPC_MODE_YSYX_ONLY",
+          "condition_expr": {
+            "name": "NPC_MODE_YSYX_ONLY",
+            "op": "symbol"
+          },
+          "condition_local": "NPC_MODE_YSYX_ONLY",
+          "condition_local_expr": {
+            "name": "NPC_MODE_YSYX_ONLY",
+            "op": "symbol"
+          },
+          "kind": "constant",
+          "value": "ysyx"
+        },
+        {
+          "condition": "NPC_MODE_BOTH",
+          "condition_expr": {
+            "name": "NPC_MODE_BOTH",
+            "op": "symbol"
+          },
+          "condition_local": "NPC_MODE_BOTH",
+          "condition_local_expr": {
+            "name": "NPC_MODE_BOTH",
+            "op": "symbol"
+          },
+          "kind": "constant",
+          "value": "both"
+        },
+        {
+          "condition": "y",
+          "condition_expr": {
+            "op": "const",
+            "value": "y"
+          },
+          "condition_local": "y",
+          "condition_local_expr": {
+            "op": "const",
+            "value": "y"
+          },
+          "kind": "constant",
+          "value": "ysyx"
+        }
+      ],
+      "depends_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_local_expr": {
+        "op": "const",
+        "value": "y"
+      },
+      "depends_on": "y",
+      "depends_on_local": "y",
+      "derived": true,
+      "derived_reason": "no_prompt",
+      "file": "npc/kconfig/Kconfig.fpga",
+      "file_order": 6,
+      "help": null,
+      "implies": [],
+      "is_menuconfig": false,
+      "kconfig_type": "string",
+      "line": 20,
+      "menu_path": [
+        "NPC配置菜单",
+        "运行模式"
+      ],
+      "name": "NPC_TARGET_MODE",
+      "node_count": 1,
+      "order": 368,
+      "prompt": null,
+      "prompt_condition": null,
+      "prompt_condition_expr": null,
+      "prompt_condition_local": null,
+      "prompt_condition_local_expr": null,
+      "prompt_exists": false,
+      "range": [],
+      "range_max": null,
+      "range_min": null,
+      "selects": [],
+      "tier": "platform",
+      "type": "string",
+      "visibility": "hidden"
+    }
+  ]
+}

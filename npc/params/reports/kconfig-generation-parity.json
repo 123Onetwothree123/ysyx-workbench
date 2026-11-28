@@ -93,6 +93,48 @@
     {
       "canonical_differences": [],
       "canonical_equal": true,
+      "current_hash": "67f5c141d32f2abee2eadfbe1e9ecd08010dee30db4c5ffada03d635415fe55d",
+      "defconfig": "rv32gc_linux",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "67f5c141d32f2abee2eadfbe1e9ecd08010dee30db4c5ffada03d635415fe55d",
+      "hash_match": true,
+      "path": "npc/configs/rv32gc_linux_defconfig",
+      "recorded_hash": "67f5c141d32f2abee2eadfbe1e9ecd08010dee30db4c5ffada03d635415fe55d",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
+      "defconfig": "rv32i",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
+      "hash_match": true,
+      "path": "npc/configs/rv32i_defconfig",
+      "recorded_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "b0162d92a5806524a175c0b08edd53ef7bab912280c3cc7a6b15e2a190157c12",
+      "defconfig": "rv32imac_linux",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "b0162d92a5806524a175c0b08edd53ef7bab912280c3cc7a6b15e2a190157c12",
+      "hash_match": true,
+      "path": "npc/configs/rv32imac_linux_defconfig",
+      "recorded_hash": "b0162d92a5806524a175c0b08edd53ef7bab912280c3cc7a6b15e2a190157c12",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
       "current_hash": "5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e",
       "defconfig": "rv64_c",
       "dotconfig_difference_count": 0,
@@ -285,6 +327,20 @@
       "path": "npc/configs/rv64_xv6_defconfig",
       "recorded_hash": "8532358f63397e50dd2712f40f57982b0bff5863e156904babff6a70638b8712",
       "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
+      "defconfig": "rv64gc_linux",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
+      "hash_match": true,
+      "path": "npc/configs/rv64gc_linux_defconfig",
+      "recorded_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
+      "recorded_match": true
     }
   ],
   "determinism": {
@@ -316,7 +372,7 @@
       "parse_ok": true,
       "regenerated_schema_sha256": "952e1b54dc0ae1f66a6d9efa0569768cf4ae96075b137b279b0c2aa423d8cf40",
       "regenerated_summary_sha256": "00878b997a8ab4137efa918c1caeee53bcec3175766b8e17ffe885ea6c785204",
-      "schema_sha256": "bd2d007c9001a5e66f189ebb349a4502f31f50381a76381a79ff65f31e7f8ac6",
+      "schema_sha256": "9d2e7af8b797425713a8fc530f33ac5344551ba7e511ce74731f9133e3ed5cf6",
       "semantic_equal": true
     }
   },
@@ -374,8 +430,9 @@
   "mainmenu_match": true,
   "schema": {
     "generation_issues": [],
+    "manifest_sha256": "6eb8d4dfbf0f29397f1f5573cce27e6214f2400acde05f298c26d11526086397",
     "path": "npc/params/schema/schema.json",
-    "sha256": "bd2d007c9001a5e66f189ebb349a4502f31f50381a76381a79ff65f31e7f8ac6",
+    "sha256": "9d2e7af8b797425713a8fc530f33ac5344551ba7e511ce74731f9133e3ed5cf6",
     "version": 2
   },
   "summary": {
@@ -386,10 +443,10 @@
     "choice_missing_count": 0,
     "default_difference_count": 0,
     "default_value_difference_count": 0,
-    "defconfig_count": 20,
-    "dotconfig_match_count": 20,
+    "defconfig_count": 24,
+    "dotconfig_match_count": 24,
     "generation_issue_count": 0,
-    "hash_match_count": 20,
+    "hash_match_count": 24,
     "help_difference_count": 0,
     "legacy_file_count": 0,
     "legacy_reference_audit_available": true,
@@ -399,7 +456,7 @@
     "menu_tree_difference_count": 0,
     "range_difference_count": 0,
     "ready_to_switch": true,
-    "recorded_match_count": 20,
+    "recorded_match_count": 24,
     "recorded_missing_count": 0,
     "schema_migration_difference_count": 0,
     "schema_migration_equal": true,

@@ -7,6 +7,9 @@
 # 选项后复用不兼容的对象。
 CONFIG_HASH_TOOL := $(abspath tools/ParamGen/param_tool.py)
 CONFIG_HASH_SCHEMA := $(abspath params/schema/schema.json)
+CONFIG_HASH_SCHEMA_DIR := $(dir $(CONFIG_HASH_SCHEMA))
+CONFIG_HASH_SCHEMA_PARTS_DIR := $(CONFIG_HASH_SCHEMA_DIR)parts
+CONFIG_HASH_SCHEMA_PARTS := $(wildcard $(CONFIG_HASH_SCHEMA_PARTS_DIR)/*.json)
 CONFIG_HASH_MK := $(abspath $(BUILD_DIR)/generated/config_hash.mk)
 
 # make 在读取 Makefile 时就要展开所有目标路径，直接在这里 $(shell ...)
@@ -125,8 +128,11 @@ $(LEGACY_BIN): $(BIN) build-links-force
 	ln -sfn "$(CONFIG_HASH)/$(BUILD_SIGNATURE)/$(notdir $(BIN))" "$@"
 
 # schema 是哈希 canonical 投影的一部分，必须存在；ParamGen 在缺省 schema
-# 时不会报错，因此这里显式拦截，避免静默算出另一套哈希。
-CONFIG_HASH_SCHEMA_DEPS := $(CONFIG_HASH_SCHEMA)
+# 时不会报错，因此这里显式拦截，避免静默算出另一套哈希。manifest 声明
+# parts/；part 缺失时 schema-hash 会明确失败，目录依赖负责捕获增删。
+CONFIG_HASH_SCHEMA_DEPS := $(CONFIG_HASH_SCHEMA) $(CONFIG_HASH_SCHEMA_PARTS) \
+	$(if $(wildcard $(CONFIG_HASH_SCHEMA_PARTS_DIR)),$(CONFIG_HASH_SCHEMA_PARTS_DIR),) \
+	$(if $(wildcard $(CONFIG_HASH_SCHEMA_DIR)),$(CONFIG_HASH_SCHEMA_DIR),)
 
 $(CONFIG_HASH_SCHEMA):
 	@echo "错误：缺少 ParamGen schema：$(CONFIG_HASH_SCHEMA)" >&2
@@ -160,6 +166,11 @@ $(CONFIG_HASH_MK): $(NPC_CONFIG_TYPED_STAGE) $(NPC_CONFIG_EFFECTIVE_STAGE) \
 			echo "错误：effective config hash 不是十六进制字符串：$$hash" >&2; \
 			exit 2 ;; \
 	esac; \
+	schema_sha="$$(python3 $(CONFIG_HASH_TOOL) schema-hash --schema '$(CONFIG_HASH_SCHEMA)')" || { \
+		echo "错误：无法计算 ParamGen schema manifest+parts 哈希：$(CONFIG_HASH_SCHEMA)" >&2; \
+		echo "      parts/ 缺失或 JSON 损坏时不会回退到只 hash manifest。" >&2; \
+		exit 2; \
+	}; \
 	dir="$(abspath $(BUILD_DIR))/$$hash"; \
 	config_dir="$$dir/config"; \
 	mkdir -p "$$dir" "$$config_dir"; \
@@ -192,7 +203,7 @@ $(CONFIG_HASH_MK): $(NPC_CONFIG_TYPED_STAGE) $(NPC_CONFIG_EFFECTIVE_STAGE) \
 		printf 'global_staging=build/generated (hash input; still shared by processes)\n'; \
 		printf 'global_limits=mill out/, tools/build/, include/config/auto.conf remain global; SoC build output is ysyxSoC/build\n'; \
 		printf 'param_schema_source=$(CONFIG_HASH_SCHEMA)\n'; \
-		printf 'param_schema_sha256='; sha256sum "$(CONFIG_HASH_SCHEMA)" | cut -d' ' -f1; \
+		printf 'param_schema_sha256=%s\n' "$$schema_sha"; \
 	} > "$$config_dir/projection.manifest"; \
 	{ \
 		printf '# generated from %s; do not edit\n' '$(NPC_CONFIG_TYPED_STAGE)'; \

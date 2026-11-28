@@ -85,6 +85,9 @@ effective hash 使用与 `npc/params/reports/defconfig-classification.csv` 相�
 | `rv32_f` | `e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3` | `e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3` | ✅ | ✅ |
 | `rv32_fd` | `0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152` | `0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152` | ✅ | ✅ |
 | `rv32_noc` | `3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283` | `3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283` | ✅ | ✅ |
+| `rv32gc_linux` | `67f5c141d32f2abee2eadfbe1e9ecd08010dee30db4c5ffada03d635415fe55d` | `67f5c141d32f2abee2eadfbe1e9ecd08010dee30db4c5ffada03d635415fe55d` | ✅ | ✅ |
+| `rv32i` | `db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0` | `db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0` | ✅ | ✅ |
+| `rv32imac_linux` | `b0162d92a5806524a175c0b08edd53ef7bab912280c3cc7a6b15e2a190157c12` | `b0162d92a5806524a175c0b08edd53ef7bab912280c3cc7a6b15e2a190157c12` | ✅ | ✅ |
 | `rv64_c` | `5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e` | `5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e` | ✅ | ✅ |
 | `rv64_custom_deep` | `7b1a6230ae5c2cff4874121dd97b7d2d4b010fae7568910c142ab18bf9158e11` | `7b1a6230ae5c2cff4874121dd97b7d2d4b010fae7568910c142ab18bf9158e11` | ✅ | ✅ |
 | `rv64_custom_large` | `6940d3c71985cde8f2c848f43b123b196e4b72e3c7820169d3b8e05bb5ff8c46` | `6940d3c71985cde8f2c848f43b123b196e4b72e3c7820169d3b8e05bb5ff8c46` | ✅ | ✅ |
@@ -99,6 +102,7 @@ effective hash 使用与 `npc/params/reports/defconfig-classification.csv` 相�
 | `rv64_soft` | `7df5d04679fe19cf7104a5f8cd136299e7c8cbada3eef007220e6b28b66b198c` | `7df5d04679fe19cf7104a5f8cd136299e7c8cbada3eef007220e6b28b66b198c` | ✅ | ✅ |
 | `rv64_sv48` | `e55cf5b13fc586bc68765168a510715378eb83d20b5ca6f1b7e844272c7128b0` | `e55cf5b13fc586bc68765168a510715378eb83d20b5ca6f1b7e844272c7128b0` | ✅ | ✅ |
 | `rv64_xv6` | `8532358f63397e50dd2712f40f57982b0bff5863e156904babff6a70638b8712` | `8532358f63397e50dd2712f40f57982b0bff5863e156904babff6a70638b8712` | ✅ | ✅ |
+| `rv64gc_linux` | `30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d` | `30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d` | ✅ | ✅ |
 
 全部 20 个 defconfig 的 current / generated effective hash 一致；`.config` 的 `CONFIG_*` 值也一致。
 

@@ -1,14 +1,15 @@
 # 参数 schema、effective hash 与支持 profile
 
 本文档描述参数 schema、effective hash 与 profile/qualification。当前
-`schema.json` 已经是参数权威源，`npc/Kconfig` 只是稳定入口，Kconfig
-symbol/menu 树由 `npc/tools/ParamGen/gen_kconfig.py` 生成；切换结构与
-自动生成规则见 `npc/docs/KconfigGeneration.md`。
+`schema.json` 是参数权威 manifest，`npc/params/schema/parts/*.json` 按顶层
+菜单保存实际内容；`npc/Kconfig` 只是稳定入口，Kconfig symbol/menu 树由
+`npc/tools/ParamGen/gen_kconfig.py` 生成；切换结构与自动生成规则见
+`npc/docs/KconfigGeneration.md`。
 
 本工具集负责：
 
-1. 维护/校验参数事实源的确定性 JSON schema；
-2. 从 schema 生成 Kconfig，并证明切换前后语义与迁移基线的 20 个 defconfig hash 一致；
+1. 维护/校验参数事实源的确定性 JSON schema（manifest + parts）；
+2. 从 schema 生成 Kconfig，并证明切换前后语义与迁移基线的 24 个 defconfig hash 一致；
 3. 给一个 effective 配置计算规范化 SHA256；
 4. 用声明式 profile 把配置分类为 qualified / profile-compatible /
    experimental / invalid。
@@ -17,8 +18,8 @@ Kconfig contract 仍是配置合法性的唯一权威；profile 只表达支持�
 
 > 目录：`npc/params/`、`npc/tools/ParamGen/`、`npc/support/qualified/`。
 > schema 中的 `generated_snapshot: true` 记录它最初由 Kconfig 反向导出；
-> 切换后 schema 是权威源，新增参数应直接编辑 schema，而不是重新从
-> Kconfig 反向生成覆盖它。
+> 切换后 schema（manifest + parts）是权威源，新增参数应直接编辑对应
+> part，而不是重新从 Kconfig 反向生成覆盖它。
 >
 > 当前四个硬件预设（`rv32i`、`rv32imac-linux`、`rv32gc-linux`、
 > `rv64gc-linux`）的支持边界、24 个 defconfig 状态和 L0/L1/L2 认证流程见
@@ -30,7 +31,14 @@ Kconfig contract 仍是配置合法性的唯一权威；profile 只表达支持�
 
 ```text
 npc/params/
-  schema/schema.json                 # 权威参数 schema（schema v2）
+  schema/schema.json                 # 权威参数 manifest（schema v2）
+  schema/parts/cpu-platform.json     # 顶层菜单 part（共 7 个）
+  schema/parts/mode.json
+  schema/parts/fpga.json
+  schema/parts/soc-peripheral.json
+  schema/parts/runtime-debug.json
+  schema/parts/firmware-boot.json
+  schema/parts/build-sim.json
   schema/schema-summary.json         # 统计摘要
   generated/Kconfig                  # 生成入口，由 npc/Kconfig source
   generated/kconfig/part-NN.Kconfig  # 按顶层菜单拆分的生成文件
@@ -54,9 +62,10 @@ npc/support/qualified/
   archive/                           # 历史 manifest（当前为空）
 npc/tools/ParamGen/
   param_tool.py                      # 统一 CLI
-  gen_schema.py                      # Kconfig -> schema.json（迁移校验）
-  gen_kconfig.py                     # schema.json -> generated Kconfig
-  parity_kconfig.py                  # 符号/菜单/20 defconfig/hash parity
+  split_schema.py                    # schema 单文件 <-> manifest/parts
+  gen_schema.py                      # Kconfig -> 单文件迁移快照（迁移校验）
+  gen_kconfig.py                     # 合并后的 schema -> generated Kconfig
+  parity_kconfig.py                  # 符号/菜单/24 defconfig/hash parity
   gen_profiles.py                    # typed JSON -> profile base/allow
   classify_defconfigs.py             # 24 个 defconfig 的批量报告
   qualify.py                         # L0/L1/L2 认证 + manifest 更新
@@ -68,7 +77,8 @@ npc/tools/ParamGen/
 
 ### Kconfiglib 来源与许可证
 
-`schema.json` 由 [Kconfiglib](https://github.com/ulfalizer/Kconfiglib) 解析。
+`schema.json`（以及拆分后的 parts）最初由
+[Kconfiglib](https://github.com/ulfalizer/Kconfiglib) 解析生成。
 ParamGen 把仓库内已有的
 `vendor/opensbi/scripts/Kconfiglib/kconfiglib.py`（`VERSION = (14, 1, 0)`）
 复制到 `npc/tools/ParamGen/vendor/kconfiglib.py`，许可证为 **ISC**，原始
@@ -81,10 +91,11 @@ ParamGen 把仓库内已有的
 
 ---
 
-## 2. JSON schema
+## 2. JSON schema（manifest + parts）
 
-`npc/params/schema/schema.json` 是权威源，直接编辑维护。`gen_schema.py`
-只用于迁移校验：
+`npc/params/schema/schema.json` 是权威 manifest，实际内容在
+`npc/params/schema/parts/*.json`。直接编辑对应 part；`gen_schema.py` 只用于
+迁移校验，输出**单文件**迁移快照：
 
 ```bash
 python3 npc/tools/ParamGen/gen_schema.py \
@@ -93,25 +104,61 @@ python3 npc/tools/ParamGen/gen_schema.py \
   --summary /tmp/opencode/schema-summary.json
 ```
 
-它会解析新的 `npc/Kconfig`（wrapper + 生成树），但拒绝直接覆盖
-`npc/params/schema/schema.json`，除非显式传入
+它会解析新的 `npc/Kconfig`（wrapper + 生成树），但**任何**指向
+`npc/params/schema/schema.json` 的 `--out` 都会被拒绝，即使传
 `--allow-schema-overwrite`。原因是反向解析会写入生成文件的
-`file`/`line`/`tier` 元数据并可能改变 `and` 表达式结合顺序，不应把
-权威 schema 替换成迁移快照。
+`file`/`line`/`tier` 元数据并可能改变 `and` 表达式结合顺序；单文件迁移
+快照不能替换 manifest + parts 权威结构。
 
-### 2.1 根字段
+需要把权威 schema 重新拆分或校验时使用：
+
+```bash
+python3 npc/tools/ParamGen/split_schema.py
+python3 npc/tools/ParamGen/split_schema.py --check
+python3 npc/tools/ParamGen/split_schema.py --check \
+  --compare /tmp/opencode/schema-before-split.json
+```
+
+默认拆分前把旧单文件备份到 `/tmp/opencode/schema-before-split.json`；
+`--check` 不写文件，验证 manifest、每个 part、summary 和（可选）比较
+文件。part 文件名是纯语义名；顶层顺序只由 manifest 的 `parts` 数组决定，
+不按文件名排序或 glob 推断。`paramlib.load_schema()` 按 manifest 顺序把
+manifest + parts 合并回旧的单文件内存结构，`parameters` 按 `name`、
+`choices` 按 `id`、`menus` 按原 `order` 排序，`layout.items` 按 manifest
+`parts` 顺序排列。
+
+`schema_bundle_sha256()`（CLI：`param_tool.py schema-hash`）也严格按
+manifest 的 `parts` 顺序计算：hash 覆盖 manifest 元数据和 part 内容，
+part 文件名只是定位信息，所以改名不改变 hash；重排 `parts` 数组会改变
+hash。构建投影必须使用这个 bundle hash，不能只 hash `schema.json`。
+
+### 2.1 manifest 根字段
 
 | 字段 | 含义 |
 | --- | --- |
 | `generated_snapshot` | 固定 `true`，提醒这是生成快照 |
-| `schema_version` | 快照格式版本，当前 `2`（v2 增加反向生成字段） |
+| `schema_version` | 快照格式版本，当前 `2` |
+| `mainmenu` | 顶层 `mainmenu`（`NPC配置菜单`） |
+| `parts` | part 相对路径列表，顺序就是 `layout.items` 顺序 |
 | `generator` | 生成器、Kconfiglib 版本、许可证 |
 | `source` | 权威文件、稳定 Kconfig 入口、迁移 provenance 文件列表、当前生成树文件列表、visibility/tier/layout/generation 模型说明 |
-| `parameters` | 每个符号一条，按 `name` 排序 |
-| `choices` | 每个 choice 组一条，按 `id` 排序 |
-| `layout` | 与源码顺序一致的 menu/comment/symbol/choice 树，`gen_kconfig.py` 的唯一布局输入 |
-| `menus` | 扁平菜单列表：`path`/`depth`/`depends_on`/`visible_if`/`file`/`line`/`order` |
 | `generation_issues` | 无法忠实反向生成的字段/表达式；正常快照为空 |
+
+### 2.1.1 part 字段
+
+每个 part 只保存一个顶层菜单：
+
+| 字段 | 含义 |
+| --- | --- |
+| `menu_prompt` | 顶层菜单 prompt，必须与 `layout.prompt` 一致 |
+| `layout` | 该顶层菜单的完整 layout item（含子菜单/symbol/choice） |
+| `parameters` | 该菜单下每个符号一条，按 `name` 排序 |
+| `choices` | 该菜单下每个 choice 组一条，按 `id` 排序 |
+| `menus` | 该菜单下的扁平菜单记录，按原 `order` 排序 |
+
+所有参数的 `menu_path[1]`、choice 的 `menu_path[1]` 和菜单的 `path[1]`
+必须等于所属 part 的 `menu_prompt`；无法归属、重复菜单、重复参数/choice
+或 part 缺失都会明确报错，不会静默丢弃。
 
 `source.visibility_model` 和 `source.tier_model` 明确写出启发式口径，避免把
 猜测误当成人工结论。
@@ -222,11 +269,12 @@ cmp /tmp/opencode/schema-a.json /tmp/opencode/schema-b.json
 # 从 schema 生成；npc/Kconfig 只 source 生成入口
 python3 npc/tools/ParamGen/gen_kconfig.py
 
-# 完整 parity：schema 迁移校验、生成器确定性、符号表、20 个 defconfig hash
+# 完整 parity：schema 迁移校验、生成器确定性、符号表、24 个 defconfig hash
 python3 npc/tools/ParamGen/parity_kconfig.py
 ```
 
-`gen_kconfig.py` 只读取 `npc/params/schema/schema.json`，输出：
+`gen_kconfig.py` 通过 `paramlib.load_schema()` 读取 manifest 并合并
+`parts/*.json`，输出：
 
 - `npc/params/generated/Kconfig`：只有 `source`，路径相对 `npc/`；
 - `npc/params/generated/kconfig/part-NN.Kconfig`：每个顶层菜单一个文件。
@@ -245,7 +293,7 @@ parity 结果写入：
 - `npc/params/reports/kconfig-generation-parity.json`（机器可读明细）。
 
 切换后结果：868 个符号、75 个 choice 组、92 个显式菜单与 schema 语义
-一致；20 个 defconfig 的 effective hash 与记录的基线 20/20 一致，
+一致；24 个 defconfig 的 effective hash 与记录的基线 24/24 一致，
 `.config` 的 `CONFIG_*` 值也一致；生成器重复运行字节稳定，
 `gen_schema.py` 仍可解析新的 `npc/Kconfig`。详细结论见报告。
 
@@ -618,10 +666,12 @@ base_allow_violations,predicate_failures,profiles,reasons`。
 
 ### 6.1 新增一个 Kconfig 参数
 
-1. 直接编辑 `npc/params/schema/schema.json`：增加 `parameters` 条目，并在
-   `layout` 的对应 menu 中登记 symbol/choice；命名和依赖风格保持现有约定。
-2. 运行 `python3 npc/tools/ParamGen/gen_kconfig.py` 生成 Kconfig。
-3. 运行 `python3 npc/tools/ParamGen/parity_kconfig.py` 验证语义和 20 个
+1. 直接编辑 `npc/params/schema/parts/<menu>.json`：增加 `parameters` 条目，
+   并在 `layout` 的对应 menu 中登记 symbol/choice；命名和依赖风格保持现有
+   约定。
+2. 运行 `python3 npc/tools/ParamGen/split_schema.py --check`，再运行
+   `python3 npc/tools/ParamGen/gen_kconfig.py` 生成 Kconfig。
+3. 运行 `python3 npc/tools/ParamGen/parity_kconfig.py` 验证语义和 24 个
    defconfig hash；检查生成 diff 中的 `type/kconfig_type/default/range/
    depends_on`。
 4. 如果参数有离散约束，仍应加在 `npc/tools/KconfigContract` 中；schema

@@ -6,10 +6,12 @@ Usage:
         --schema npc/params/schema/schema.json \
         --out npc/params/generated/Kconfig
 
-The generator reads *only* ``schema.json``.  It does not open the stable
-``npc/Kconfig`` wrapper, any source under ``npc/kconfig/``, or the previous
-generated files.  The output is written as an include-only top-level Kconfig
-plus one ``kconfig/part-NN.Kconfig`` file per top-level menu, so the schema is
+The generator reads the authoritative schema manifest
+(``npc/params/schema/schema.json``) plus its menu parts through
+``paramlib.load_schema()``.  It does not open the stable ``npc/Kconfig``
+wrapper, any source under ``npc/kconfig/``, or the previous generated files.
+The output is written as an include-only top-level Kconfig plus one
+``kconfig/part-NN.Kconfig`` file per top-level menu, so the schema is
 demonstrably the single source of truth.
 
 ``npc/Kconfig`` is the stable entry point.  It owns ``mainmenu`` because the
@@ -37,7 +39,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from paramlib import REPO_ROOT, read_json
+from paramlib import ParamError, REPO_ROOT, load_schema
 
 TYPE_KEYWORDS = {"bool", "tristate", "int", "hex", "string"}
 Y = "y"
@@ -608,7 +610,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     schema_path = Path(args.schema)
     if not schema_path.is_absolute():
         schema_path = REPO_ROOT / schema_path
-    schema = read_json(schema_path)
+    try:
+        schema = load_schema(schema_path)
+    except ParamError as error:
+        print(f"[param-kconfig] ERROR: {error}", file=sys.stderr)
+        return 2
     problems = validate_schema_source(schema) + validate_stable_wrapper()
     if problems:
         for problem in problems:

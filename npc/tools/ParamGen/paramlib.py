@@ -177,14 +177,318 @@ def sha256_text(text: str) -> str:
 # Schema loading / scalar normalization
 # ---------------------------------------------------------------------------
 
+SCHEMA_PART_KEYS = {"menu_prompt", "layout", "parameters", "choices", "menus"}
+
+
+def _schema_manifest_parts(
+    schema_path: Path, manifest: Dict[str, Any]
+) -> List[Path]:
+    """Resolve and validate the part paths declared by a schema manifest."""
+    parts = manifest.get("parts")
+    if not isinstance(parts, list) or not parts:
+        raise ParamError(f"{schema_path}: manifest.parts must be a non-empty list")
+    base = schema_path.resolve().parent
+    result: List[Path] = []
+    seen: set[Path] = set()
+    for index, relative in enumerate(parts):
+        if not isinstance(relative, str) or not relative:
+            raise ParamError(
+                f"{schema_path}: manifest.parts[{index}] must be a non-empty string"
+            )
+        relative_path = Path(relative)
+        if relative_path.is_absolute():
+            raise ParamError(
+                f"{schema_path}: manifest.parts[{index}] must be relative, "
+                f"got {relative!r}"
+            )
+        candidate = (base / relative_path).resolve()
+        try:
+            candidate.relative_to(base)
+        except ValueError as error:
+            raise ParamError(
+                f"{schema_path}: manifest.parts[{index}] escapes the schema "
+                f"directory: {relative!r}"
+            ) from error
+        if candidate in seen:
+            raise ParamError(
+                f"{schema_path}: duplicate part path in manifest: {relative!r}"
+            )
+        seen.add(candidate)
+        if not candidate.is_file():
+            raise ParamError(
+                f"{schema_path}: schema part is missing: {candidate} "
+                f"(declared as {relative!r})"
+            )
+        result.append(candidate)
+    return result
+
+
+def _part_menu_path(
+    entry: Any,
+    *,
+    part_path: Path,
+    mainmenu: str,
+    menu_prompt: str,
+    path_field: str,
+    where: str,
+) -> None:
+    if not isinstance(entry, dict):
+        raise ParamError(f"{part_path}: {where} must be an object")
+    path = entry.get(path_field)
+    if (
+        not isinstance(path, list)
+        or len(path) < 2
+        or not all(isinstance(component, str) for component in path)
+    ):
+        raise ParamError(
+            f"{part_path}: {where}.{path_field} must be a menu path with at "
+            f"least two components, got {path!r}"
+        )
+    if path[0] != mainmenu:
+        raise ParamError(
+            f"{part_path}: {where}.{path_field}[0] is {path[0]!r}, but the "
+            f"manifest mainmenu is {mainmenu!r}"
+        )
+    if path[1] != menu_prompt:
+        raise ParamError(
+            f"{part_path}: {where}.{path_field}[1] is {path[1]!r}, but the "
+            f"part menu is {menu_prompt!r}"
+        )
+
+
+def _load_schema_bundle(
+    schema_path: Path, manifest: Dict[str, Any]
+) -> Dict[str, Any]:
+    if "parameters" in manifest:
+        raise ParamError(
+            f"{schema_path}: schema must not contain both 'parts' and "
+            "'parameters'"
+        )
+    mainmenu = manifest.get("mainmenu")
+    if not isinstance(mainmenu, str) or not mainmenu:
+        raise ParamError(f"{schema_path}: manifest.mainmenu must be a non-empty string")
+    part_paths = _schema_manifest_parts(schema_path, manifest)
+
+    parameters: List[Dict[str, Any]] = []
+    choices: List[Dict[str, Any]] = []
+    menus: List[Dict[str, Any]] = []
+    layout_items: List[Dict[str, Any]] = []
+    seen_parameters: set[str] = set()
+    seen_choices: set[str] = set()
+    seen_menu_paths: set[Tuple[str, ...]] = set()
+    seen_prompts: set[str] = set()
+
+    for part_path in part_paths:
+        part = read_json(part_path)
+        if not isinstance(part, dict):
+            raise ParamError(f"{part_path}: schema part root must be an object")
+        extra = set(part) - SCHEMA_PART_KEYS
+        if extra:
+            raise ParamError(
+                f"{part_path}: unsupported part key(s): "
+                + ", ".join(sorted(extra))
+            )
+        prompt = part.get("menu_prompt")
+        if not isinstance(prompt, str) or not prompt:
+            raise ParamError(
+                f"{part_path}: part.menu_prompt must be a non-empty string"
+            )
+        if prompt in seen_prompts:
+            raise ParamError(
+                f"{schema_path}: duplicate part menu prompt: {prompt!r}"
+            )
+        seen_prompts.add(prompt)
+        layout = part.get("layout")
+        if not isinstance(layout, dict):
+            raise ParamError(f"{part_path}: part.layout must be an object")
+        if layout.get("kind") != "menu":
+            raise ParamError(
+                f"{part_path}: part.layout must be a top-level menu object"
+            )
+        if layout.get("prompt") != prompt:
+            raise ParamError(
+                f"{part_path}: part.layout.prompt is {layout.get('prompt')!r}, "
+                f"but part.menu_prompt is {prompt!r}"
+            )
+        layout_path = layout.get("menu_path")
+        if layout_path is not None:
+            _part_menu_path(
+                layout,
+                part_path=part_path,
+                mainmenu=mainmenu,
+                menu_prompt=prompt,
+                path_field="menu_path",
+                where="part.layout",
+            )
+        layout_items.append(layout)
+
+        part_parameters = part.get("parameters")
+        part_choices = part.get("choices")
+        part_menus = part.get("menus")
+        for field, value in (
+            ("parameters", part_parameters),
+            ("choices", part_choices),
+            ("menus", part_menus),
+        ):
+            if not isinstance(value, list):
+                raise ParamError(f"{part_path}: part.{field} must be a list")
+
+        for index, entry in enumerate(part_parameters):
+            where = f"parameters[{index}]"
+            _part_menu_path(
+                entry,
+                part_path=part_path,
+                mainmenu=mainmenu,
+                menu_prompt=prompt,
+                path_field="menu_path",
+                where=where,
+            )
+            name = entry.get("name")
+            if not isinstance(name, str) or not name:
+                raise ParamError(f"{part_path}: {where}.name must be a non-empty string")
+            if name in seen_parameters:
+                raise ParamError(f"{schema_path}: duplicate parameter name: {name!r}")
+            seen_parameters.add(name)
+            parameters.append(entry)
+
+        for index, entry in enumerate(part_choices):
+            where = f"choices[{index}]"
+            _part_menu_path(
+                entry,
+                part_path=part_path,
+                mainmenu=mainmenu,
+                menu_prompt=prompt,
+                path_field="menu_path",
+                where=where,
+            )
+            choice_id = entry.get("id")
+            if not isinstance(choice_id, str) or not choice_id:
+                raise ParamError(f"{part_path}: {where}.id must be a non-empty string")
+            if choice_id in seen_choices:
+                raise ParamError(f"{schema_path}: duplicate choice id: {choice_id!r}")
+            seen_choices.add(choice_id)
+            choices.append(entry)
+
+        for index, entry in enumerate(part_menus):
+            where = f"menus[{index}]"
+            _part_menu_path(
+                entry,
+                part_path=part_path,
+                mainmenu=mainmenu,
+                menu_prompt=prompt,
+                path_field="path",
+                where=where,
+            )
+            path = tuple(entry["path"])
+            if path in seen_menu_paths:
+                raise ParamError(
+                    f"{schema_path}: duplicate menu path: " + " / ".join(path)
+                )
+            seen_menu_paths.add(path)
+            if not isinstance(entry.get("order"), int):
+                raise ParamError(f"{part_path}: {where}.order must be an integer")
+            menus.append(entry)
+
+    parameters.sort(key=lambda entry: entry["name"])
+    choices.sort(key=lambda entry: entry["id"])
+    menus.sort(key=lambda entry: entry["order"])
+    return {
+        "schema_version": manifest.get("schema_version"),
+        "generated_snapshot": manifest.get("generated_snapshot"),
+        "generator": manifest.get("generator"),
+        "source": manifest.get("source"),
+        "layout": {"mainmenu": mainmenu, "items": layout_items},
+        "menus": menus,
+        "parameters": parameters,
+        "choices": choices,
+        "generation_issues": manifest.get("generation_issues", []),
+    }
+
+
 def load_schema(path: Optional[os.PathLike | str] = None) -> Dict[str, Any]:
+    """Load the authoritative schema, merging menu parts when present.
+
+    A legacy single-file schema (with ``parameters`` and no ``parts``) is
+    returned unchanged.  A manifest is merged back into the historical
+    in-memory shape: parameters sorted by name, choices by id, layout items in
+    manifest part order and menus sorted by their original order.
+    """
     schema_path = Path(path) if path else DEFAULT_SCHEMA
     if not schema_path.exists():
         return {}
     schema = read_json(schema_path)
     if not isinstance(schema, dict):
         raise ParamError(f"{schema_path}: schema root must be an object")
+    if "parts" in schema and "parameters" not in schema:
+        return _load_schema_bundle(schema_path.resolve(), schema)
+    if "parameters" in schema:
+        return schema
     return schema
+
+
+def schema_bundle_files(path: Optional[os.PathLike | str] = None) -> List[Path]:
+    """Return the manifest plus every part that defines the schema.
+
+    The list is stable (manifest first, then manifest ``parts`` order) and is
+    what build projections should hash.  Order is never inferred from filename
+    sorting or a ``parts/*.json`` glob.  A legacy single-file schema returns
+    just that file.
+    """
+    schema_path = Path(path) if path else DEFAULT_SCHEMA
+    if not schema_path.exists():
+        raise ParamError(f"schema is missing: {schema_path}")
+    schema = read_json(schema_path)
+    if not isinstance(schema, dict):
+        raise ParamError(f"{schema_path}: schema root must be an object")
+    if "parts" in schema and "parameters" not in schema:
+        part_paths = _schema_manifest_parts(schema_path.resolve(), schema)
+        for part_path in part_paths:
+            part = read_json(part_path)
+            if not isinstance(part, dict):
+                raise ParamError(f"{part_path}: schema part root must be an object")
+        return [schema_path] + part_paths
+    if "parameters" in schema:
+        return [schema_path]
+    return [schema_path]
+
+
+def schema_bundle_sha256(path: Optional[os.PathLike | str] = None) -> str:
+    """Stable SHA256 over the logical manifest + parts content.
+
+    Files are read strictly in the manifest's ``parts`` order; order is never
+    inferred from filename sorting or a directory glob.  The manifest's
+    ``parts`` path list is metadata for locating files, not schema content, so
+    renaming a part and updating the manifest does not change this hash.
+    Moving the checkout or reformatting JSON also does not change it.
+    """
+    schema_path = Path(path) if path else DEFAULT_SCHEMA
+    files = schema_bundle_files(schema_path)
+    digest = hashlib.sha256()
+    digest.update(b"npc-param-schema-bundle-v1\n")
+
+    def update(value: Any) -> None:
+        text = dump_canonical_json(value).encode("utf-8")
+        digest.update(str(len(text)).encode("ascii"))
+        digest.update(b"\0")
+        digest.update(text)
+        digest.update(b"\n")
+
+    manifest_path = files[0]
+    manifest = read_json(manifest_path)
+    if len(files) == 1:
+        # Legacy single-file schema: hash its parsed semantic content.
+        update(manifest)
+        return digest.hexdigest()
+
+    # The part filenames only locate payloads.  Hash the manifest's semantic
+    # metadata, then each part payload in manifest order.
+    manifest_metadata = {
+        key: value for key, value in manifest.items() if key != "parts"
+    }
+    update(manifest_metadata)
+    for part_path in files[1:]:
+        update(read_json(part_path))
+    return digest.hexdigest()
 
 
 def schema_parameter_map(schema: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
