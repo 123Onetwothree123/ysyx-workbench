@@ -94,6 +94,16 @@ menu "U-Boot EFI 启动镜像"
       本菜单不会下载/编译 Linux，也不使用 `make linux-image` 的 raw
       Image 布局；kernel/initrd 由调用者提供并放在下面配置的固定地址。
 
+  config NPC_UBOOT_JOBS
+    int "U-Boot 构建线程数，0 = 使用全部核心"
+    depends on NPC_UBOOT_ENABLE
+    default 0
+    range 0 256
+    help
+      传给 vendor/u-boot 的并行构建任务数
+      0表示使用所有可用核心
+      非0值直接传给U-Boot的make -j
+
   config NPC_UBOOT_INITRAMFS_PATH
     string "initramfs 路径"
     depends on NPC_UBOOT_ENABLE

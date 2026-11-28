@@ -90,6 +90,29 @@ struct SelfTest {
     values["FPGA_FLASH_OFFSET"] = Value::make_int(0);
     return values;
   }
+  static Config base_soc() {
+    Config values;
+    values["NPC_BUILD_YSYXSOC"] = Value::make_bool(true);
+    return values;
+  }
+  static std::map<std::string, long long> base_soc_address_map() {
+    return {
+        {"uartBase", 0x10000000LL},
+        {"uartSize", 0x00001000LL},
+        {"gpioBase", 0x10002000LL},
+        {"gpioSize", 0x00000010LL},
+        {"keyboardBase", 0x10011000LL},
+        {"keyboardSize", 0x00000008LL},
+        {"vgaBase", 0x21000000LL},
+        {"vgaSize", 0x00200000LL},
+        {"sramBase", 0x0f000000LL},
+        {"sramSize", 0x00008000LL},
+        {"chiplinkMemBase", 0xc0000000LL},
+        {"chiplinkMemSize", 0x40000000LL},
+        {"chiplinkMmioBase", 0x40000000LL},
+        {"chiplinkMmioSize", 0x40000000LL},
+    };
+  }
   void expect_ok(const std::string& name, const Config& values) {
     try {
       const auto errors = validate_config(values);
@@ -137,6 +160,112 @@ struct SelfTest {
       ++failed;
       std::cerr << "[FAIL] self-test " << name
                 << ": 校验抛出异常: " << ex.what() << '\n';
+    }
+  }
+  void expect_soc_ok(const std::string& name, const Config& values,
+                     const std::map<std::string, long long>& addresses) {
+    try {
+      const auto errors = validate_soc_rtl(values, addresses);
+      if (errors.empty()) {
+        ++passed;
+        return;
+      }
+      ++failed;
+      std::cerr << "[FAIL] self-test " << name
+                << ": 期望SoC地址契约通过，但得到 " << errors.size()
+                << " 个错误\n";
+      for (const auto& error : errors) {
+        std::cerr << "       " << error << '\n';
+      }
+    } catch (const std::exception& ex) {
+      ++failed;
+      std::cerr << "[FAIL] self-test " << name
+                << ": SoC地址契约校验抛出异常: " << ex.what() << '\n';
+    }
+  }
+  void expect_soc_error(const std::string& name, const Config& values,
+                        const std::map<std::string, long long>& addresses,
+                        const std::string& needle) {
+    try {
+      const auto errors = validate_soc_rtl(values, addresses);
+      if (errors.empty()) {
+        ++failed;
+        std::cerr << "[FAIL] self-test " << name
+                  << ": 期望SoC地址契约被拒绝，但校验通过\n";
+        return;
+      }
+      const bool found = std::any_of(
+          errors.begin(), errors.end(), [&needle](const std::string& error) {
+            return error.find(needle) != std::string::npos;
+          });
+      if (!found) {
+        ++failed;
+        std::cerr << "[FAIL] self-test " << name << ": 错误信息未包含 '"
+                  << needle << "'\n";
+        for (const auto& error : errors) {
+          std::cerr << "       " << error << '\n';
+        }
+        return;
+      }
+      ++passed;
+    } catch (const std::exception& ex) {
+      ++failed;
+      std::cerr << "[FAIL] self-test " << name
+                << ": SoC地址契约校验抛出异常: " << ex.what() << '\n';
+    }
+  }
+  void expect_effective_ok(const std::string& name, const Config& requested,
+                           const Config& effective) {
+    try {
+      const auto errors =
+          check_effective_config(requested, effective, "self-test.typed.json flat");
+      if (errors.empty()) {
+        ++passed;
+        return;
+      }
+      ++failed;
+      std::cerr << "[FAIL] self-test " << name
+                << ": 期望 effective 契约通过，但得到 " << errors.size()
+                << " 个错误\n";
+      for (const auto& error : errors) {
+        std::cerr << "       " << error << '\n';
+      }
+    } catch (const std::exception& ex) {
+      ++failed;
+      std::cerr << "[FAIL] self-test " << name
+                << ": effective 校验抛出异常: " << ex.what() << '\n';
+    }
+  }
+  void expect_effective_error(const std::string& name, const Config& requested,
+                              const Config& effective,
+                              const std::string& needle) {
+    try {
+      const auto errors =
+          check_effective_config(requested, effective, "self-test.typed.json flat");
+      if (errors.empty()) {
+        ++failed;
+        std::cerr << "[FAIL] self-test " << name
+                  << ": 期望 effective 契约被拒绝，但校验通过\n";
+        return;
+      }
+      const bool found = std::any_of(
+          errors.begin(), errors.end(), [&needle](const std::string& error) {
+            return error.find(needle) != std::string::npos;
+          });
+      if (!found) {
+        ++failed;
+        std::cerr << "[FAIL] self-test " << name << ": 错误信息未包含 '"
+                  << needle << "'\n";
+        for (const auto& error : errors) {
+          std::cerr << "       " << error << '\n';
+        }
+        return;
+      }
+      ++passed;
+    } catch (const std::exception& ex) {
+      ++failed;
+      std::cerr << "[FAIL] self-test " << name
+                << ": effective 校验抛出异常: " << ex.what() << '\n';
     }
   }
   void expect_true(const std::string& name, bool condition,
@@ -213,6 +342,10 @@ struct SelfTest {
     values["MMU_PTE_READ_BIT"] = Value::make_int(2);
     values["MMU_PTE_WRITE_BIT"] = Value::make_int(2);
     expect_error("pte_field_overlap_rejected", values, "不能重复");
+    values = base_custom_rv64();
+    values["MMU_PTE_READ_BIT"] = Value::make_int(64);
+    expect_error("pte_field_out_of_range_rejected", values,
+                 "PTE 标志位必须位于 0..63");
     values = base_custom_rv64();
     values.erase("MMU_GEOMETRY_MODE");
     values.erase("MMU_PTE_FORMAT");
@@ -458,6 +591,131 @@ struct SelfTest {
     values = base_fpga_amd();
     values["FPGA_SIGNALTAP_ENABLE"] = Value::make_bool(true);
     expect_error("fpga_signaltap_vendor_rejected", values, "只适用于 Intel");
+    const auto socAddresses = base_soc_address_map();
+    values = base_soc();
+    expect_soc_ok("soc_pma_defaults_match_rtl", values, socAddresses);
+    values = base_soc();
+    values["PMA_UART_BASE"] = Value::make_int(0x10001000);
+    expect_soc_error("soc_uart_base_mismatch_rejected", values, socAddresses,
+                     "PMA_UART_BASE");
+    values = base_soc();
+    values["PMA_VGA_SIZE"] = Value::make_int(0x00100000);
+    expect_soc_error("soc_vga_size_mismatch_rejected", values, socAddresses,
+                     "PMA_VGA_SIZE");
+    values = base_soc();
+    values["PMA_SRAM_BASE"] = Value::make_int(0x0e000000);
+    expect_soc_error("soc_sram_base_mismatch_rejected", values, socAddresses,
+                     "PMA_SRAM_BASE");
+    values = base_soc();
+    values["PMA_CHIPLINK_MEM_BASE"] = Value::make_int(0x80000000);
+    expect_soc_error("soc_chiplink_mem_base_mismatch_rejected", values,
+                     socAddresses, "PMA_CHIPLINK_MEM_BASE");
+    values = base_soc();
+    values["CHIPLINK"] = Value::make_bool(false);
+    values["PMA_CHIPLINK_MEM_BASE"] = Value::make_int(0x80000000);
+    expect_soc_error("soc_chiplink_disabled_still_checked", values,
+                     socAddresses, "PMA_CHIPLINK_MEM_BASE");
+    values = base_soc();
+    values["NPC_BUILD_YSYXSOC"] = Value::make_bool(false);
+    values["PMA_UART_BASE"] = Value::make_int(0x10001000);
+    expect_soc_ok("soc_contract_skips_non_soc_build", values, socAddresses);
+    auto missingAddresses = socAddresses;
+    missingAddresses.erase("gpioBase");
+    values = base_soc();
+    expect_soc_error("soc_missing_rtl_constant_rejected", values,
+                     missingAddresses, "gpioBase");
+    values = base_rv64();
+    values["HAS_TLB"] = Value::make_bool(true);
+    values["HAS_MMU"] = Value::make_bool(false);
+    expect_error("has_tlb_without_mmu_rejected", values,
+                 "HAS_TLB=y 需要 HAS_MMU=y");
+    values = base_rv64();
+    values["MUL_COMPRESSOR_INPUTS"] = Value::make_int(2);
+    expect_error("mul_gpc_inputs_2_rejected", values,
+                 "MUL_COMPRESSOR_INPUTS=2");
+    values = base_rv64();
+    values["MUL_COMPRESSOR_OUTPUTS"] = Value::make_int(65);
+    expect_error("mul_gpc_outputs_65_rejected", values,
+                 "MUL_COMPRESSOR_OUTPUTS=65");
+    values = base_rv64();
+    values["MUL_COMPRESSOR_OUTPUTS"] = Value::make_int(3);
+    values["MUL_COMPRESSOR_OUTPUT_OFFSETS"] = Value::make_string("0,1");
+    expect_error("mul_gpc_offset_count_rejected", values,
+                 "输出权重数量必须等于 R");
+    values = base_rv64();
+    values["MUL_COMPRESSOR_OUTPUTS"] = Value::make_int(2);
+    values["MUL_COMPRESSOR_OUTPUT_OFFSETS"] = Value::make_string("0,-1");
+    expect_error("mul_gpc_negative_offset_rejected", values,
+                 "输出权重偏移必须非负");
+    values = base_rv64();
+    values["MUL_COMPRESSOR_COUT_OFFSET"] = Value::make_int(-1);
+    expect_error("mul_gpc_negative_cout_offset_rejected", values,
+                 "Cout 权重偏移必须非负");
+    values = base_rv64();
+    values["MUL_COMPRESSOR_INPUTS"] = Value::make_int(3);
+    values["MUL_COMPRESSOR_OUTPUTS"] = Value::make_int(2);
+    values["MUL_COMPRESSOR_OUTPUT_OFFSETS"] = Value::make_string("0, 1");
+    values["MUL_COMPRESSOR_COUT_OFFSET"] = Value::make_int(1);
+    expect_ok("mul_gpc_valid_offsets_accepted", values);
+    Config requested = base_rv64();
+    requested["ITRACE"] = Value::make_bool(false);
+    requested["ITRACE_WRITE_FILE"] = Value::make_bool(true);
+    Config effective = requested;
+    effective["ITRACE"] = Value::make_string("y");
+    effective["ITRACE_WRITE_FILE"] = Value::make_string("y");
+    effective["HAS_S"] = Value::make_string("1");
+    effective["MMU_ENABLED"] = Value::make_string("1");
+    effective["SOC_XLEN_EFFECTIVE"] = Value::make_string("64");
+    expect_effective_ok("effective_derived_normalization_accepted", requested,
+                        effective);
+    effective = requested;
+    effective["XLEN"] = Value::make_string("32");
+    expect_effective_error("effective_unexpected_rewrite_rejected", requested,
+                           effective, "XLEN: 请求值='64' 与生效值='32'");
+    effective = requested;
+    effective.erase("XLEN");
+    expect_effective_error("effective_missing_symbol_rejected", requested,
+                           effective, "XLEN: 请求值='64'");
+    requested = base_custom_rv64();
+    effective = base_custom_rv64();
+    effective["MMU_PTE_READ_BIT"] = Value::make_int(2);
+    effective["MMU_PTE_WRITE_BIT"] = Value::make_int(2);
+    expect_effective_error("effective_pte_duplicate_rejected", requested,
+                           effective, "PTE 标志位不能重复");
+    effective = base_custom_rv64();
+    effective["MMU_PTE_PPN_HIGH"] = Value::make_int(100);
+    expect_effective_error("effective_pte_ppn_range_rejected", requested,
+                           effective, "PTE PPN 位范围非法");
+    effective = base_custom_rv64();
+    effective["MMU_PTE_READ_BIT"] = Value::make_int(64);
+    expect_effective_error("effective_pte_flag_range_rejected", requested,
+                           effective, "PTE 标志位必须位于 0..63");
+    requested = base_rv64();
+    requested["MUL_COMPRESSOR_OUTPUTS"] = Value::make_int(2);
+    requested["MUL_COMPRESSOR_OUTPUT_OFFSETS"] = Value::make_string("0,1");
+    effective = requested;
+    effective["MUL_COMPRESSOR_OUTPUTS"] = Value::make_string("3");
+    expect_effective_error("effective_mul_gpc_count_rejected", requested,
+                           effective, "MUL_COMPRESSOR_OUTPUTS");
+    requested = base_rv64();
+    requested["HAS_MMU"] = Value::make_bool(false);
+    requested["HAS_TLB"] = Value::make_bool(true);
+    effective = requested;
+    expect_effective_error("effective_tlb_without_mmu_rejected", requested,
+                           effective, "HAS_TLB=y 需要 HAS_MMU=y");
+    const Config flat = parse_typed_json_flat_text(R"({
+      "schema": 1,
+      "nested": {"a": [1, 2, {"b": "c"}], "ok": true},
+      "flat": {"XLEN": "64", "NAME": "hello, world", "ESC": "a\"b"}
+    })");
+    expect_true("typed_json_flat_key_count", flat.size() == 3,
+                "实际解析 " + std::to_string(flat.size()) + " 个键");
+    expect_true("typed_json_flat_xlen",
+                as_int(flat, "XLEN", -1) == 64);
+    expect_true("typed_json_flat_string",
+                as_str(flat, "NAME", "") == "hello, world");
+    expect_true("typed_json_flat_escape",
+                as_str(flat, "ESC", "") == "a\"b");
     if (failed != 0) {
       std::cerr << "[FAIL] Kconfig 配置契约自检: " << failed << "/"
                 << (passed + failed) << " 项失败\n";

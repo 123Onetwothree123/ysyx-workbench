@@ -24,6 +24,24 @@ using RamWord = decltype(Sriscv32e_npc_SimTop::ram_init_data);
 constexpr std::size_t WordBytes = sizeof(RamWord);
 constexpr std::uint8_t GprA0Index = 10;
 
+#ifndef NPC_GSIM_CACHE_PADDING
+#define NPC_GSIM_CACHE_PADDING 0
+#endif
+#ifndef NPC_GSIM_RAM_BYTES
+#define NPC_GSIM_RAM_BYTES 0
+#endif
+
+// CACHE_PADDING以字节为单位，ram_init_index以SoC字为单位；
+// 非字对齐时无法用整字写口还原镜像，直接编译失败而不是静默截断
+constexpr std::size_t CachePaddingBytes =
+    static_cast<std::size_t>(NPC_GSIM_CACHE_PADDING);
+static_assert(CachePaddingBytes % WordBytes == 0,
+              "GSIM要求CACHE_PADDING按SoC RAM字宽对齐，"
+              "否则镜像无法按字写入ram_init");
+constexpr std::size_t CachePaddingWords = CachePaddingBytes / WordBytes;
+constexpr std::uint64_t RamBytes =
+    static_cast<std::uint64_t>(NPC_GSIM_RAM_BYTES);
+
 std::vector<std::uint8_t> ReadImage(const char *path) {
   std::FILE *file = std::fopen(path, "rb");
   if (file == nullptr) {
@@ -66,7 +84,9 @@ void LoadImage(Sriscv32e_npc_SimTop &dut,
                 << (byteIndex * 8U);
       }
     }
-    dut.set_ram_init_index(static_cast<std::uint32_t>(wordIndex));
+    // 镜像整体后移padding，复位PC由RTL同步加padding
+    dut.set_ram_init_index(
+        static_cast<std::uint32_t>(CachePaddingWords + wordIndex));
     dut.set_ram_init_data(word);
     dut.set_ram_init_valid(1);
     dut.step();
@@ -106,6 +126,15 @@ int main(int argc, char **argv) {
     maxCycles = std::strtoull(argv[2], nullptr, 0);
   }
   const std::vector<std::uint8_t> image = ReadImage(argv[1]);
+  if (RamBytes != 0 &&
+      (CachePaddingBytes > RamBytes ||
+       image.size() > RamBytes - CachePaddingBytes)) {
+    std::fprintf(stderr,
+                 "镜像过大：%zu 字节 + %zu 字节填充，超过 RAM %llu 字节\n",
+                 image.size(), CachePaddingBytes,
+                 static_cast<unsigned long long>(RamBytes));
+    return 2;
+  }
 
   Sriscv32e_npc_SimTop *dut = new Sriscv32e_npc_SimTop();
   dut->set_clock(0);

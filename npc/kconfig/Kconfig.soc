@@ -39,8 +39,9 @@ menu "SoC 与外设"
 
   menu "PMA 物理地址映射"
 
-    # 这里只改 CPU PMA、C++ SoC 模型、DTB 和 OpenSBI；ysyxSoC 的实际
-    # 器件地址由 SoC RTL 决定，换板时需要同步修改。
+    # 这里只改CPU PMA、C++SoC模型、DTB和OpenSBI；ysyxSoC的实际
+    # 器件地址由ysyxSoC/src/Top.scala决定，换板时需要同步修改。
+    # SoC构建可运行SIM_TOP=soc make kconfig-contract-check检查两侧一致。
 
     choice SOC_MEMORY_MAP
       prompt "ysyxSoC 内存映射"

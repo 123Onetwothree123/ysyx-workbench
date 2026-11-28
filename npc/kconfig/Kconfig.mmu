@@ -14,18 +14,32 @@ menu "MMU/TLB"
   config HAS_TLB
     bool "启用 TLB"
     default y if HAS_MMU
+    depends on HAS_MMU
     help
       TLB 总开关。关闭时每次访问都由 PTW 查页表；TLB 阵列不实例化。
       当前支持 Reg-CAM 存储、RR/PLRU/LRU 替换和 ASID/Global。
+      TLB 是 MMU 的可选加速器，因此 HAS_TLB=y 要求 HAS_MMU=y。
 
   menu "MMU Profile"
+    depends on HAS_MMU
 
     choice
       prompt "默认 profile"
       default MMU_PROFILE_BALANCED
       help
-        默认 balanced profile 的参数见 help 和各子项默认值。
-        所有值都可以在下面继续修改；非标准组合由 elaboration/生成器校验。
+        profile 只提供 Kconfig default：选择后为对应的 PTW/TLB 参数
+        填入默认值，不会在 npc_config_gen 阶段二次覆盖 .config。
+        因此显式写入 .config 的值优先；需要逐项手调时选择 custom
+        （custom 不套用任何 profile 预设）。页大小/级数/PTE 几何不受
+        profile 影响，需要非标准几何请选择 MMU_GEOMETRY_MODE=CUSTOM。
+        balanced：PTW walk/bus 2/1，PTW cache 关闭，TLB reg/plru，
+          ITLB 16x2、DTLB 32x4、UTLB 32x4，miss queue 4/4/8，
+          超级页 CAM 4；TLB 组织由 TLB_SPLIT/TLB_UNIFIED 单独控制
+        min_area：PTW walk/bus 1/1，TLB RR，ITLB 4x1、DTLB 8x1、
+          UTLB 8x1，miss queue 2/2/4，超级页 CAM 2
+        high_perf：PTW walk/bus 4/4 pipelined，PTW cache 32x4，VIPT，
+          SRAM TLB，ITLB 32x4、DTLB 64x4、UTLB 64x8，
+          miss queue 8/8/16，超级页 CAM 8
       config MMU_PROFILE_BALANCED
         bool "balanced (标准 Sv32 基线)"
       config MMU_PROFILE_MIN_AREA
@@ -33,17 +47,8 @@ menu "MMU/TLB"
       config MMU_PROFILE_HIGH_PERF
         bool "high-performance"
       config MMU_PROFILE_CUSTOM
-        bool "custom"
+        bool "custom（不套用 profile 预设）"
     endchoice
-
-    config MMU_PROFILE
-      string
-      default "balanced" if MMU_PROFILE_BALANCED
-      default "min_area" if MMU_PROFILE_MIN_AREA
-      default "high_perf" if MMU_PROFILE_HIGH_PERF
-      default "custom"
-      help
-        profile 名称。生成 JSON/C header 时原样记录。
 
     choice
       prompt "RV64 页表几何模式"
@@ -121,7 +126,7 @@ menu "MMU/TLB"
         该值是自由输入整数，Kconfig 不做 4/8 锁定；可以使用 4/8/16
         等 2 的幂试验私有几何（字段位置必须能放下 flags 与 PPN）。
         当前 RTL 的 PTE 存储/写端口实际只支持 4B 与 8B；其他值会在
-        MMU profile 生成或 elaboration 阶段明确报错。标准 Sv32 必须
+        kconfig-contract-check 或 elaboration 阶段明确报错。标准 Sv32 必须
         为 4，标准 Sv39/Sv48 必须为 8。
         CUSTOM 模式允许 4/8，PTE 字段位置由下面各项配置；非 2 的幂、
         字段越界/重叠、PPN 位宽溢出由 kconfig-contract-check 拒绝。
@@ -392,14 +397,17 @@ menu "MMU/TLB"
       default 1
       range 0 16
       help
-        控制 PTW 与页表总线之间可同时保持的读/写事务数，0 表示跟随
-        MMU_PTW_OUTSTANDING。independent 结构按 walker 固定事务 ID，
+        控制 PTW 与页表总线之间可同时保持的读/写事务数，也是
+        PTWToAXI 请求队列深度；0 表示跟随 MMU_PTW_OUTSTANDING。
+        independent 结构按 walker 固定事务 ID，
         pipelined 结构按 B 级槽位分配事务 ID，响应均按 ID 回收。
         共享 IFU/LSU AXI 读端口按 3..15 分配页表读 ID，最多 13 笔
         AXI 读同时在途；超出的请求在适配器队列中等待，不会丢失。
 
     config MMU_PTW_PMP_FAULT_QUEUE_DEPTH
       int "PTW PMP fault 响应队列深度"
+      default 4 if MMU_PROFILE_MIN_AREA
+      default 16 if MMU_PROFILE_HIGH_PERF
       default 8
       range 1 16
       help
@@ -433,6 +441,8 @@ menu "MMU/TLB"
 
     config MMU_PTW_CACHE_ENTRIES
       int "PTW cache 项数"
+      default 8 if MMU_PROFILE_MIN_AREA
+      default 32 if MMU_PROFILE_HIGH_PERF
       default 16
       depends on MMU_PTW_CACHE
       help
@@ -440,6 +450,8 @@ menu "MMU/TLB"
 
     config MMU_PTW_CACHE_WAYS
       int "PTW cache 组相联度"
+      default 1 if MMU_PROFILE_MIN_AREA
+      default 4 if MMU_PROFILE_HIGH_PERF
       default 2
       depends on MMU_PTW_CACHE
       help
@@ -448,6 +460,7 @@ menu "MMU/TLB"
   endmenu
 
   menu "TLB"
+    depends on HAS_TLB
 
     choice
       prompt "TLB 组织"
@@ -562,6 +575,8 @@ menu "MMU/TLB"
         超级页。CAM 项数按 pageBits/levels/indexBits 计算。
     config TLB_SUPERPAGE_ENTRIES
       int "TLB 超级页 CAM 项数"
+      default 2 if MMU_PROFILE_MIN_AREA
+      default 8 if MMU_PROFILE_HIGH_PERF
       default 4
       range 1 16
       depends on TLB_SUPERPAGE
@@ -589,23 +604,33 @@ menu "MMU/TLB"
 
     config ITLB_MISS_QUEUE_ENTRIES
       int "ITLB miss queue 深度"
+      default 2 if MMU_PROFILE_MIN_AREA
+      default 8 if MMU_PROFILE_HIGH_PERF
       default 4
       depends on TLB_SPLIT
     config DTLB_MISS_QUEUE_ENTRIES
       int "DTLB miss queue 深度"
+      default 2 if MMU_PROFILE_MIN_AREA
+      default 8 if MMU_PROFILE_HIGH_PERF
       default 4
       depends on TLB_SPLIT
     config UTLB_MISS_QUEUE_ENTRIES
       int "统一 TLB miss queue 深度"
+      default 4 if MMU_PROFILE_MIN_AREA
+      default 16 if MMU_PROFILE_HIGH_PERF
       default 8
       depends on TLB_UNIFIED
     config GLOBAL_MISS_QUEUE_ENTRIES
       int "全局 miss queue 深度"
+      default 4 if MMU_PROFILE_MIN_AREA
+      default 16 if MMU_PROFILE_HIGH_PERF
       default 8
       depends on TLB_MISS_QUEUE_GLOBAL
 
     config UTLB_LOOKUP_PORTS
       int "统一 TLB 查找端口数"
+      default 1 if MMU_PROFILE_MIN_AREA
+      default 2 if MMU_PROFILE_HIGH_PERF
       default 2
       range 1 2
       depends on TLB_UNIFIED

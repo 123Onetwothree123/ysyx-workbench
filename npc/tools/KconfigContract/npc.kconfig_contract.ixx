@@ -47,10 +47,27 @@ std::string hex_no_prefix(long long value);
 std::string hex0x(long long value);
 std::vector<std::string> validate_config(const Config &values,
                                          const std::string &source = ".config");
+std::vector<std::string> validate_soc_rtl(
+    const Config &values,
+    const std::map<std::string, long long> &addresses,
+    const std::string &source = ".config");
+std::map<std::string, long long> parse_soc_address_map(const fs::path &path);
+std::vector<std::string> check_soc_rtl_file(
+    const Config &values, const fs::path &addressMapPath,
+    const std::string &source = ".config");
 Config parse_config(std::istream &input);
 Config parse_config(const fs::path &path);
-std::vector<std::string> check_file(const fs::path &path);
+std::vector<std::string> check_file(const fs::path &path,
+                                    const fs::path &socRtlFile = {});
+Config parse_typed_json_flat_text(std::string_view text);
+Config parse_typed_json_flat(const fs::path &path);
+void apply_config_overrides(Config &values,
+                            const std::vector<std::string> &overrides);
+std::vector<std::string> check_effective_config(const Config &requested,
+                                                const Config &effective,
+                                                const std::string &source);
 fs::path executable_path(const char *argv0);
 fs::path default_configs_dir(const char *argv0);
+fs::path default_soc_address_map(const char *argv0);
 int run_self_test();
 }

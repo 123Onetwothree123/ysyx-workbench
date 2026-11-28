@@ -108,7 +108,6 @@ object ysyx_26030103_KconfigDefaults {
   val MMUPTEWidth: Int = 32
   val MMUIndexBits: Int = 10
   val MMUVaBits: Int = 32
-  val MMUPTWBusDepth: Int = 16
   val AXIIDWidth: Int = 4
   val AXIArbCpuResponseQueueDepth: Int = 16
   val AXIArbDMAResponseQueueDepth: Int = 256

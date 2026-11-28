@@ -96,20 +96,6 @@ menu "编译器与构建选项"
       兼容的头文件之外屁用没有
 
   choice
-    prompt "C库"
-    default LIBC_GLIBC
-    help
-      C运行库实现，位于C++标准库下层，提供printf/malloc/pthread等
-      musl：Arch的libstdc++和libc++均基于glibc编译，运行时依赖
-      glibc特有符号（__vfprintf_chk、__isoc23_*等），musl不提供
-      需要Alpine Linux等基于musl构建整套C++工具链的发行版才能用
-      LLVM libc：未完成，无Arch包，不可用
-      当前仅glibc可用
-  config LIBC_GLIBC
-    bool "glibc（GNU）"
-  endchoice
-
-  choice
     prompt "链接器"
     default LD_DEFAULT
     help

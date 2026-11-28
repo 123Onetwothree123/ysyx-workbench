@@ -219,9 +219,12 @@ void addCache(TypedFields &root, const Config &values)
     TypedFields cache;
     addField(cache, "enabled",
              TypedJson::boolean(flatBool(values, "CACHE_ENABLE", true)));
+    // CACHE_CONFIG_MODE只是统一/分别配置choice的派生记录
+    // 不再保留独立Kconfig字符串，避免出现可被改写的第二事实源
     addField(cache, "config_mode",
              TypedJson::string(
-                 flatString(values, "CACHE_CONFIG_MODE", "unified")));
+                 flatBool(values, "CACHE_CONFIG_UNIFIED", true)
+                     ? "unified" : "separate"));
     addField(cache, "block_size_log2", TypedJson::integer(blockSizeLog2));
     addField(cache, "index_bits", TypedJson::integer(indexBits));
     addField(cache, "wbuf_depth",

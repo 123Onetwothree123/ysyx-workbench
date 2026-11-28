@@ -8,17 +8,13 @@ menu "仿真后端"
       GSIM：OpenXiangShan 的 chirrtl 仿真器，直接消费 direct-NPC
       SimTop 的 CHIRRTL，由 make gsim 生成并编译 C++ harness。
       GSIM 生成的仿真模型运行时固定单线程，--threads 只并行建模阶段。
+      后端选择只使用 SIM_BACKEND_VERILATOR/GSIM 两个 bool 符号，
+      Makefile 不读取派生字符串。
     config SIM_BACKEND_VERILATOR
       bool "Verilator"
     config SIM_BACKEND_GSIM
       bool "GSIM（chirrtl）"
   endchoice
-
-  config SIM_BACKEND
-    string
-    default "verilator" if SIM_BACKEND_VERILATOR
-    default "gsim" if SIM_BACKEND_GSIM
-    default "verilator"
 
   config BUILD_THREADS
     int "构建线程数，0 = 使用全部核心"
@@ -27,15 +23,31 @@ menu "仿真后端"
       设置并行构建线程数
       0表示使用所有可用核心
       超过系统核心数的值将被限制为系统核心数
-      当前用于Verilator生成模型的并行编译；GSIM生成的C++模型
-      由单次clang++调用编译
+      当前用于Verilator生成模型的并行编译，以及GSIM C++模型
+      的逐文件并行编译；GSIM建模阶段另由GSIM_THREADS控制
 
   if SIM_BACKEND_GSIM
+    comment "GSIM 默认使用 clang++ 编译生成代码，CONFIG_CC 不适用于 GSIM"
+    comment "GSIM 要求 CACHE_PADDING 按 SoC RAM 字宽对齐：32 位 4 字节，64 位 8 字节"
+    comment "GSIM 不读取 LOG_* 配置，harness 直接写 stdout/stderr"
+
     config GSIM_COMMAND
       string "gsim 可执行文件"
       default "gsim"
       help
         GSIM 编译器路径。默认从 PATH 查找 gsim。
+
+    config GSIM_CXX
+      string "GSIM C++ 编译器"
+      default "clang++"
+      help
+        GSIM 生成的 C++ 使用 _BitInt，GCC 尚不支持，默认使用
+        clang++。此选项只影响 GSIM harness 和生成模型的编译，
+        “编译器与构建选项”中的 CONFIG_CC 不适用于 GSIM。
+        CONFIG_USER_CXX_STD、CONFIG_CC_OPT、警告选项、sanitizer、
+        CONFIG_STDLIB_FLAG、CONFIG_LD_FLAG 和 CONFIG_BUILD_THREADS
+        仍会传给 GSIM 的 C++ 构建。警告选项只作用于 harness，
+        GSIM 生成的 C++ 不保证 warning-clean。
 
     config GSIM_THREADS
       int "GSIM 建模线程数，0 = 使用全部核心"

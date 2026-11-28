@@ -243,6 +243,7 @@ class ysyx_26030103(
       // （3..15）并保存 PTW 原事务 ID，响应按 ID 回送对应页表槽位。
       // 4 位下游 ID 还要保留 0/1/2 给 ICache/LSU/DMA，因此 AXI 读槽位
       // 最多 13 个；超出的页表请求留在适配器队列里等待槽位。
+      // Kconfig只保留MMU_PTW_BUS_OUTSTANDING；0表示跟随PTWOutstanding
       val busDepth =
         if (config.MMU.PTWBusOutstanding > 0) config.MMU.PTWBusOutstanding
         else config.MMU.PTWOutstanding

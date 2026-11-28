@@ -9,14 +9,27 @@
  * RV32 使用标准 Sv32（2 级、10+10 位 VPN、4B PTE、satp.MODE=1）；
  * RV64 使用标准 Sv39（3 级、9+9+9 位 VPN、8B PTE、satp.MODE=8）。
  * NPC 核在 M 模式旁路翻译，S/U 模式经 satp 翻译。这里按 AM 的 VME
- * 接口建立内核/用户页表，物理地址图与 direct-NPC 的 PMA 一致：
- *   - CLINT     0x02000000
- *   - UART      0x10000000
- *   - RAM       0x80000000, 64MiB
+ * 接口建立内核/用户页表，物理地址图跟随Kconfig的PMA配置：
+ *   - CLINT     AM_PMA_CLINT_BASE, AM_PMA_CLINT_SIZE
+ *   - UART      AM_PMA_UART_BASE
+ *   - RAM       _pmem_start, AM_NPC_RAM_SIZE
  *
  * 注意：Nanos-lite 在 init_irq() 里才进入 S 模式，因此 vme_init() 可能在
  * M 模式下先写好 satp；M 模式访问天然旁路翻译，进入 S 模式后立即生效。
  */
+
+#ifndef AM_PMA_CLINT_BASE
+#define AM_PMA_CLINT_BASE 0x02000000
+#endif
+#ifndef AM_PMA_CLINT_SIZE
+#define AM_PMA_CLINT_SIZE 0x00010000
+#endif
+#ifndef AM_PMA_UART_BASE
+#define AM_PMA_UART_BASE 0x10000000
+#endif
+#ifndef AM_NPC_RAM_SIZE
+#define AM_NPC_RAM_SIZE (64 * 1024 * 1024)
+#endif
 
 typedef uintptr_t PTE;
 
@@ -24,14 +37,12 @@ typedef uintptr_t PTE;
 #define PGSIZE 4096
 #endif
 
-#define NPC_RAM_SIZE (64 * 1024 * 1024)
-
 extern char _pmem_start;
 
 static Area segments[] = {
-    RANGE(0x02000000, 0x02010000),                       // CLINT
-    RANGE(0x10000000, 0x10000004),                       // UART
-    RANGE(&_pmem_start, (uintptr_t)&_pmem_start + NPC_RAM_SIZE),
+    RANGE(AM_PMA_CLINT_BASE, AM_PMA_CLINT_BASE + AM_PMA_CLINT_SIZE), // CLINT
+    RANGE(AM_PMA_UART_BASE, AM_PMA_UART_BASE + 4),                   // UART
+    RANGE(&_pmem_start, (uintptr_t)&_pmem_start + AM_NPC_RAM_SIZE),
 };
 
 #define USER_SPACE RANGE(0x40000000, 0x80000000)

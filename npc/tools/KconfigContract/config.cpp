@@ -241,8 +241,16 @@ Config parse_config(const fs::path& path) {
   }
   return parse_config(input);
 }
-std::vector<std::string> check_file(const fs::path& path) {
-  return validate_config(parse_config(path), path.filename().string());
+std::vector<std::string> check_file(const fs::path& path,
+                                    const fs::path& socRtlFile) {
+  const Config values = parse_config(path);
+  const std::string source = path.filename().string();
+  std::vector<std::string> errors = validate_config(values, source);
+  if (!socRtlFile.empty()) {
+    const auto socErrors = check_soc_rtl_file(values, socRtlFile, source);
+    errors.insert(errors.end(), socErrors.begin(), socErrors.end());
+  }
+  return errors;
 }
 fs::path executable_path(const char* argv0) {
   std::error_code ec;
@@ -266,6 +274,31 @@ fs::path default_configs_dir(const char* argv0) {
     return from_cwd;
   }
   return from_exe;
+}
+fs::path default_soc_address_map(const char* argv0) {
+  std::error_code ec;
+  std::vector<fs::path> starts;
+  starts.push_back(executable_path(argv0).parent_path());
+  const fs::path cwd = fs::current_path(ec);
+  if (!ec) {
+    starts.push_back(cwd);
+  }
+  for (const auto& start : starts) {
+    fs::path dir = start;
+    for (int depth = 0; depth < 8; ++depth) {
+      const fs::path candidate =
+          dir / "ysyxSoC" / "src" / "Top.scala";
+      if (fs::is_regular_file(candidate, ec)) {
+        return candidate;
+      }
+      const fs::path parent = dir.parent_path();
+      if (parent.empty() || parent == dir) {
+        break;
+      }
+      dir = parent;
+    }
+  }
+  return {};
 }
 
 }

@@ -1,12 +1,17 @@
 menu "调试、追踪与性能"
 
+  comment "GSIM 后端不提供 SDB、追踪、监视点、差分测试、性能计数器/存档，相关选项已隐藏"
+    depends on SIM_BACKEND_GSIM
+
   config SDB
     bool "启用SDB调试器"
     default y
+    depends on !SIM_BACKEND_GSIM
 
   config PERF_DIC_ARCH_COUNTER
     bool "数字集成电路计算机体系结构性能计数器"
     default y
+    depends on !SIM_BACKEND_GSIM
     help
       实现相关的体系结构性能计数器。可通过仿真、FPGA、MMIO
       或流片后的片内调试接口采集，不属于 RISC-V 标准 PMU。
@@ -741,6 +746,7 @@ menu "调试、追踪与性能"
     bool "启用性能数据自动存档（CSV文件）"
     default n
     depends on PERF_DIC_ARCH_COUNTER
+    depends on !SIM_BACKEND_GSIM
     help
       仿真结束后把本次性能数据写入单独的 CSV 文件。
       默认保存到 NPCSimResult/YYYYMMDD-HHMMSS/ 目录；同一秒
@@ -754,6 +760,7 @@ menu "调试、追踪与性能"
   config TRACE
     bool "启用追踪功能（总开关）"
     default n
+    depends on !SIM_BACKEND_GSIM
 
   config ITRACE
     bool "启用指令追踪itrace"
@@ -806,6 +813,7 @@ menu "调试、追踪与性能"
   config DIFFTEST
     bool "启用差分测试difftest"
     default n
+    depends on !SIM_BACKEND_GSIM
     help
       启用差分测试，并使用NEMU作为参考模型
       需要将NEMU编译为.so共享库

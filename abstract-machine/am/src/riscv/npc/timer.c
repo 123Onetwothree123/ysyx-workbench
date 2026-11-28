@@ -1,12 +1,15 @@
 #include <am.h>
 #include <stdint.h>
 
-// RISC-V标准CLINT的mtime基址（0x02000000 + 0xBFF8），从SDRAM窗口(0xa0000000)移出来避免地址重叠
-#define RTC_ADDR 0x0200bff8
-// CLINT mtimecmp：标准 CLINT 的 mtimecmp 位于 0x02004000。
-#define MTIMECMP_ADDR 0x02004000
-#define inl(addr) (*(volatile uint32_t *)(addr))
-#define outl(addr, val) (*(volatile uint32_t *)(addr) = (uint32_t)(val))
+// RISC-V标准CLINT的mtime偏移为0xBFF8，基址跟随Kconfig PMA_CLINT_BASE
+#ifndef AM_PMA_CLINT_BASE
+#define AM_PMA_CLINT_BASE 0x02000000
+#endif
+#define RTC_ADDR (AM_PMA_CLINT_BASE + 0x0000bff8)
+// CLINT mtimecmp：标准CLINT的mtimecmp位于基址+0x4000
+#define MTIMECMP_ADDR (AM_PMA_CLINT_BASE + 0x00004000)
+#define inl(addr) (*(volatile uint32_t *)(uintptr_t)(addr))
+#define outl(addr, val) (*(volatile uint32_t *)(uintptr_t)(addr) = (uint32_t)(val))
 
 #ifndef AM_TIMER_FREQ_MHZ
 #define AM_TIMER_FREQ_MHZ 450

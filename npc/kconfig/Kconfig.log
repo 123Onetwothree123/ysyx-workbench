@@ -1,4 +1,8 @@
 menu "日志"
+  depends on !SIM_BACKEND_GSIM
+
+comment "GSIM 后端不读取日志配置，harness 直接写 stdout/stderr"
+  depends on SIM_BACKEND_GSIM
 
 choice
   prompt "日志级别"

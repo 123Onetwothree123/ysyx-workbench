@@ -10,7 +10,12 @@ import _root_.ysyx_26030103.mmu._
 
 // PTW 页表总线到多 outstanding AXI 单拍读/写的适配器；ID 0/1/2 保留，PTW 用 3..15。
 class ysyx_26030103_PTWToAXI(
-    busDepth: Int = ysyx_26030103_KconfigDefaults.MMUPTWBusDepth,
+    // MMU_PTW_BUS_OUTSTANDING是唯一来源，0表示跟随walk数
+    busDepth: Int = {
+      val configured = ysyx_26030103_KconfigDefaults.MMUPTWBusOutstanding
+      if (configured > 0) configured
+      else ysyx_26030103_KconfigDefaults.MMUPTWOutstanding
+    },
     AXIReadSlots: Int = ysyx_26030103_AXIReadID.PTWSlots,
     val AddressWidth: Int = ysyx_26030103_KconfigDefaults.NpcAddressWidth,
     val DataWidth: Int = ysyx_26030103_KconfigDefaults.NpcInternalBusWidth

@@ -8,7 +8,8 @@ if(NOT CMAKE_GENERATOR MATCHES "Ninja")
     message(FATAL_ERROR "npc_kconfig_contract requires the Ninja generator")
 endif()
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/NPCStdModule.cmake)
-add_executable(kconfig_contract main.cpp config.cpp validation.cpp self_test.cpp)
+add_executable(kconfig_contract main.cpp config.cpp validation.cpp effective.cpp
+    self_test.cpp)
 target_sources(kconfig_contract PRIVATE
     FILE_SET CXX_MODULES
     BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}

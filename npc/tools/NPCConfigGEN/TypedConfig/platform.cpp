@@ -23,8 +23,7 @@ void addPlatform(TypedFields &root, const Config &values,
     addField(platform, "arbiter_grant_timeout",
              TypedJson::integer(
                  flatInt(values, "ARBITER_GRANT_TIMEOUT", 1023)));
-    addField(platform, "axi_id_width",
-             TypedJson::integer(flatInt(values, "AXI_ID_WIDTH", 4)));
+    addField(platform, "axi_id_width", TypedJson::integer(4));
     addField(platform, "axi_arb_cpu_resp_queue_depth",
              TypedJson::integer(flatInt(
                  values, "AXI_ARB_CPU_RESP_QUEUE_DEPTH", 16)));
@@ -34,8 +33,14 @@ void addPlatform(TypedFields &root, const Config &values,
     addField(platform, "axi_xbar_resp_queue_depth",
              TypedJson::integer(flatInt(
                  values, "AXI_XBAR_RESP_QUEUE_DEPTH", 4)));
-    addField(platform, "ptw_bus_depth",
-             TypedJson::integer(flatInt(values, "PTW_BUS_DEPTH", 16)));
+    // PTW请求队列深度跟随MMU_PTW_BUS_OUTSTANDING，0表示跟随walk数
+    const long long ptwOutstanding =
+        flatInt(values, "MMU_PTW_OUTSTANDING", 2);
+    const long long ptwBusOutstanding =
+        flatInt(values, "MMU_PTW_BUS_OUTSTANDING", 1);
+    const long long ptwBusDepth =
+        ptwBusOutstanding > 0 ? ptwBusOutstanding : ptwOutstanding;
+    addField(platform, "ptw_bus_depth", TypedJson::integer(ptwBusDepth));
     addField(platform, "uart_fifo_depth",
              TypedJson::integer(flatInt(values, "UART_FIFO_DEPTH", 64)));
     addField(platform, "uart_addr_width",

@@ -10,9 +10,24 @@ AM_SRCS := riscv/npc/start.S \
 
 CFLAGS    += -fdata-sections -ffunction-sections
 LDSCRIPTS += $(AM_HOME)/scripts/linker.ld
-LDFLAGS   += --defsym=_pmem_start=0x80000000 --defsym=_entry_offset=0x0
 NPC_HOME ?= $(abspath $(AM_HOME)/../npc)
 -include $(NPC_HOME)/include/config/auto.conf
+
+# direct-NPC的物理地址布局跟随Kconfig，缺省值保持历史行为
+NPC_RAM_BASE ?= $(or $(CONFIG_NPC_RAM_BASE),0x80000000)
+NPC_RAM_SIZE ?= $(or $(CONFIG_NPC_RAM_SIZE),0x04000000)
+PMA_UART_BASE ?= $(or $(CONFIG_PMA_UART_BASE),0x10000000)
+PMA_UART_SIZE ?= $(or $(CONFIG_PMA_UART_SIZE),0x00001000)
+PMA_CLINT_BASE ?= $(or $(CONFIG_PMA_CLINT_BASE),0x02000000)
+PMA_CLINT_SIZE ?= $(or $(CONFIG_PMA_CLINT_SIZE),0x00010000)
+
+LDFLAGS   += --defsym=_pmem_start=$(NPC_RAM_BASE) --defsym=_entry_offset=0x0
+CFLAGS    += -DAM_NPC_RAM_BASE=$(NPC_RAM_BASE) \
+             -DAM_NPC_RAM_SIZE=$(NPC_RAM_SIZE) \
+             -DAM_PMA_UART_BASE=$(PMA_UART_BASE) \
+             -DAM_PMA_UART_SIZE=$(PMA_UART_SIZE) \
+             -DAM_PMA_CLINT_BASE=$(PMA_CLINT_BASE) \
+             -DAM_PMA_CLINT_SIZE=$(PMA_CLINT_SIZE)
 CACHE_PADDING ?= $(or $(CONFIG_CACHE_PADDING),0)
 LDFLAGS   += --defsym=_cache_padding=$(CACHE_PADDING)
 LDFLAGS   += --gc-sections -e _start

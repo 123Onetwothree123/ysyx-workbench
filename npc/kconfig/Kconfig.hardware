@@ -170,33 +170,23 @@ menu "CPU 与平台"
           两种结构在配置摘要（fma=fused/exact）和生成 RTL 的模块名
           中可以区分。
 
+      comment "FDIV/FSQRT、完整舍入和fflags在RISCV_F下固定为y，不在菜单中显示"
+      # FDIV/FSQRT、完整舍入模式和fflags是RISC-V F/D的必备语义
+      # 在RISCV_F下固定为y并隐藏，不能通过Kconfig裁掉后仍宣称支持F/D
       config FPU_DIVSQRT
-        bool "硬件除法/开方单元"
+        bool
         depends on RISCV_F
         default y
-        help
-          是否实例化 FDIV/FSQRT 所需的除法/开方单元。RISC-V F/D 把
-          FDIV/FSQRT 列为必备指令；启用 F/D 时本项必须为 y，关闭会在
-          配置契约和 elaboration 明确拒绝，避免生成缺指令的假 F/D 核。
-          后端可自行选择迭代或流水实现，但不得把内部迭代变量暴露成
-          Kconfig 参数。
 
       config FPU_ROUNDING
-        bool "完整 RISC-V 舍入模式"
+        bool
         depends on RISCV_F
         default y
-        help
-          支持 RNE/RTZ/RDN/RUP/RMM 以及 frm 动态舍入。F/D 合规要求
-          完整舍入模式；启用 F/D 时本项必须为 y。该开关只用于明确
-          拒绝不合规配置，不用于裁剪指令语义。
 
       config FPU_FLAGS
-        bool "fflags 异常标志"
+        bool
         depends on RISCV_F
         default y
-        help
-          生成 NV/DZ/OF/UF/NX 五个浮点异常标志并接入 fcsr。F/D 合规
-          要求 fflags；启用 F/D 时本项必须为 y。
 
       menu "Berkeley HardFloat 公开参数"
         depends on FPU_IMPL_HARDFLOAT
@@ -755,12 +745,6 @@ menu "CPU 与平台"
         bool "分别配置 ICache/DCache 大小"
     endchoice
 
-    config CACHE_CONFIG_MODE
-      string
-      default "unified" if CACHE_CONFIG_UNIFIED
-      default "separate" if CACHE_CONFIG_SEPARATE
-      default "unified"
-
     config CACHE_BLOCK_SIZE_LOG2
       int "Cache统一块大小默认值（2^N字节）"
       depends on CACHE_ENABLE && (ICACHE || DCACHE)
@@ -1059,14 +1043,7 @@ menu "CPU 与平台"
 
   menu "目标体系结构"
 
-    config AXI_ID_WIDTH
-      int "AXI ID 位宽"
-      default 4
-      range 4 4
-      help
-        当前仲裁器/Crossbar 固定按 4 位 ID 设计，只允许 4。
-        IFU/LSU/DMA/PTW 分别使用固定 ID。
-
+    # AXI ID固定为4位，不再暴露伪可配置的AXI_ID_WIDTH
     config AXI_ARB_CPU_RESP_QUEUE_DEPTH
       int "AXI 仲裁器 CPU 响应队列深度"
       default 16
@@ -1091,11 +1068,7 @@ menu "CPU 与平台"
         Xbar 对 SoCBus/CLINT 响应进行小缓冲的深度。深度越大，
         上游反压时越不容易阻塞无关 owner 的响应。
 
-    config PTW_BUS_DEPTH
-      int "PTW AXI 请求队列深度"
-      default 16
-      range 1 64
-
+    # PTW AXI请求队列深度跟随MMU_PTW_BUS_OUTSTANDING，不再单独配置
     config UART_FIFO_DEPTH
       int "UART 仿真 FIFO 深度"
       default 64
@@ -1267,20 +1240,22 @@ menu "CPU 与平台"
         help
           可选 normal/ignore。每个字段可在下面覆盖。
 
+      comment "M模式基础CSR固定为y；HAS_S/HAS_MMU下S/MMU必需CSR也固定为y并隐藏"
+      # M模式异常/中断CSR是任何配置的架构前提，固定为y并隐藏
       config HAS_CSR_MSTATUS
-        bool "mstatus"
+        bool
         default y
       config HAS_CSR_MISA
         bool "misa"
         default y
       config HAS_CSR_MTVEC
-        bool "mtvec"
+        bool
         default y
       config HAS_CSR_MEPC
-        bool "mepc"
+        bool
         default y
       config HAS_CSR_MCAUSE
-        bool "mcause"
+        bool
         default y
       config HAS_CSR_MTVAL
         bool "mtval"
@@ -1289,17 +1264,20 @@ menu "CPU 与平台"
         bool "mscratch"
         default y if HAS_S
       config HAS_CSR_MIE
-        bool "mie"
+        bool
         default y
       config HAS_CSR_MIP
-        bool "mip"
+        bool
         default y
+      # 以下CSR是S模式异常入口、委托和MMU页表翻译的架构前提
+      # HAS_S/HAS_MMU下固定为y并隐藏，避免生成缺少satp/页错误入口
+      # 却仍宣称支持S/MMU的配置
       config HAS_CSR_MEDELEG
-        bool "medeleg"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_MIDELEG
-        bool "mideleg"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_MCOUNTEREN
         bool "mcounteren"
         default y if HAS_S
@@ -1314,35 +1292,35 @@ menu "CPU 与平台"
         default y if HAS_S
 
       config HAS_CSR_SSTATUS
-        bool "sstatus"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_SIE
-        bool "sie"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_SIP
-        bool "sip"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_STVEC
-        bool "stvec"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_SSCRATCH
-        bool "sscratch"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_SEPC
-        bool "sepc"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_SCAUSE
-        bool "scause"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_STVAL
-        bool "stval"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_SATP
-        bool "satp"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
       config HAS_CSR_SCOUNTEREN
-        bool "scounteren"
-        default y if HAS_S
+        bool
+        default y if HAS_S || HAS_MMU
 
       config CSR_MSTATUS_MIE_READ
         string "mstatus.MIE 读行为"

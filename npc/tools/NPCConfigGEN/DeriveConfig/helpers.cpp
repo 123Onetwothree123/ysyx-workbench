@@ -43,12 +43,6 @@ std::string deriveCSREnabled(const std::map<std::string, std::string> &values)
         {"stval", 0x143},         {"satp", 0x180},
         {"scounteren", 0x106},
     };
-    static const std::vector<std::string> forcedCSRs{
-        "mstatus", "mtvec", "mepc", "mcause", "mie", "mip",
-        "medeleg", "mideleg", "sstatus", "sie", "sip", "stvec",
-        "sscratch", "sepc", "scause", "stval", "satp", "scounteren",
-    };
-    const bool forceS = asBool(values, "HAS_MMU") || asBool(values, "HAS_S");
     std::vector<int> enabled;
     for (const auto &entry : names) {
         std::string upper{entry.name};
@@ -56,11 +50,9 @@ std::string deriveCSREnabled(const std::map<std::string, std::string> &values)
                        [](unsigned char character) {
                            return static_cast<char>(std::toupper(character));
                        });
-        const bool isForced =
-            forceS &&
-            std::find(forcedCSRs.begin(), forcedCSRs.end(), entry.name) !=
-                forcedCSRs.end();
-        if (asBool(values, "HAS_CSR_" + upper) || isForced)
+        // HAS_S/HAS_MMU下架构必需的CSR已由Kconfig固定为y并隐藏
+        // 这里只汇总显式符号值，避免生成器与Kconfig维护两套强制规则
+        if (asBool(values, "HAS_CSR_" + upper))
             enabled.push_back(entry.address);
     }
     // RV32 的 mcycle/minstret 是 64 位计数器，高半字必须和低半字一起

@@ -76,14 +76,31 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
     }
   }
 
+  // UART/GPIO/KEYBOARD/VGA/SRAM地址由SoCAddressMap统一导出，
+  // Kconfig契约检查保证其与PMA_*配置一致
   val luart = LazyModule(
-    new APBUart16550(AddressSet.misaligned(0x10000000, 0x1000))
+    new APBUart16550(
+      AddressSet.misaligned(SoCAddressMap.uartBase, SoCAddressMap.uartSize)
+    )
   )
-  val lgpio = LazyModule(new APBGPIO(AddressSet.misaligned(0x10002000, 0x10)))
+  val lgpio = LazyModule(
+    new APBGPIO(
+      AddressSet.misaligned(SoCAddressMap.gpioBase, SoCAddressMap.gpioSize)
+    )
+  )
   val lkeyboard = LazyModule(
-    new APBKeyboard(AddressSet.misaligned(0x10011000, 0x8))
+    new APBKeyboard(
+      AddressSet.misaligned(
+        SoCAddressMap.keyboardBase,
+        SoCAddressMap.keyboardSize
+      )
+    )
   )
-  val lvga = LazyModule(new APBVGA(AddressSet.misaligned(0x21000000, 0x200000)))
+  val lvga = LazyModule(
+    new APBVGA(
+      AddressSet.misaligned(SoCAddressMap.vgaBase, SoCAddressMap.vgaSize)
+    )
+  )
   val lspi = LazyModule(
     new APBSPI(
       AddressSet.misaligned(Config.spiBase, Config.spiSize) ++ // SPI controller
@@ -102,7 +119,7 @@ class ysyxSoCASIC(implicit p: Parameters) extends LazyModule {
       MromBytes)
   )
   val sramNode = AXI4RAM(
-    AddressSet.misaligned(0x0f000000, 0x8000).head,
+    AddressSet.misaligned(SoCAddressMap.sramBase, SoCAddressMap.sramSize).head,
     false,
     true,
     SramBytes,

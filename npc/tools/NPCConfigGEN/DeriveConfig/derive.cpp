@@ -1,6 +1,9 @@
 module npc.configgen;
 import std;
 namespace npc::configgen {
+// MMU profile 只通过 Kconfig 的 `default ... if MMU_PROFILE_*` 提供
+// 默认值；这里不再按 profile 覆盖 .config。显式写入 .config 的值优先，
+// 需要逐项手调时选择 MMU_PROFILE_CUSTOM。
 void deriveEffectiveConfig(std::map<std::string, std::string> &values)
 {
     const long long xlen = asInt(values, "XLEN", 32);

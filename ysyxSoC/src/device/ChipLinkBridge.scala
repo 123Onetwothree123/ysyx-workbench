@@ -17,8 +17,14 @@ import sifive.blocks.devices.chiplink._
 
 object ChipLinkParam {
   // Must have a cacheable address sapce.
-  val mem  = AddressSet(0xc0000000L, 0x40000000L - 1)
-  val mmio = AddressSet(0x40000000L, 0x40000000L - 1)
+  val mem = AddressSet(
+    SoCAddressMap.chiplinkMemBase,
+    SoCAddressMap.chiplinkMemSize - 1
+  )
+  val mmio = AddressSet(
+    SoCAddressMap.chiplinkMmioBase,
+    SoCAddressMap.chiplinkMmioSize - 1
+  )
   val allSpace = Seq(mem, mmio)
   val idBits = 4
 }

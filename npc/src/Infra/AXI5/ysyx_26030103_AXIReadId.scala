@@ -10,7 +10,7 @@ import _root_.ysyx_26030103.common.ysyx_26030103_KconfigDefaults
 object ysyx_26030103_AXIReadID {
   val IDWidth = ysyx_26030103_KconfigDefaults.AXIIDWidth
   require(IDWidth == 4,
-    s"当前 AXI ID 固定为 4 位，收到 AXI_ID_WIDTH=$IDWidth")
+    s"当前 AXI ID 固定为 4 位，收到 IDWidth=$IDWidth")
   val SlotCount = 1 << IDWidth
   val IFU = 0
   val LSU = 1

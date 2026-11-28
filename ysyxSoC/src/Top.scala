@@ -62,6 +62,74 @@ object Config {
   def source: String = SoCConfig.source
 }
 
+/** ysyxSoC硬编码器件地址的只读契约导出
+  *
+  * 这些常量是SoC RTL的唯一地址来源，必须与npc/kconfig/Kconfig.soc的
+  * PMA_*配置一致。npc/tools/KconfigContract会解析本文件并在SoC构建前
+  * 比较Kconfig值，本对象初始化时也会校验typed JSON，避免只改一侧导致
+  * 地址漂移。
+  */
+object SoCAddressMap {
+  val uartBase = 0x10000000L
+  val uartSize = 0x00001000L
+  val gpioBase = 0x10002000L
+  val gpioSize = 0x00000010L
+  val keyboardBase = 0x10011000L
+  val keyboardSize = 0x00000008L
+  val vgaBase = 0x21000000L
+  val vgaSize = 0x00200000L
+  val sramBase = 0x0f000000L
+  val sramSize = 0x00008000L
+  val chiplinkMemBase = 0xc0000000L
+  val chiplinkMemSize = 0x40000000L
+  val chiplinkMmioBase = 0x40000000L
+  val chiplinkMmioSize = 0x40000000L
+
+  private def requireMatch(label: String, path: String, rtl: Long): Unit = {
+    val kconfig = SoCConfig.long(path, rtl)
+    require(
+      kconfig == rtl,
+      s"SoC地址契约不一致：Kconfig ${label}=0x${kconfig.toHexString}，" +
+        s"ysyxSoC SoCAddressMap=0x${rtl.toHexString}"
+    )
+  }
+
+  private def checkKconfig(): Unit = {
+    requireMatch("PMA_UART_BASE", "PMA.uart_base", uartBase)
+    requireMatch("PMA_UART_SIZE", "PMA.uart_size", uartSize)
+    requireMatch("PMA_GPIO_BASE", "PMA.gpio_base", gpioBase)
+    requireMatch("PMA_GPIO_SIZE", "PMA.gpio_size", gpioSize)
+    requireMatch("PMA_KEYBOARD_BASE", "PMA.keyboard_base", keyboardBase)
+    requireMatch("PMA_KEYBOARD_SIZE", "PMA.keyboard_size", keyboardSize)
+    requireMatch("PMA_VGA_BASE", "PMA.vga_base", vgaBase)
+    requireMatch("PMA_VGA_SIZE", "PMA.vga_size", vgaSize)
+    requireMatch("PMA_SRAM_BASE", "PMA.sram_base", sramBase)
+    requireMatch("PMA_SRAM_SIZE", "PMA.sram_size", sramSize)
+    requireMatch(
+      "PMA_CHIPLINK_MMIO_BASE",
+      "PMA.chiplink_mmio_base",
+      chiplinkMmioBase
+    )
+    requireMatch(
+      "PMA_CHIPLINK_MMIO_SIZE",
+      "PMA.chiplink_mmio_size",
+      chiplinkMmioSize
+    )
+    requireMatch(
+      "PMA_CHIPLINK_MEM_BASE",
+      "PMA.chiplink_mem_base",
+      chiplinkMemBase
+    )
+    requireMatch(
+      "PMA_CHIPLINK_MEM_SIZE",
+      "PMA.chiplink_mem_size",
+      chiplinkMemSize
+    )
+  }
+
+  checkKconfig()
+}
+
 class ysyxSoCTop extends Module {
   private val rvConfig =
     if (Config.socXlen == 64) new Edge64BitConfig

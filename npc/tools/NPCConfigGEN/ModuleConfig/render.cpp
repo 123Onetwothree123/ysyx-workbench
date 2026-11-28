@@ -355,8 +355,8 @@ std::string renderScalaDefaults(const std::map<std::string, std::string> &values
     out << "  val MMUPTEWidth: Int = " << PTEBytes * 8 << "\n";
     out << "  val MMUIndexBits: Int = " << indexBits << "\n";
     out << "  val MMUVaBits: Int = " << pageBits + mmuLevels * indexBits << "\n";
-    emitInt("MMUPTWBusDepth", "PTW_BUS_DEPTH", 16);
-    emitInt("AXIIDWidth", "AXI_ID_WIDTH", 4);
+    // AXI ID固定为4位，不再从Kconfig读取伪可配置项
+    out << "  val AXIIDWidth: Int = 4\n";
     emitInt("AXIArbCpuResponseQueueDepth",
             "AXI_ARB_CPU_RESP_QUEUE_DEPTH", 16);
     emitInt("AXIArbDMAResponseQueueDepth",

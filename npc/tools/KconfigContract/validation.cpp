@@ -72,6 +72,129 @@ std::string hex_no_prefix(long long value) {
   return out.str();
 }
 std::string hex0x(long long value) { return "0x" + hex_no_prefix(value); }
+std::vector<std::string> validate_soc_rtl(
+    const Config& values, const std::map<std::string, long long>& addresses,
+    const std::string& source) {
+  std::vector<std::string> errors;
+  const auto err = [&errors, &source](const std::string& message) {
+    errors.push_back(source + ": " + message);
+  };
+  // FPGA-only配置不构建ysyxSoC，跳过SoC地址契约；其余模式默认检查
+  const bool socBuilt = as_bool(
+      values, "NPC_BUILD_YSYXSOC",
+      !as_bool(values, "NPC_MODE_FPGA_ONLY", false));
+  if (!socBuilt) {
+    return errors;
+  }
+  struct SocAddressExpectation {
+    const char* label;
+    const char* kconfigBase;
+    const char* kconfigSize;
+    const char* rtlBase;
+    const char* rtlSize;
+    long long defaultBase;
+    long long defaultSize;
+  };
+  const SocAddressExpectation expectations[] = {
+      {"UART", "PMA_UART_BASE", "PMA_UART_SIZE", "uartBase", "uartSize",
+       0x10000000LL, 0x00001000LL},
+      {"GPIO", "PMA_GPIO_BASE", "PMA_GPIO_SIZE", "gpioBase", "gpioSize",
+       0x10002000LL, 0x00000010LL},
+      {"KEYBOARD", "PMA_KEYBOARD_BASE", "PMA_KEYBOARD_SIZE", "keyboardBase",
+       "keyboardSize", 0x10011000LL, 0x00000008LL},
+      {"VGA", "PMA_VGA_BASE", "PMA_VGA_SIZE", "vgaBase", "vgaSize",
+       0x21000000LL, 0x00200000LL},
+      {"SRAM", "PMA_SRAM_BASE", "PMA_SRAM_SIZE", "sramBase", "sramSize",
+       0x0f000000LL, 0x00008000LL},
+      {"CHIPLINK_MMIO", "PMA_CHIPLINK_MMIO_BASE", "PMA_CHIPLINK_MMIO_SIZE",
+       "chiplinkMmioBase", "chiplinkMmioSize", 0x40000000LL, 0x40000000LL},
+      {"CHIPLINK_MEM", "PMA_CHIPLINK_MEM_BASE", "PMA_CHIPLINK_MEM_SIZE",
+       "chiplinkMemBase", "chiplinkMemSize", 0xc0000000LL, 0x40000000LL},
+  };
+  for (const auto& expectation : expectations) {
+    const auto base = addresses.find(expectation.rtlBase);
+    if (base == addresses.end()) {
+      err(std::string("ysyxSoC地址契约缺少") + expectation.rtlBase + "（" +
+          expectation.label + "）");
+    } else {
+      const long long kconfigBase =
+          as_int(values, expectation.kconfigBase, expectation.defaultBase);
+      if (kconfigBase != base->second) {
+        err(std::string("SoC地址契约不一致：Kconfig ") +
+            expectation.kconfigBase + "=" + hex0x(kconfigBase) +
+            "，ysyxSoC SoCAddressMap." + expectation.rtlBase + "=" +
+            hex0x(base->second));
+      }
+    }
+    const auto size = addresses.find(expectation.rtlSize);
+    if (size == addresses.end()) {
+      err(std::string("ysyxSoC地址契约缺少") + expectation.rtlSize + "（" +
+          expectation.label + "）");
+    } else {
+      const long long kconfigSize =
+          as_int(values, expectation.kconfigSize, expectation.defaultSize);
+      if (kconfigSize != size->second) {
+        err(std::string("SoC地址契约不一致：Kconfig ") +
+            expectation.kconfigSize + "=" + hex0x(kconfigSize) +
+            "，ysyxSoC SoCAddressMap." + expectation.rtlSize + "=" +
+            hex0x(size->second));
+      }
+    }
+  }
+  return errors;
+}
+std::map<std::string, long long> parse_soc_address_map(
+    const fs::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    throw std::runtime_error("无法打开ysyxSoC地址契约文件: " + path.string());
+  }
+  std::map<std::string, long long> addresses;
+  std::string raw;
+  std::size_t lineNumber = 0;
+  while (std::getline(input, raw)) {
+    ++lineNumber;
+    const std::string line = strip(raw);
+    if (line.rfind("val ", 0) != 0) {
+      continue;
+    }
+    const std::size_t equals = line.find('=');
+    if (equals == std::string::npos) {
+      continue;
+    }
+    const std::string name =
+        strip(std::string_view(line).substr(4, equals - 4));
+    std::string text = strip(std::string_view(line).substr(equals + 1));
+    if (text.rfind("0x", 0) != 0 && text.rfind("0X", 0) != 0) {
+      continue;
+    }
+    const std::size_t space = text.find_first_of(" \t");
+    if (space != std::string::npos) {
+      text.resize(space);
+    }
+    if (!text.empty() && (text.back() == 'L' || text.back() == 'l')) {
+      text.pop_back();
+    }
+    const auto value = parse_integer(text);
+    if (name.empty() || !value) {
+      throw std::runtime_error(
+          path.string() + ":" + std::to_string(lineNumber) +
+          " 无法解析ysyxSoC地址常量");
+    }
+    addresses[name] = *value;
+  }
+  if (addresses.empty()) {
+    throw std::runtime_error(
+        "ysyxSoC地址契约文件没有可解析的val常量: " + path.string());
+  }
+  return addresses;
+}
+std::vector<std::string> check_soc_rtl_file(
+    const Config& values, const fs::path& addressMapPath,
+    const std::string& source) {
+  return validate_soc_rtl(values, parse_soc_address_map(addressMapPath),
+                          source);
+}
 std::vector<std::string> validate_config(const Config& values,
                                          const std::string& source) {
   std::vector<std::string> errors;
@@ -324,10 +447,75 @@ std::vector<std::string> validate_config(const Config& values,
           idu_minimizer + "' 不一致；请重新运行 menuconfig/olddefconfig");
     }
   }
+  // MUL GPC 规则镜像 src/config/ysyx_26030103_MULGPCConfig.scala 的
+  // require：K/R 范围、输出权重数量必须等于 R、权重偏移非负。
+  // MULGPCConfig 在 elaboration 中始终构造，因此即使当前乘法器不是
+  // Wallace/Dadda 也检查这些显式配置，避免到 L2 才失败。
+  const long long gpc_inputs = as_int(values, "MUL_COMPRESSOR_INPUTS", 3);
+  if (gpc_inputs < 3 || gpc_inputs > 64) {
+    err("MUL_COMPRESSOR_INPUTS=" + std::to_string(gpc_inputs) +
+        " 非法：MUL GPC K 必须在 3..64");
+  }
+  const long long gpc_outputs = as_int(values, "MUL_COMPRESSOR_OUTPUTS", 2);
+  if (gpc_outputs < 1 || gpc_outputs > 64) {
+    err("MUL_COMPRESSOR_OUTPUTS=" + std::to_string(gpc_outputs) +
+        " 非法：MUL GPC R 必须在 1..64");
+  }
+  const std::string gpc_offsets_text =
+      as_str(values, "MUL_COMPRESSOR_OUTPUT_OFFSETS", "0,1");
+  std::vector<long long> gpc_offsets;
+  bool gpc_offsets_valid = true;
+  std::size_t item_begin = 0;
+  for (;;) {
+    const std::size_t comma = gpc_offsets_text.find(',', item_begin);
+    const std::string item = strip(std::string_view(gpc_offsets_text)
+                                       .substr(item_begin,
+                                               comma == std::string::npos
+                                                   ? std::string::npos
+                                                   : comma - item_begin));
+    const auto parsed = parse_integer(item);
+    if (!parsed) {
+      err("MUL_COMPRESSOR_OUTPUT_OFFSETS='" + gpc_offsets_text +
+          "' 非法：第 " + std::to_string(gpc_offsets.size() + 1) +
+          " 项不是整数");
+      gpc_offsets_valid = false;
+      break;
+    }
+    if (*parsed < 0) {
+      err("MUL_COMPRESSOR_OUTPUT_OFFSETS 第 " +
+          std::to_string(gpc_offsets.size() + 1) + " 项=" +
+          std::to_string(*parsed) +
+          " 非法：MUL GPC 输出权重偏移必须非负");
+      gpc_offsets_valid = false;
+    }
+    gpc_offsets.push_back(*parsed);
+    if (comma == std::string::npos) {
+      break;
+    }
+    item_begin = comma + 1;
+  }
+  if (gpc_offsets_valid &&
+      gpc_offsets.size() != static_cast<std::size_t>(gpc_outputs)) {
+    err("MUL_COMPRESSOR_OUTPUT_OFFSETS 项数=" +
+        std::to_string(gpc_offsets.size()) + " 与 MUL_COMPRESSOR_OUTPUTS=" +
+        std::to_string(gpc_outputs) +
+        " 不一致：MUL GPC 输出权重数量必须等于 R");
+  }
+  const long long gpc_cout_offset =
+      as_int(values, "MUL_COMPRESSOR_COUT_OFFSET", 1);
+  if (gpc_cout_offset < 0) {
+    err("MUL_COMPRESSOR_COUT_OFFSET=" +
+        std::to_string(gpc_cout_offset) +
+        " 非法：MUL GPC Cout 权重偏移必须非负");
+  }
   const bool has_s = as_bool(values, "HAS_S", false);
   const bool has_mmu = as_bool(values, "HAS_MMU", false);
   if (has_mmu && !has_s) {
     err("HAS_MMU=y 需要 HAS_S=y：MMU 依赖 S 模式 satp/页错误入口");
+  }
+  if (as_bool(values, "HAS_TLB", false) && !has_mmu) {
+    err("HAS_TLB=y 需要 HAS_MMU=y：TLB 是 MMU 的可选加速器，"
+        "不能脱离 MMU 实例化");
   }
   const long long levels = as_int(values, "MMU_LEVELS", xlen == 64 ? 3 : 2);
   if (levels < 1 || levels > kMaxMmuLevels) {

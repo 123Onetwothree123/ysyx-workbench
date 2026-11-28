@@ -203,10 +203,28 @@ $(KCONFIG_CONTRACT_STAMP): $(KCONFIG_CONTRACT_SOURCES) $(KCONFIG_CONTRACT_MODULE
 $(KCONFIG_CONTRACT_BIN): $(KCONFIG_CONTRACT_STAMP)
 	@cp -f "$(KCONFIG_CONTRACT_BUILD_DIR)/kconfig_contract" "$@"
 
-kconfig-contract-check: $(KCONFIG_CONTRACT_BIN)
+# 完整SoC构建时额外校验Kconfig PMA与ysyxSoC硬编码地址一致；
+# direct-NPC不启用，避免误伤
+KCONFIG_CONTRACT_SOC_FLAG := $(if $(filter soc,$(SIM_TOP)),--soc-rtl)
+ifeq ($(NPC_SOC_CONTRACT),1)
+KCONFIG_CONTRACT_SOC_FLAG := --soc-rtl
+endif
+
+# 契约检查同时消费 .config 与 npc_config_gen 的 typed JSON flat：
+# .config 代表请求值，typed JSON 代表生成器实际交给 RTL/C++ 的生效值。
+# typed JSON 是普通依赖，配置或生成器变化时会先更新它再检查。
+# BIN/BIN_NPC/verilog/gsim/synth 用 order-only 依赖本目标：每次构建前都会
+# 重新检查，但检查本身不会让这些目标被误判为需要重建。
+KCONFIG_CONTRACT_TYPED_PREREQ := $(if $(wildcard .config),$(NPC_CONFIG_TYPED_JSON),)
+
+kconfig-contract-check: $(KCONFIG_CONTRACT_BIN) $(KCONFIG_CONTRACT_TYPED_PREREQ)
 	$(KCONFIG_CONTRACT_BIN) --defconfigs
 	$(KCONFIG_CONTRACT_BIN) --self-test
-	@if [ -f .config ]; then $(KCONFIG_CONTRACT_BIN) --config .config; fi
+	@if [ -f .config ]; then \
+		$(KCONFIG_CONTRACT_BIN) --config .config \
+			--typed-json '$(NPC_CONFIG_TYPED_JSON)' \
+			$(KCONFIG_CONTRACT_SOC_FLAG) $(NPC_CONFIG_OVERRIDE_ARGS); \
+	fi
 
 kconfig-contract-tool: $(KCONFIG_CONTRACT_BIN)
 
@@ -634,7 +652,7 @@ rootfs-clean:
 # 性能计数器：组 → 组内单计数器键。键名与Kconfig符号后缀、RTL端口后缀
 # 以及C++宏名一一对应；单计数器同时受所属组总开关与PERF_DIC_ARCH_COUNTER约束。
 
-verilog: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON)
+verilog: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON) | kconfig-contract-check
 	$(call git_commit, "generate verilog")
 	mkdir -p $(BUILD_DIR)
 	env NPC_CONFIG_JSON='$(NPC_CONFIG_TYPED_JSON)' \
@@ -728,7 +746,7 @@ endif
 endif
 
 # GSIM生成的C++使用_BitInt，GCC尚不支持该C++扩展，因此harness
-# 默认用clang++编译，不跟随Kconfig的CONFIG_CC
+# 默认用clang++编译；CONFIG_CC只服务Verilator，不适用于GSIM
 GSIM_COMMAND ?= gsim
 ifneq ($(CONFIG_GSIM_COMMAND),)
 GSIM_COMMAND = $(call unquote_config,$(CONFIG_GSIM_COMMAND))
@@ -744,18 +762,111 @@ GSIM_THREADS_REQ := $(call remove_quote,$(CONFIG_GSIM_THREADS))
 endif
 GSIM_THREADS := $(shell if [ "$(GSIM_THREADS_REQ)" -eq 0 ] 2>/dev/null || [ "$(GSIM_THREADS_REQ)" -gt "$(NPROC_MAX)" ] 2>/dev/null; then echo $(NPROC_MAX); else echo $(GSIM_THREADS_REQ); fi)
 GSIM_THREADS_FLAG := --threads=$(GSIM_THREADS)
-GSIM_CXX ?= clang++
-GSIM_CXX_STD ?= c++20
-GSIM_OPT_FLAG ?= -O2
 GSIM_DIR := $(abspath $(BUILD_DIR)/gsim)
 GSIM_CHIRRTL := $(abspath $(BUILD_DIR)/riscv32e_npc_SimTop.fir)
 GSIM_MODEL := $(GSIM_DIR)/riscv32e_npc_SimTop0.cpp
 GSIM_BIN := $(abspath $(BUILD_DIR)/ysyx_26030103_gsim)
 GSIM_HARNESS := $(abspath $(CSRC_DIR)/gsim/main.cpp)
+GSIM_OBJ_DIR := $(abspath $(BUILD_DIR)/gsim_obj)
+GSIM_CONFIG_STAMP := $(abspath $(BUILD_DIR)/gsim_config.stamp)
 GSIM_SCALA_SOURCES := $(shell find src -type f -name "*.scala" 2>/dev/null | sort)
 
+# GSIM的C++构建复用Kconfig里对harness同样有意义的选项；CONFIG_CC
+# 只用于Verilator，GSIM仍默认clang++，但允许用CONFIG_GSIM_CXX覆盖
+GSIM_CXX ?= clang++
+ifneq ($(call unquote_config,$(CONFIG_GSIM_CXX)),)
+GSIM_CXX = $(call unquote_config,$(CONFIG_GSIM_CXX))
+endif
+GSIM_CXX_STD ?= $(or $(call remove_quote,$(CONFIG_USER_CXX_STD)),c++20)
+GSIM_OPT_FLAG ?= $(or $(call remove_quote,$(CONFIG_CC_OPT)),-O2)
+GSIM_STDLIB_FLAG :=
+ifneq ($(filter clang% icpx%,$(notdir $(GSIM_CXX))),)
+GSIM_STDLIB_FLAG := $(call remove_quote,$(CONFIG_STDLIB_FLAG))
+endif
+GSIM_LD_FLAG ?= $(call remove_quote,$(CONFIG_LD_FLAG))
+GSIM_WARN_FLAGS :=
+ifeq ($(CONFIG_CC_WALL),y)
+GSIM_WARN_FLAGS += -Wall -Wextra
+endif
+ifeq ($(CONFIG_CC_WERROR),y)
+GSIM_WARN_FLAGS += -Werror
+endif
+ifeq ($(CONFIG_CC_PEDANTIC),y)
+GSIM_WARN_FLAGS += -Wpedantic
+endif
+ifeq ($(CONFIG_CC_WCONVERSION),y)
+GSIM_WARN_FLAGS += -Wconversion
+endif
+GSIM_RUNTIME_FLAGS :=
+ifeq ($(CONFIG_CC_ASAN),y)
+GSIM_RUNTIME_FLAGS += -fsanitize=address
+endif
+ifeq ($(CONFIG_CC_UBSAN),y)
+GSIM_RUNTIME_FLAGS += -fsanitize=undefined
+endif
+ifeq ($(CONFIG_CC_TSAN),y)
+GSIM_RUNTIME_FLAGS += -fsanitize=thread
+endif
+ifeq ($(CONFIG_CC_COVERAGE),y)
+GSIM_RUNTIME_FLAGS += --coverage
+endif
+ifeq ($(CONFIG_CC_GPROF),y)
+GSIM_RUNTIME_FLAGS += -pg
+endif
+override GSIM_CACHE_PADDING := $(or $(call remove_quote,$(strip $(CONFIG_CACHE_PADDING))),0)
+override GSIM_RAM_BYTES := $(or $(call remove_quote,$(strip $(CONFIG_NPC_RAM_SIZE))),0x04000000)
+GSIM_DEFINES := -DNPC_GSIM_CACHE_PADDING=$(GSIM_CACHE_PADDING) \
+	-DNPC_GSIM_RAM_BYTES=$(GSIM_RAM_BYTES)
+GSIM_BASE_CXXFLAGS := -std=$(GSIM_CXX_STD) $(GSIM_OPT_FLAG) \
+	$(GSIM_RUNTIME_FLAGS) $(GSIM_STDLIB_FLAG) $(GSIM_DEFINES) -isystem $(GSIM_DIR)
+# GSIM生成的C++不保证warning-clean，警告选项只作用于harness
+GSIM_HARNESS_CXXFLAGS := $(GSIM_BASE_CXXFLAGS) $(GSIM_WARN_FLAGS)
+GSIM_MODEL_CXXFLAGS := $(GSIM_BASE_CXXFLAGS)
+GSIM_LDFLAGS := $(GSIM_RUNTIME_FLAGS) $(GSIM_STDLIB_FLAG) $(GSIM_LD_FLAG)
+
+# 只在这些值真正变化时更新stamp，避免每次make都重编harness
+.PHONY: gsim-config-stamp-force
+gsim-config-stamp-force:
+$(GSIM_CONFIG_STAMP): gsim-config-stamp-force $(NPC_CONFIG_EFFECTIVE_JSON)
+	@mkdir -p $(@D)
+	@printf '%s\n' \
+		"cxx=$(GSIM_CXX)" \
+		"std=$(GSIM_CXX_STD)" \
+		"opt=$(GSIM_OPT_FLAG)" \
+		"warn=$(GSIM_WARN_FLAGS)" \
+		"runtime=$(GSIM_RUNTIME_FLAGS)" \
+		"stdlib=$(GSIM_STDLIB_FLAG)" \
+		"ld=$(GSIM_LD_FLAG)" \
+		"cache_padding=$(GSIM_CACHE_PADDING)" \
+		"ram_bytes=$(GSIM_RAM_BYTES)" > $@.tmp
+	@if test -f $@ && cmp -s $@.tmp $@; then rm -f $@.tmp; else mv -f $@.tmp $@; fi
+
+# GSIM不实现Verilator harness里的SDB/追踪/差分测试/性能存档/日志功能；
+# 正常menuconfig会隐藏这些选项，这里兜底提示命令行或旧配置留下的值
+GSIM_UNSUPPORTED_CONFIGS := $(strip \
+	$(if $(filter y,$(CONFIG_SDB)),SDB) \
+	$(if $(filter y,$(CONFIG_TRACE)),TRACE) \
+	$(if $(filter y,$(CONFIG_ITRACE)),ITRACE) \
+	$(if $(filter y,$(CONFIG_ITRACE_WRITE_FILE)),ITRACE_WRITE_FILE) \
+	$(if $(filter y,$(CONFIG_MTRACE)),MTRACE) \
+	$(if $(filter y,$(CONFIG_FTRACE)),FTRACE) \
+	$(if $(filter y,$(CONFIG_IRINGBUF)),IRINGBUF) \
+	$(if $(filter y,$(CONFIG_WATCHPOINT)),WATCHPOINT) \
+	$(if $(filter y,$(CONFIG_DIFFTEST)),DIFFTEST) \
+	$(if $(filter y,$(CONFIG_PERF_DIC_ARCH_COUNTER)),PERF_DIC_ARCH_COUNTER) \
+	$(if $(filter y,$(CONFIG_PERF_SAVE)),PERF_SAVE) \
+	$(if $(filter y,$(CONFIG_LOG_ERROR) $(CONFIG_LOG_WARN) $(CONFIG_LOG_INFO) $(CONFIG_LOG_DEBUG) $(CONFIG_LOG_TO_FILE) $(CONFIG_LOG_TIMESTAMP) $(CONFIG_LOG_SOURCE_LOCATION)),LOG_*))
+
+.PHONY: gsim-config-check
+gsim-config-check:
+	@if [ -n "$(GSIM_UNSUPPORTED_CONFIGS)" ]; then \
+		echo "警告：GSIM后端不支持以下已启用选项，本次构建不会让它们生效：" >&2; \
+		echo "      $(GSIM_UNSUPPORTED_CONFIGS)" >&2; \
+		echo "      请在menuconfig中切换到Verilator后端或关闭这些选项" >&2; \
+	fi
+
 # GSIM与Verilator共用direct-NPC SimTop，沿用同一32/64位SoC AXI检查
-gsim gsim-run: $(SIM_GUARD) npc-direct-soc-xlen-check
+gsim gsim-run: $(SIM_GUARD) npc-direct-soc-xlen-check gsim-config-check | kconfig-contract-check
 
 $(GSIM_CHIRRTL): $(GSIM_SCALA_SOURCES) $(NPC_CONFIG_MODULE) $(NPC_CONFIG_TYPED_JSON)
 	@mkdir -p $(BUILD_DIR)
@@ -767,10 +878,26 @@ $(GSIM_MODEL): $(GSIM_CHIRRTL)
 	@mkdir -p $(GSIM_DIR)
 	$(GSIM_COMMAND) --dir $(GSIM_DIR) $(GSIM_THREADS_FLAG) $(GSIM_EXTRA_ARGS) $(GSIM_CHIRRTL)
 
-$(GSIM_BIN): $(GSIM_MODEL) $(GSIM_HARNESS)
-	@mkdir -p $(BUILD_DIR)
-	$(GSIM_CXX) -std=$(GSIM_CXX_STD) $(GSIM_OPT_FLAG) -I$(GSIM_DIR) \
-		$(GSIM_HARNESS) $(GSIM_DIR)/*.cpp -o $(GSIM_BIN)
+$(GSIM_BIN): $(GSIM_MODEL) $(GSIM_HARNESS) $(GSIM_CONFIG_STAMP)
+	@mkdir -p $(GSIM_OBJ_DIR)
+	@echo "GSIM: 使用 $(GSIM_CXX) 编译（CONFIG_CC=$(or $(call unquote_config,$(CONFIG_CC)),未设置) 不适用于 GSIM）"
+	@echo "GSIM: harness CXXFLAGS=$(GSIM_HARNESS_CXXFLAGS)"
+	@echo "GSIM: model CXXFLAGS=$(GSIM_MODEL_CXXFLAGS)"
+	@echo "GSIM: 逐文件并行编译，线程数=$(NPROC)"
+	@set -eu; \
+		rm -f "$(GSIM_OBJ_DIR)"/*.o; \
+		{ printf '%s\n' "$(GSIM_HARNESS)"; \
+		  find "$(GSIM_DIR)" -maxdepth 1 -type f -name '*.cpp' -print | sort; \
+		} | xargs -r -d '\n' -P $(NPROC) -n 1 sh -c '\
+			src="$$1"; \
+			if [ "$$src" = "$(GSIM_HARNESS)" ]; then \
+				$(GSIM_CXX) $(GSIM_HARNESS_CXXFLAGS) -c "$$src" -o "$(GSIM_OBJ_DIR)/npc_gsim_harness.o"; \
+			else \
+				base="$$(basename "$$src" .cpp)"; \
+				$(GSIM_CXX) $(GSIM_MODEL_CXXFLAGS) -c "$$src" -o "$(GSIM_OBJ_DIR)/model_$$base.o"; \
+			fi \
+		' sh; \
+		$(GSIM_CXX) $(GSIM_LDFLAGS) "$(GSIM_OBJ_DIR)"/*.o -o "$(GSIM_BIN)"
 
 .PHONY: gsim gsim-run
 gsim: $(GSIM_BIN)
@@ -1095,7 +1222,7 @@ $(YSYXSOC_FULL_V): ysyxsoc-verilog-force $(NPC_CONFIG_TYPED_JSON)
 		$(YSYXSOC_FLASH_XIP_ENV) \
 		verilog
 
-$(BIN): $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V)
+$(BIN): $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) $(NVBOARD_AUTOBIND) $(YSYXSOC_FULL_V) | kconfig-contract-check
 	$(VERILATOR) $(VERILATOR_COMPILER) -MMD -cc $(VERILATOR_THREADS) $(VERILATOR_OUTPUT_SPLIT) \
 		$(VERILATOR_OPT_FLAG) $(VERILATOR_WARN_FLAGS) $(VERILATOR_X_ASSIGN) $(VERILATOR_X_INITIAL) $(VERILATOR_ASSERT) $(VERILATOR_FLASH_XIP_DEFINE) \
 		--timescale "1ns/1ns" --no-timing \
@@ -1115,7 +1242,7 @@ $(BIN): $(SIM_GUARD) $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERIL
 		NPC_SAVABLE='$(VERILATOR_SAVABLE)' \
 		NPC_CONFIG_EFFECTIVE_JSON='$(NPC_CONFIG_EFFECTIVE_JSON)' \
 		default
-$(BIN_NPC): $(SIM_GUARD) $(NVBOARD_DIRECT_GUARD) npc-direct-soc-xlen-check $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER)
+$(BIN_NPC): $(SIM_GUARD) $(NVBOARD_DIRECT_GUARD) npc-direct-soc-xlen-check $(NPC_CONFIG_MODULE) $(NPC_VERILOG_PREREQ) $(CSRCS) $(VERILATOR_BUILD_WRAPPER) | kconfig-contract-check
 	@set -eu; \
 	soc_xlen="$$($(NPC_CONFIG_GEN_BIN) --config-json '$(NPC_CONFIG_EFFECTIVE_JSON)' --get SOC_XLEN_EFFECTIVE)"; \
 	addr_msb=$$((soc_xlen - 1)); \
@@ -1257,7 +1384,7 @@ endif
 # The identity directory is deliberately reusable.  Publish an invalid
 # manifest and delete the exact old area report before each run, so a failed
 # synthesis or a missing new report cannot inherit a valid old measurement.
-synth: verilog perf-build-metadata
+synth: verilog perf-build-metadata | kconfig-contract-check
 	@echo "[perf] 综合 ($(SYNTH_DESIGN), $(SYNTH_FREQ)MHz, $(PDK_VALUE), strategy=$(SYNTH_STRATEGY_TYPE) $(SYNTH_STRATEGY_IDX), nomap=$(SYNTH_NOMAP), noabc=$(SYNTH_NOABC)) ..."
 
 	@set -eu; \
@@ -1419,7 +1546,9 @@ include scripts/config.mk
 # config.mk 定义 CONF/MCONF 较晚，而上面的 NPC_CONFIG_JSON 规则在包含它之前
 # 就已经展开，$(CONF) 会被当成空。这里补一次依赖，保证执行过
 # `make menuconfig-clean` 后，`make npc-config` 会先重建 Kconfig 工具。
-$(NPC_CONFIG_JSON): $(CONF)
+# Kconfig 源文件同样参与依赖：修改 Kconfig.mmu 等约束后必须重新 syncconfig，
+# 不能继续使用旧的 npc_config.json/.config 投影。
+$(NPC_CONFIG_JSON): $(CONF) $(NPC_HOME)/Kconfig $(wildcard $(NPC_HOME)/kconfig/*)
 npc-config: $(CONF)
 
 -include ../Makefile
