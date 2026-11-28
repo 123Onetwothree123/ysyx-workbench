@@ -314,9 +314,9 @@
       "menu_count": 92,
       "parameter_count": 868,
       "parse_ok": true,
-      "regenerated_schema_sha256": "444dcb6dc278d39cb7da871e84493ccf0fe785e9966033cc66a18443e56bad70",
-      "regenerated_summary_sha256": "5067c469859191b39b72c8c13827d366e7b1c1982768b3421f1154f0c3cd211f",
-      "schema_sha256": "bbc76c692186a258985139701db06e5f985402bd0c76df2daa3c2ed66599da94",
+      "regenerated_schema_sha256": "952e1b54dc0ae1f66a6d9efa0569768cf4ae96075b137b279b0c2aa423d8cf40",
+      "regenerated_summary_sha256": "00878b997a8ab4137efa918c1caeee53bcec3175766b8e17ffe885ea6c785204",
+      "schema_sha256": "bd2d007c9001a5e66f189ebb349a4502f31f50381a76381a79ff65f31e7f8ac6",
       "semantic_equal": true
     }
   },
@@ -366,11 +366,16 @@
     "root": "npc/params/generated"
   },
   "generated_snapshot": true,
+  "legacy_reference_audit": {
+    "available": true,
+    "old_files": [],
+    "violations": []
+  },
   "mainmenu_match": true,
   "schema": {
     "generation_issues": [],
     "path": "npc/params/schema/schema.json",
-    "sha256": "bbc76c692186a258985139701db06e5f985402bd0c76df2daa3c2ed66599da94",
+    "sha256": "bd2d007c9001a5e66f189ebb349a4502f31f50381a76381a79ff65f31e7f8ac6",
     "version": 2
   },
   "summary": {
@@ -386,6 +391,9 @@
     "generation_issue_count": 0,
     "hash_match_count": 20,
     "help_difference_count": 0,
+    "legacy_file_count": 0,
+    "legacy_reference_audit_available": true,
+    "legacy_reference_count": 0,
     "mainmenu_match": true,
     "menu_count": 92,
     "menu_tree_difference_count": 0,

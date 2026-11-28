@@ -1,7 +1,7 @@
 /*
  * ysyxSoC ACT / 裸机启动 stub（C5 布局）。
  *
- * 镜像布局（由 npc/scripts/build_soc_image.sh 生成）：
+ * 镜像布局（C5：4 KiB MROM stub + Flash payload）：
  *   0x0000..0x0fff  本 stub，放在 MROM base（默认 0x20000000）
  *   0x0ff0           payload 字节数（32 位小端）
  *   0x1000..         payload，放在 XIP Flash base（默认 0x30000000）

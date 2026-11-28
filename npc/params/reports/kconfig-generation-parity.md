@@ -123,6 +123,10 @@ effective hash 使用与 `npc/params/reports/defconfig-classification.csv` 相�
 | gen_kconfig 两次运行字节一致 | ✅ |
 | 仓库 generated/ 与最新生成结果一致 | ✅ |
 
+## 8.1 旧 Kconfig 路径耦合审计
+
+所有 tracked 构建/源码文件都已改为消费 `.config`、`auto.conf`、typed/effective JSON 或 `params/generated/`；旧 `npc/kconfig/Kconfig.*` 只出现在文档、迁移工具、schema provenance 和历史报告中。
+
 ## 9. 复现
 
 ```bash

@@ -1,8 +1,7 @@
 // Merge a Kconfig profile into .config and run the existing config tools.
 //
-// This replaces the path/fragment/process orchestration that used to live in
-// scripts/merge_config.sh.  c_conf and kconfig_contract remain external
-// binaries because they are the Kconfig implementation itself.
+// c_conf and kconfig_contract remain external binaries because they are the
+// Kconfig implementation itself.
 
 #include <unistd.h>
 
@@ -20,9 +19,9 @@ void usage()
         << "PROFILE 可以是 configs/profiles/ 下的名称（可省略 .profile），\n"
         << "也可以是 profile 文件路径。片段路径相对 npc/configs/ 解析。\n\n"
         << "示例:\n"
-        << "  scripts/merge_config.sh rv64_linux\n"
-        << "  scripts/merge_config.sh rv64_linux_uboot_128m\n"
-        << "  scripts/merge_config.sh configs/profiles/rv64_linux.profile\n";
+        << "  make profile-defconfig PROFILE=rv64_linux\n"
+        << "  tools/build/merge_config rv64_linux\n"
+        << "  tools/build/merge_config configs/profiles/rv64_linux.profile\n";
 }
 
 fs::path resolveProfile(const fs::path &npcHome, const std::string &argument)

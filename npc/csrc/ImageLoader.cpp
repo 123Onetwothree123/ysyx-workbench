@@ -253,7 +253,7 @@ std::expected<std::size_t, std::string> ImageLoader::LoadFromCLI(
         }
 #ifndef VRISCV32E_NPC
         // C5 SoC 启动镜像：4 KiB MROM stub + Flash payload。
-        // build_soc_image.sh 在偏移 0xff0 写入 payload 字节数；这里
+        // C5 镜像在偏移 0xff0 写入 payload 字节数；这里
         // 只在 size 与文件长度严格对应时拆分，避免把普通裸镜像误判。
         if (FileSize > kSocStubBytes)
         {

@@ -1002,6 +1002,17 @@ def build_schema(kconfig_path: Path) -> Dict[str, Any]:
     choices.sort(key=lambda entry: entry["id"])
 
     kconfig_files = sorted({repo_relative(name) for name in kconf.kconfig_filenames})
+    generated_root = REPO_ROOT / "npc/params/generated"
+    generated_candidates = [generated_root / "Kconfig"]
+    generated_candidates.extend(sorted((generated_root / "kconfig").glob("*.Kconfig")))
+    generated_kconfig_files = [
+        repo_relative(str(candidate))
+        for candidate in generated_candidates
+        if candidate.is_file()
+    ]
+    legacy_kconfig_files = [
+        name for name in kconfig_files if not (REPO_ROOT / name).exists()
+    ]
     schema = {
         "generated_snapshot": True,
         "schema_version": SCHEMA_VERSION,
@@ -1012,9 +1023,33 @@ def build_schema(kconfig_path: Path) -> Dict[str, Any]:
             "kconfiglib_license": "ISC",
         },
         "source": {
+            # schema.json is now the parameter authority.  gen_schema.py only
+            # produces migration snapshots; it must never be treated as the
+            # normal parameter-editing path.
+            "authority": "npc/params/schema/schema.json",
             "kconfig": repo_relative(str(kconfig_path)),
+            "kconfig_role": (
+                "stable entry point: mainmenu plus "
+                "source params/generated/Kconfig"
+            ),
             "source_root": "npc",
+            # Files parsed for this snapshot.  In the authoritative schema
+            # these are the pre-switch Kconfig files; most were deleted after
+            # the switch and are retained only as provenance for
+            # parameter.file/parameter.line.  npc/Kconfig itself still exists
+            # as the stable wrapper.
             "kconfig_files": kconfig_files,
+            "legacy_kconfig_files": legacy_kconfig_files,
+            "kconfig_files_status": (
+                "legacy-deleted" if legacy_kconfig_files else "present"
+            ),
+            "generated_kconfig_files": generated_kconfig_files,
+            "provenance_model": (
+                "parameter.file/line record where the parameter came from in "
+                "the snapshot that created this schema.  They are historical "
+                "metadata, not build inputs; build tools must read schema.json "
+                "or params/generated/, never open these paths."
+            ),
             "visibility_model": (
                 "prompt exists and symbol/choice visibility is non-zero under "
                 "an empty default configuration"
@@ -1049,6 +1084,7 @@ def summarize(schema: Dict[str, Any]) -> Dict[str, Any]:
     by_tier = Counter(entry["tier"] for entry in parameters)
     by_visibility = Counter(entry["visibility"] for entry in parameters)
     files = Counter(entry["file"] for entry in parameters)
+    source = schema.get("source") or {}
     return {
         "generated_snapshot": True,
         "schema_version": schema["schema_version"],
@@ -1080,7 +1116,16 @@ def summarize(schema: Dict[str, Any]) -> Dict[str, Any]:
         "by_kconfig_type": dict(sorted(by_kconfig_type.items())),
         "by_tier": dict(sorted(by_tier.items())),
         "by_visibility": dict(sorted(by_visibility.items())),
+        # Legacy provenance counts: these are the files that parameter.file
+        # refers to in this snapshot.  They may be deleted after the switch.
         "files": dict(sorted(files.items())),
+        "files_model": (
+            "legacy provenance counts from parameter.file; these files may "
+            "have been deleted after the schema switch"
+        ),
+        "files_status": source.get("kconfig_files_status"),
+        "generated_kconfig_files": source.get("generated_kconfig_files", []),
+        "parameter_file_model": source.get("provenance_model"),
     }
 
 

@@ -292,6 +292,30 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 1
     check("schema: generated_snapshot marker", schema.get("generated_snapshot") is True)
 
+    import gen_kconfig
+
+    source_problems = gen_kconfig.validate_schema_source(schema)
+    check(
+        "schema: source provenance is self-consistent",
+        not source_problems,
+        "; ".join(source_problems),
+    )
+    wrapper_problems = gen_kconfig.validate_stable_wrapper()
+    check(
+        "kconfig: npc/Kconfig is the stable generated entry point",
+        not wrapper_problems,
+        "; ".join(wrapper_problems),
+    )
+    generated_root = p.REPO_ROOT / "npc/params/generated/Kconfig"
+    generated_problems = gen_kconfig.check_outputs(
+        schema, generated_root, source_prefix="params/generated"
+    )
+    check(
+        "kconfig: generated tree matches schema",
+        not generated_problems,
+        "; ".join(generated_problems[:5]),
+    )
+
     workdir = Path(tempfile.mkdtemp(prefix="paramgen-selftest-", dir="/tmp/opencode"))
     if args.typed:
         typed = p.read_json(args.typed)

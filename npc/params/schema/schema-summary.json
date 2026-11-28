@@ -42,6 +42,18 @@
     "npc/kconfig/Kconfig.synth": 9,
     "npc/kconfig/Kconfig.verilator": 24
   },
+  "files_model": "legacy provenance counts from parameter.file; these files may have been deleted after the schema switch",
+  "files_status": "legacy-deleted",
+  "generated_kconfig_files": [
+    "npc/params/generated/Kconfig",
+    "npc/params/generated/kconfig/part-00.Kconfig",
+    "npc/params/generated/kconfig/part-01.Kconfig",
+    "npc/params/generated/kconfig/part-02.Kconfig",
+    "npc/params/generated/kconfig/part-03.Kconfig",
+    "npc/params/generated/kconfig/part-04.Kconfig",
+    "npc/params/generated/kconfig/part-05.Kconfig",
+    "npc/params/generated/kconfig/part-06.Kconfig"
+  ],
   "generated_snapshot": true,
   "generation_issue_count": 0,
   "help_count": 262,
@@ -51,6 +63,7 @@
   "menu_count": 92,
   "multi_node_symbol_count": 0,
   "parameter_count": 868,
+  "parameter_file_model": "parameter.file/line record where the parameter came from in the snapshot that created this schema. They are historical metadata, not build inputs; build tools must read schema.json or params/generated/, never open these paths.",
   "prompt_count": 772,
   "schema_version": 2,
   "select_count": 0,

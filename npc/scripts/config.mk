@@ -107,6 +107,15 @@ kconfig-generated-check: $(KCONFIG_GEN_STAMP)
 			exit 2; \
 		}; \
 		touch "$(KCONFIG_GEN_STAMP)"; \
+	elif ! python3 "$(KCONFIG_GENERATOR)" --check \
+		--schema "$(KCONFIG_SCHEMA)" --out "$(KCONFIG_GENERATED)"; then \
+		echo "[kconfig-gen] 生成文件与 schema 不一致，重新生成..." >&2; \
+		rm -f "$(KCONFIG_GEN_STAMP)"; \
+		$(KCONFIG_GEN_CMD) || { \
+			echo "错误：从 schema 生成 Kconfig 失败：$(KCONFIG_SCHEMA)" >&2; \
+			exit 2; \
+		}; \
+		touch "$(KCONFIG_GEN_STAMP)"; \
 	fi
 
 # 编译器/标准库选择变化时删除 CMakeCache，强制用新参数重新 configure。

@@ -16,6 +16,9 @@ The verification has four independent layers:
    binary in isolated /tmp workdirs, generate typed JSON with
    ``npc_config_gen``, and compare effective hashes plus raw ``.config``
    values against the recorded baseline report.
+5. Legacy coupling audit: fail if any tracked build/source file still
+   references the deleted ``npc/kconfig/Kconfig.*`` tree, or if any of those
+   files is still tracked.
 
 Usage:
     python3 npc/tools/ParamGen/parity_kconfig.py
@@ -960,6 +963,90 @@ def check_generator_determinism(
 
 
 # ---------------------------------------------------------------------------
+# Legacy source-layout audit
+# ---------------------------------------------------------------------------
+
+# The pre-switch Kconfig tree is deliberately gone.  These paths are allowed
+# to mention it because they are documentation, historical reports, or the
+# migration tools themselves.  Any other tracked file is a live coupling.
+LEGACY_REFERENCE_ALLOWLIST = (
+    "npc/docs/",
+    "npc/params/schema/",
+    "npc/params/reports/",
+    "npc/tools/ParamGen/",
+    "npc/NPCSimResult/",
+)
+
+LEGACY_REFERENCE_PATTERN = (
+    r"npc/kconfig/Kconfig\.|"
+    r"(^|/)kconfig/Kconfig\.(cpp|debug|fpga|hardware|linux|log|mmu|rootfs|"
+    r"sbi|sim|soc|synth|verilator)"
+)
+
+
+def legacy_reference_audit() -> Dict[str, Any]:
+    """Find tracked build/source files that still reference the deleted tree."""
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "grep",
+                "-n",
+                "-E",
+                LEGACY_REFERENCE_PATTERN,
+                "--",
+                ".",
+            ],
+            cwd=str(p.REPO_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as error:
+        return {
+            "available": False,
+            "reason": f"git unavailable: {error}",
+            "violations": [],
+            "old_files": [],
+        }
+    if result.returncode not in (0, 1):
+        return {
+            "available": False,
+            "reason": result.stderr.strip() or f"git grep rc={result.returncode}",
+            "violations": [],
+            "old_files": [],
+        }
+    violations: List[Dict[str, Any]] = []
+    for line in result.stdout.splitlines():
+        parts = line.split(":", 2)
+        if len(parts) != 3:
+            continue
+        path, line_number, text = parts
+        if path.startswith(LEGACY_REFERENCE_ALLOWLIST):
+            continue
+        violations.append(
+            {"file": path, "line": int(line_number), "text": text.strip()}
+        )
+    old_files_result = subprocess.run(
+        ["git", "ls-files", "--", "npc/kconfig/Kconfig.*"],
+        cwd=str(p.REPO_ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    old_files = [
+        line
+        for line in old_files_result.stdout.splitlines()
+        if line.strip()
+    ]
+    return {
+        "available": True,
+        "violations": violations,
+        "old_files": old_files,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 
@@ -1229,6 +1316,30 @@ def write_report(
         f"| 仓库 generated/ 与最新生成结果一致 | {'✅' if data['determinism']['generator']['checked_in_matches_fresh'] else '❌'} |"
     )
     lines.append("")
+    lines.append("## 8.1 旧 Kconfig 路径耦合审计")
+    lines.append("")
+    legacy_audit = data.get("legacy_reference_audit", {})
+    if not legacy_audit.get("available"):
+        lines.append(
+            "当前环境没有可用的 `git grep`，跳过 tracked 文件审计："
+            f"{legacy_audit.get('reason', 'unknown')}"
+        )
+    elif legacy_audit.get("violations") or legacy_audit.get("old_files"):
+        lines.append("发现仍依赖旧 Kconfig 源树的位置：")
+        lines.append("")
+        for item in legacy_audit.get("old_files", []):
+            lines.append(f"- 仍被跟踪的旧文件：`{item}`")
+        for item in legacy_audit.get("violations", []):
+            lines.append(
+                f"- `{item['file']}:{item['line']}`：`{item['text']}`"
+            )
+    else:
+        lines.append(
+            "所有 tracked 构建/源码文件都已改为消费 `.config`、`auto.conf`、"
+            "typed/effective JSON 或 `params/generated/`；旧 `npc/kconfig/Kconfig.*` "
+            "只出现在文档、迁移工具、schema provenance 和历史报告中。"
+        )
+    lines.append("")
     lines.append("## 9. 复现")
     lines.append("")
     lines.append("```bash")
@@ -1403,7 +1514,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             file=sys.stderr,
         )
 
+    legacy_audit = legacy_reference_audit()
+
     blockers: List[str] = []
+    if legacy_audit.get("old_files"):
+        blockers.append(
+            f"{len(legacy_audit['old_files'])} 个旧 Kconfig 文件仍被 git 跟踪"
+        )
+    if legacy_audit.get("violations"):
+        blockers.append(
+            f"{len(legacy_audit['violations'])} 个 tracked 文件仍引用已删除的 "
+            "旧 Kconfig 路径"
+        )
     if not schema_migration["parse_ok"]:
         blockers.append("gen_schema 无法解析切换后的 npc/Kconfig")
     if not schema_migration["semantic_equal"]:
@@ -1490,6 +1612,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "recorded_missing_count": sum(
             1 for row in rows if row["recorded_match"] is None
         ),
+        "legacy_reference_audit_available": legacy_audit.get("available", False),
+        "legacy_reference_count": len(legacy_audit.get("violations", [])),
+        "legacy_file_count": len(legacy_audit.get("old_files", [])),
     }
 
     generated_files = generated_kconfig_files(generated_root)
@@ -1521,6 +1646,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "choices": choices,
         "trees": trees,
         "defconfigs": rows,
+        "legacy_reference_audit": legacy_audit,
         "summary": summary,
     }
 

@@ -42,6 +42,7 @@ from paramlib import REPO_ROOT, read_json
 TYPE_KEYWORDS = {"bool", "tristate", "int", "hex", "string"}
 Y = "y"
 DEFAULT_SOURCE_PREFIX = "params/generated"
+SCHEMA_AUTHORITY = "npc/params/schema/schema.json"
 
 
 class GenerationError(Exception):
@@ -415,6 +416,168 @@ def write_outputs(outputs: Dict[str, str], out: Path) -> List[Path]:
     return written
 
 
+def validate_schema_source(schema: Dict[str, Any]) -> List[str]:
+    """Check that provenance metadata cannot point build tools at stale files.
+
+    The pre-switch Kconfig tree is intentionally deleted.  ``source`` records
+    that fact explicitly so a later edit does not accidentally reintroduce a
+    second, hand-maintained Kconfig source tree or make a build tool open a
+    path that no longer exists.
+    """
+    problems: List[str] = []
+    source = schema.get("source")
+    if not isinstance(source, dict):
+        return ["schema.source is missing; cannot verify Kconfig provenance"]
+    authority = source.get("authority")
+    if authority != SCHEMA_AUTHORITY:
+        problems.append(
+            f"schema.source.authority must be {SCHEMA_AUTHORITY!r}, "
+            f"got {authority!r}"
+        )
+    status = source.get("kconfig_files_status")
+    if status not in ("legacy-deleted", "present"):
+        problems.append(
+            "schema.source.kconfig_files_status must be 'legacy-deleted' "
+            f"or 'present', got {status!r}"
+        )
+    kconfig_files = source.get("kconfig_files")
+    if not isinstance(kconfig_files, list) or any(
+        not isinstance(relative, str) for relative in kconfig_files
+    ):
+        problems.append("schema.source.kconfig_files must be a string list")
+        kconfig_files = []
+    legacy_files = source.get("legacy_kconfig_files")
+    if not isinstance(legacy_files, list) or any(
+        not isinstance(relative, str) for relative in legacy_files
+    ):
+        problems.append(
+            "schema.source.legacy_kconfig_files must be a string list"
+        )
+        legacy_files = []
+    for relative in legacy_files:
+        if (REPO_ROOT / relative).exists():
+            problems.append(
+                f"legacy Kconfig file still exists: {relative}; remove it or "
+                "update schema.source.legacy_kconfig_files"
+            )
+    for relative in kconfig_files:
+        if relative in legacy_files:
+            continue
+        if not (REPO_ROOT / relative).exists():
+            problems.append(
+                f"schema.source.kconfig_files entry is missing and not marked "
+                f"legacy: {relative}"
+            )
+    allowed_provenance = set(kconfig_files)
+    for entry in schema.get("parameters", []):
+        if not isinstance(entry, dict):
+            continue
+        relative = entry.get("file")
+        if not isinstance(relative, str) or not relative:
+            continue
+        if relative in allowed_provenance:
+            continue
+        if (REPO_ROOT / relative).exists():
+            continue
+        problems.append(
+            f"parameter {entry.get('name', '?')}: provenance file is neither "
+            f"present nor listed in schema.source.kconfig_files: {relative}"
+        )
+    generated = source.get("generated_kconfig_files", [])
+    if not isinstance(generated, list) or any(
+        not isinstance(relative, str) for relative in generated
+    ):
+        problems.append("schema.source.generated_kconfig_files must be a string list")
+    return problems
+
+
+def validate_stable_wrapper() -> List[str]:
+    """Ensure npc/Kconfig remains a thin schema-generated entry point."""
+    path = REPO_ROOT / "npc/Kconfig"
+    if not path.is_file():
+        return [f"stable Kconfig wrapper is missing: {path}"]
+    text = path.read_text(encoding="utf-8")
+    problems: List[str] = []
+    if not any(
+        line.strip().startswith("mainmenu ") for line in text.splitlines()
+    ):
+        problems.append("npc/Kconfig must declare mainmenu")
+    if 'source "params/generated/Kconfig"' not in text:
+        problems.append(
+            'npc/Kconfig must source "params/generated/Kconfig"; it must not '
+            "source the deleted npc/kconfig tree"
+        )
+    return problems
+
+
+def validate_generated_metadata(
+    schema: Dict[str, Any], out: Path, *, source_prefix: str
+) -> List[str]:
+    """Compare source.generated_kconfig_files with the real generated set."""
+    source = schema.get("source") or {}
+    declared = source.get("generated_kconfig_files")
+    if not isinstance(declared, list):
+        return ["schema.source.generated_kconfig_files must be a list"]
+    out = out.resolve()
+    try:
+        outputs = build_outputs(schema, source_prefix=source_prefix)
+    except GenerationError:
+        return []
+    actual: List[str] = []
+    for relative in outputs:
+        path = (out.parent / relative).resolve()
+        try:
+            actual.append(str(path.relative_to(REPO_ROOT)))
+        except ValueError:
+            # A migration snapshot written outside the repository does not
+            # describe the repository's generated tree.
+            return []
+    if sorted(declared) != sorted(actual):
+        missing = sorted(set(actual) - set(declared))
+        extra = sorted(set(declared) - set(actual))
+        problems = []
+        if missing:
+            problems.append(
+                "schema.source.generated_kconfig_files is missing: "
+                + ", ".join(missing)
+            )
+        if extra:
+            problems.append(
+                "schema.source.generated_kconfig_files has extra entries: "
+                + ", ".join(extra)
+            )
+        return problems
+    for relative in declared:
+        if not (REPO_ROOT / relative).is_file():
+            return [f"generated Kconfig file is missing: {relative}"]
+    return []
+
+
+def check_outputs(
+    schema: Dict[str, Any], out: Path, *, source_prefix: str
+) -> List[str]:
+    """Return differences between schema and the generated Kconfig tree."""
+    problems: List[str] = []
+    try:
+        outputs = build_outputs(schema, source_prefix=source_prefix)
+    except GenerationError as error:
+        return [f"schema cannot be generated: {error}"]
+    out = out.resolve()
+    for relative, text in sorted(outputs.items()):
+        path = out.parent / relative
+        if not path.is_file():
+            problems.append(f"generated Kconfig file is missing: {path}")
+        elif path.read_bytes() != text.encode("utf-8"):
+            problems.append(f"generated Kconfig file is stale: {path}")
+    expected = {(out.parent / relative).resolve() for relative in outputs}
+    kconfig_dir = out.parent / "kconfig"
+    if kconfig_dir.is_dir():
+        for stale in sorted(kconfig_dir.glob("*.Kconfig")):
+            if stale.resolve() not in expected:
+                problems.append(f"unexpected generated Kconfig file: {stale}")
+    return problems
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -432,12 +595,35 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         default=DEFAULT_SOURCE_PREFIX,
         help="source path prefix relative to npc/ (default: %(default)s)",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help=(
+            "verify generated files match schema and provenance metadata; "
+            "exit non-zero without writing anything on drift"
+        ),
+    )
     args = parser.parse_args(argv)
 
     schema_path = Path(args.schema)
     if not schema_path.is_absolute():
         schema_path = REPO_ROOT / schema_path
     schema = read_json(schema_path)
+    problems = validate_schema_source(schema) + validate_stable_wrapper()
+    if problems:
+        for problem in problems:
+            print(f"[param-kconfig] ERROR: {problem}", file=sys.stderr)
+        return 1
+    if args.check:
+        problems = validate_generated_metadata(
+            schema, Path(args.out), source_prefix=args.source_prefix
+        )
+        problems += check_outputs(
+            schema, Path(args.out), source_prefix=args.source_prefix
+        )
+        for problem in problems:
+            print(f"[param-kconfig] CHECK FAILED: {problem}", file=sys.stderr)
+        return 1 if problems else 0
     try:
         outputs = build_outputs(schema, source_prefix=args.source_prefix)
     except GenerationError as error:

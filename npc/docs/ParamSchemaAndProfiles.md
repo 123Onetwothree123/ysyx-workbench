@@ -109,7 +109,7 @@ python3 npc/tools/ParamGen/gen_schema.py \
 | `generated_snapshot` | 固定 `true`，提醒这是生成快照 |
 | `schema_version` | 快照格式版本，当前 `2`（v2 增加反向生成字段） |
 | `generator` | 生成器、Kconfiglib 版本、许可证 |
-| `source` | 顶层 Kconfig、源码根、递归文件列表、visibility/tier/layout/generation 模型说明 |
+| `source` | 权威文件、稳定 Kconfig 入口、迁移 provenance 文件列表、当前生成树文件列表、visibility/tier/layout/generation 模型说明 |
 | `parameters` | 每个符号一条，按 `name` 排序 |
 | `choices` | 每个 choice 组一条，按 `id` 排序 |
 | `layout` | 与源码顺序一致的 menu/comment/symbol/choice 树，`gen_kconfig.py` 的唯一布局输入 |
@@ -140,7 +140,7 @@ python3 npc/tools/ParamGen/gen_schema.py \
 | `depends_local_expr` | 局部依赖的结构化 JSON |
 | `prompt_condition` / `prompt_condition_local` | prompt 的完整/局部条件 |
 | `selects` / `implies` | 目标符号及完整/局部条件（当前仓库为 0 条） |
-| `file` / `line` | 定义位置，仓库相对路径 |
+| `file` / `line` | 迁移来源位置，仓库相对路径；权威 schema 中多数指向已删除的旧 Kconfig，只作 provenance，不是构建输入 |
 | `order` / `file_order` | 全局定义顺序 / 同文件顺序 |
 | `menu_path` | 从 mainmenu 到所在菜单的 prompt 列表 |
 | `visibility` | `visible` / `hidden`（空默认配置口径） |
@@ -158,10 +158,12 @@ symbol/choice 的 `visibility` 非零则为 `visible`，否则 `hidden`。因此
 `hidden_with_prompt_count` 可能不为零：有 prompt 但默认模式下被依赖隐藏的
 选项仍算 `hidden`。这不是“当前用户 .config 下是否可见”。
 
-`tier` 是**启发式**：先看文件名（`Kconfig.cpp/sim/verilator/log/synth/debug`
-→ build，`Kconfig.fpga/soc/sbi/linux/rootfs` → platform，`Kconfig.mmu` →
-arch/microarch），再按符号名前缀归类。它是后续人工审查的起点，不是架构
-结论。
+`tier` 是**启发式**：权威 schema 中保留的是迁移时写入的固定值；迁移快照
+（`gen_schema.py`）的启发式先看文件名（旧 `Kconfig.cpp/sim/verilator/log/
+synth/debug` → build，旧 `Kconfig.fpga/soc/sbi/linux/rootfs` → platform，
+旧 `Kconfig.mmu` → arch/microarch），再按符号名前缀归类。切换到生成树后，
+文件名是 `params/generated/kconfig/part-NN.Kconfig`，文件提示不再命中，
+主要靠符号名前缀。它是后续人工审查的起点，不是架构结论。
 
 `derived` 当前只表示“没有任何 prompt”。例如 `MMU_PTE_FORMAT`、`FPU_IMPL`、
 `MUL_IMPL` 等隐藏字符串会被标为 derived；它们由 choice/其他参数推导。
@@ -186,7 +188,8 @@ arch/microarch），再按符号名前缀归类。它是后续人工审查的起
 
 `schema-summary.json` 输出参数总数、prompt 数、visible/hidden、derived、
 带 prompt 但隐藏的数量、choice 组/选项数、按 type/kconfig_type/tier/
-visibility 的计数、每个 Kconfig 文件的参数数。
+visibility 的计数，以及 `files`（迁移 provenance 文件，可能已删除）和
+`generated_kconfig_files`（当前构建实际消费的生成树）。
 
 当前快照（生成时）：
 
@@ -677,6 +680,9 @@ defconfig 的状态见 `npc/docs/ProfileQualification.md`。
 - **切换已完成**：`npc/Kconfig` 只保留 `mainmenu` + source，旧
   `npc/kconfig/Kconfig.*` 已删除；`npc/params/generated/` 是构建实际使用
   的生成树。`KconfigContract`、`NPCConfigGEN` 的输入语义未改变。
+  它们消费的是 `.config`/JSON，不是 Kconfig 源文件，所以不需要为生成树
+  改写；直接 grep 旧 Kconfig 的测试和注释已经单独更新。`file`/`line`
+  现在只是迁移 provenance，构建工具不会打开这些路径。
 - **未做 contract 合法性判断**：experimental 仍必须通过现有 contract；
   分类器不替代 `kconfig_contract`。
 
@@ -700,7 +706,8 @@ python3 npc/tools/ParamGen/selftest.py
 - profile-compatible、qualified、experimental、invalid 四种状态；
 - manifest hash 与 profile 冲突时 invalid。
 
-当前自测：35 passed, 0 failed。
+当前自测：38 passed, 0 failed（新增 schema provenance、稳定 Kconfig
+入口、生成树与 schema 一致性检查）。
 
 ---
 

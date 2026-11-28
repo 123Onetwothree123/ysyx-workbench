@@ -54,6 +54,9 @@ source "params/generated/kconfig/part-00.Kconfig"
 - 生成器只写内容发生变化的文件，schema 未变时不会刷新 mtime；
 - 生成失败直接退出 2，不会回退到旧 Kconfig 或继续使用旧 `.config`；
 - 生成入口或某个 `part-*.Kconfig` 缺失时，配置目标会先修复再解析；
+- 每次配置流程还会运行 `gen_kconfig.py --check`：生成树与 schema 字节
+  不一致、provenance 元数据指向失效路径、或 `npc/Kconfig` 不再 source
+  生成入口时，自动重建/明确失败；
 - `npc_config.json` 以生成 stamp 为依赖，schema 变化会触发重新
   `--syncconfig`，不会复用旧投影；`.generated.stamp` 是本地状态，
   `.gitignore` 已排除，不随仓库提交。
@@ -74,6 +77,41 @@ Kconfig 也作为 reviewed artifact 跟踪，便于审查生成结果；构建�
   `params/generated/...` 的元数据，`and` 表达式的括号结合顺序也可能
   不同；这些不再作为权威信息。`parity_kconfig.py` 会忽略这些迁移元数据，
   比较 symbol/choice 的语义字段。
+
+## 3.1 旧代码兼容边界
+
+切换删除的是“手写 Kconfig 源树”，不是 `.config`/`auto.conf`/JSON 这套
+配置输出。因此旧代码要分两类看：
+
+| 旧代码 | 实际输入 | 是否需要为 schema 切换改写 |
+| --- | --- | --- |
+| `c_conf` / `c_mconf` | `npc/Kconfig` 入口 + 生成树文本 | 不需要；它是通用 Kconfig 解析器，生成树仍使用同一语法子集 |
+| `npc_config_gen` / `NPCConfigGEN` | `include/generated/npc_config.json` / typed JSON | 不需要；不打开 Kconfig 源文件 |
+| `kconfig_contract` / `KconfigContract` | `.config` + typed JSON | 不需要；symbol 名、类型、默认值、choice 均未变 |
+| `BuildTools`、平台脚本 | `auto.conf`、JSON | 不需要 |
+| RTL / Scala / C++ | typed JSON、配置模块 | 不需要；消费的是投影值 |
+| `csrc/Test/**` | `auto.conf`、`CONFIG_*`、typed JSON | 原则上不需要；只有直接 grep 旧 Kconfig 文件的检查需要改 |
+
+已经改掉的源文件路径耦合：
+
+- `runtime-observability-test` 从 grep `npc/kconfig/Kconfig.soc` 改为
+  grep `npc/params/generated/kconfig/*.Kconfig`；
+- `ysyxSoC/src/Top.scala`、`npc/fpga/README.md` 等注释改为 schema /
+  生成路径。
+
+`schema.json` 仍保留 `file`/`line` 作为迁移来源记录，但它们是**历史
+provenance，不是构建输入**：
+
+- `source.kconfig_files` 列出生成该快照时解析过的文件；
+- `source.legacy_kconfig_files` 列出切换后已删除、只能从 git 历史恢复的
+  文件；
+- `source.generated_kconfig_files` 列出当前构建实际消费的生成树；
+- `gen_kconfig.py --check` 会拒绝“旧文件被重新创建”或“参数 provenance
+  指向既不存在、也未登记为 legacy 的路径”。
+
+`gen_schema.py` 也属于旧方向代码，但只保留为迁移校验工具：它可以从当前
+生成树反向解析到临时目录，不能覆盖权威 schema。正常新增参数只改
+`schema.json`，不再从 Kconfig 反向生成。
 
 ## 4. 新增参数流程
 

@@ -97899,6 +97899,17 @@
   ],
   "schema_version": 2,
   "source": {
+    "authority": "npc/params/schema/schema.json",
+    "generated_kconfig_files": [
+      "npc/params/generated/Kconfig",
+      "npc/params/generated/kconfig/part-00.Kconfig",
+      "npc/params/generated/kconfig/part-01.Kconfig",
+      "npc/params/generated/kconfig/part-02.Kconfig",
+      "npc/params/generated/kconfig/part-03.Kconfig",
+      "npc/params/generated/kconfig/part-04.Kconfig",
+      "npc/params/generated/kconfig/part-05.Kconfig",
+      "npc/params/generated/kconfig/part-06.Kconfig"
+    ],
     "generation_model": "gen_kconfig.py consumes layout, parameters and choices only; local dependency/condition fields are relative to the surrounding menu or choice block",
     "kconfig": "npc/Kconfig",
     "kconfig_files": [
@@ -97917,7 +97928,25 @@
       "npc/kconfig/Kconfig.synth",
       "npc/kconfig/Kconfig.verilator"
     ],
+    "kconfig_files_status": "legacy-deleted",
+    "kconfig_role": "stable entry point: mainmenu plus source params/generated/Kconfig",
     "layout_model": "menu/comment/symbol/choice tree reconstructed from Kconfiglib MenuNode objects; ordinary '#' comments and raw source formatting are not recoverable",
+    "legacy_kconfig_files": [
+      "npc/kconfig/Kconfig.cpp",
+      "npc/kconfig/Kconfig.debug",
+      "npc/kconfig/Kconfig.fpga",
+      "npc/kconfig/Kconfig.hardware",
+      "npc/kconfig/Kconfig.linux",
+      "npc/kconfig/Kconfig.log",
+      "npc/kconfig/Kconfig.mmu",
+      "npc/kconfig/Kconfig.rootfs",
+      "npc/kconfig/Kconfig.sbi",
+      "npc/kconfig/Kconfig.sim",
+      "npc/kconfig/Kconfig.soc",
+      "npc/kconfig/Kconfig.synth",
+      "npc/kconfig/Kconfig.verilator"
+    ],
+    "provenance_model": "parameter.file/line record where the parameter came from in the snapshot that created this schema. They are historical metadata, not build inputs; build tools must read schema.json or params/generated/, never open these paths.",
     "source_root": "npc",
     "tier_model": "heuristic name/file mapping, not human-reviewed",
     "visibility_model": "prompt exists and symbol/choice visibility is non-zero under an empty default configuration"
