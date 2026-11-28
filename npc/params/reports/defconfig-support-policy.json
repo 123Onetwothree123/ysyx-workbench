@@ -1,0 +1,369 @@
+{
+  "counts": {
+    "experimental": 3,
+    "failed": 0,
+    "invalid": 0,
+    "profile-compatible": 0,
+    "qualified": 17
+  },
+  "defconfigs": [
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "mmu_default",
+      "effective_hash": "d613dfbcce4457a42b40546a5dc9a2cf38c3471cce8faed59b1f8883b8073d67",
+      "npc_config_hash": "e7686f5f7a4427a2",
+      "predicate_failures": [],
+      "profile": "rv32-mmu@1",
+      "profile_id": "rv32-mmu",
+      "reason": "within rv32-mmu@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "nanos",
+      "effective_hash": "99345e5b2e3dc4099d010599dfeb0f09d9a3b51c246ecade4435c2a1070a373e",
+      "npc_config_hash": "92c5d63da371b1e5",
+      "predicate_failures": [],
+      "profile": "rv32-mmu@1",
+      "profile_id": "rv32-mmu",
+      "reason": "within rv32-mmu@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv32_c",
+      "effective_hash": "a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a",
+      "npc_config_hash": "578501289129d1dc",
+      "predicate_failures": [],
+      "profile": "small-rv32@2",
+      "profile_id": "small-rv32",
+      "reason": "within small-rv32@2; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv32_f",
+      "effective_hash": "e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3",
+      "npc_config_hash": "9305fd044e7d886c",
+      "predicate_failures": [],
+      "profile": "small-rv32@2",
+      "profile_id": "small-rv32",
+      "reason": "within small-rv32@2; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv32_fd",
+      "effective_hash": "0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152",
+      "npc_config_hash": "5211331fd3a72962",
+      "predicate_failures": [],
+      "profile": "small-rv32@2",
+      "profile_id": "small-rv32",
+      "reason": "within small-rv32@2; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv32_noc",
+      "effective_hash": "3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283",
+      "npc_config_hash": "58eefbaa8ecc6fa7",
+      "predicate_failures": [],
+      "profile": "small-rv32@2",
+      "profile_id": "small-rv32",
+      "reason": "within small-rv32@2; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_c",
+      "effective_hash": "5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e",
+      "npc_config_hash": "f70bd95515d9f5cc",
+      "predicate_failures": [],
+      "profile": "standard-rv64@2",
+      "profile_id": "standard-rv64",
+      "reason": "within standard-rv64@2; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [
+        "MMU_CUSTOM_SATP_MODE",
+        "MMU_GEOMETRY_CUSTOM",
+        "MMU_GEOMETRY_STANDARD",
+        "MMU_LEVELS",
+        "MMU_PROFILE_BALANCED",
+        "MMU_PROFILE_CUSTOM",
+        "MMU_PTE_CUSTOM",
+        "MMU_PTE_RISCV64"
+      ],
+      "compatible": false,
+      "defconfig": "rv64_custom_deep",
+      "effective_hash": "7b1a6230ae5c2cff4874121dd97b7d2d4b010fae7568910c142ab18bf9158e11",
+      "npc_config_hash": "83b6755b9ef3c849",
+      "predicate_failures": [
+        "mmu-standard-geometry",
+        "mmu-pte-format",
+        "mmu-levels"
+      ],
+      "profile": "rv64-mmu@1",
+      "profile_id": "rv64-mmu",
+      "reason": "custom MMU geometry/PTE/page size; deliberately experimental, not forced into the standard rv64-mmu family",
+      "status": "experimental"
+    },
+    {
+      "boundary_violations": [
+        "MMU_CUSTOM_SATP_MODE",
+        "MMU_GEOMETRY_CUSTOM",
+        "MMU_GEOMETRY_STANDARD",
+        "MMU_LEVELS",
+        "MMU_PAGE_SIZE_BYTES",
+        "MMU_PAGE_TABLE_SIZE_BYTES",
+        "MMU_PROFILE_BALANCED",
+        "MMU_PROFILE_CUSTOM",
+        "MMU_PTE_CUSTOM",
+        "MMU_PTE_RISCV64"
+      ],
+      "compatible": false,
+      "defconfig": "rv64_custom_large",
+      "effective_hash": "6940d3c71985cde8f2c848f43b123b196e4b72e3c7820169d3b8e05bb5ff8c46",
+      "npc_config_hash": "2c45730945a12da2",
+      "predicate_failures": [
+        "mmu-standard-geometry",
+        "mmu-page-4k",
+        "mmu-pte-format",
+        "mmu-levels"
+      ],
+      "profile": "rv64-mmu@1",
+      "profile_id": "rv64-mmu",
+      "reason": "custom MMU geometry/PTE/page size; deliberately experimental, not forced into the standard rv64-mmu family",
+      "status": "experimental"
+    },
+    {
+      "boundary_violations": [
+        "MMU_CUSTOM_SATP_MODE",
+        "MMU_GEOMETRY_CUSTOM",
+        "MMU_GEOMETRY_STANDARD",
+        "MMU_PAGE_SIZE_BYTES",
+        "MMU_PAGE_TABLE_SIZE_BYTES",
+        "MMU_PROFILE_BALANCED",
+        "MMU_PROFILE_CUSTOM",
+        "MMU_PTE_CUSTOM",
+        "MMU_PTE_RISCV64"
+      ],
+      "compatible": false,
+      "defconfig": "rv64_custom_page",
+      "effective_hash": "a390ceed39705e088f990f4817955f023d1dce54c76705bd5a0835dc99757ca4",
+      "npc_config_hash": "0d32454d1c7798cd",
+      "predicate_failures": [
+        "mmu-standard-geometry",
+        "mmu-page-4k",
+        "mmu-pte-format"
+      ],
+      "profile": "rv64-mmu@1",
+      "profile_id": "rv64-mmu",
+      "reason": "custom MMU geometry/PTE/page size; deliberately experimental, not forced into the standard rv64-mmu family",
+      "status": "experimental"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_fd",
+      "effective_hash": "eadc4d3a3d14a94c889afe3b11326c6c608b0e7ea86f282229d10954413e21fa",
+      "npc_config_hash": "7f772e1a5d0c5b3f",
+      "predicate_failures": [],
+      "profile": "standard-rv64@2",
+      "profile_id": "standard-rv64",
+      "reason": "within standard-rv64@2; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_linux",
+      "effective_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
+      "npc_config_hash": "32940dec601fd510",
+      "predicate_failures": [],
+      "profile": "linux-rv64@2",
+      "profile_id": "linux-rv64",
+      "reason": "within linux-rv64@2; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_linux_uboot_128m",
+      "effective_hash": "3a18154993c4d9bd7cd4838caafa4b5bad8db0da2e78d56a9fbab8d721b43317",
+      "npc_config_hash": "e0a25390f0a5b0a3",
+      "predicate_failures": [],
+      "profile": "linux-rv64@2",
+      "profile_id": "linux-rv64",
+      "reason": "within linux-rv64@2; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_mmu",
+      "effective_hash": "936695e2a7547962e9cd6780b5e43cee89028212eb81dffcec8724e11e3aa49c",
+      "npc_config_hash": "fd093517663a1616",
+      "predicate_failures": [],
+      "profile": "rv64-mmu@1",
+      "profile_id": "rv64-mmu",
+      "reason": "within rv64-mmu@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_nanos_gc",
+      "effective_hash": "c26a1761447e26d5acfab7df7c6ef17b58b531a406362dadadb2cd54e1b685cf",
+      "npc_config_hash": "01e435018f4c98b3",
+      "predicate_failures": [],
+      "profile": "rv64-mmu@1",
+      "profile_id": "rv64-mmu",
+      "reason": "within rv64-mmu@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_sbi",
+      "effective_hash": "0aae1f6b16e0a5fb9d3b86b1524b470a56b3deb8c73b7c7dec6c27109d7146e5",
+      "npc_config_hash": "9d261b855aaceff2",
+      "predicate_failures": [],
+      "profile": "rv64-sbi@1",
+      "profile_id": "rv64-sbi",
+      "reason": "within rv64-sbi@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_sbi_fdt",
+      "effective_hash": "548daedba6831779d20f207eaf582bf2e97ba3ceaedd4cf6bf5cc93969b7d15f",
+      "npc_config_hash": "a5b0e9eef7806056",
+      "predicate_failures": [],
+      "profile": "rv64-sbi@1",
+      "profile_id": "rv64-sbi",
+      "reason": "within rv64-sbi@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_soft",
+      "effective_hash": "7df5d04679fe19cf7104a5f8cd136299e7c8cbada3eef007220e6b28b66b198c",
+      "npc_config_hash": "e0186cbe1ff646ba",
+      "predicate_failures": [],
+      "profile": "rv64-mmu@1",
+      "profile_id": "rv64-mmu",
+      "reason": "within rv64-mmu@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_sv48",
+      "effective_hash": "e55cf5b13fc586bc68765168a510715378eb83d20b5ca6f1b7e844272c7128b0",
+      "npc_config_hash": "796541081c627537",
+      "predicate_failures": [],
+      "profile": "rv64-mmu@1",
+      "profile_id": "rv64-mmu",
+      "reason": "within rv64-mmu@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    },
+    {
+      "boundary_violations": [],
+      "compatible": true,
+      "defconfig": "rv64_xv6",
+      "effective_hash": "8532358f63397e50dd2712f40f57982b0bff5863e156904babff6a70638b8712",
+      "npc_config_hash": "f87cd4eccabdfd80",
+      "predicate_failures": [],
+      "profile": "rv64-mmu@1",
+      "profile_id": "rv64-mmu",
+      "reason": "within rv64-mmu@1; L0/L1/L2 pass and the exact hash is recorded in the qualified manifest",
+      "status": "qualified"
+    }
+  ],
+  "families": [
+    {
+      "base_source": "npc/configs/rv64_linux_defconfig",
+      "compatible": [
+        "rv64_linux",
+        "rv64_linux_uboot_128m"
+      ],
+      "experimental_near_miss": [],
+      "profile": "linux-rv64@2"
+    },
+    {
+      "base_source": "npc/configs/nanos_defconfig",
+      "compatible": [
+        "mmu_default",
+        "nanos"
+      ],
+      "experimental_near_miss": [],
+      "profile": "rv32-mmu@1"
+    },
+    {
+      "base_source": "npc/configs/rv64_mmu_defconfig",
+      "compatible": [
+        "rv64_mmu",
+        "rv64_nanos_gc",
+        "rv64_soft",
+        "rv64_sv48",
+        "rv64_xv6"
+      ],
+      "experimental_near_miss": [
+        "rv64_custom_deep",
+        "rv64_custom_large",
+        "rv64_custom_page"
+      ],
+      "profile": "rv64-mmu@1"
+    },
+    {
+      "base_source": "npc/configs/rv64_sbi_defconfig",
+      "compatible": [
+        "rv64_sbi",
+        "rv64_sbi_fdt"
+      ],
+      "experimental_near_miss": [],
+      "profile": "rv64-sbi@1"
+    },
+    {
+      "base_source": "npc/configs/rv32_c_defconfig",
+      "compatible": [
+        "rv32_c",
+        "rv32_f",
+        "rv32_fd",
+        "rv32_noc"
+      ],
+      "experimental_near_miss": [],
+      "profile": "small-rv32@2"
+    },
+    {
+      "base_source": "npc/configs/rv64_c_defconfig",
+      "compatible": [
+        "rv64_c",
+        "rv64_fd"
+      ],
+      "experimental_near_miss": [],
+      "profile": "standard-rv64@2"
+    }
+  ],
+  "generated_at": "2026-11-28T04:29:59+00:00",
+  "generated_by": "npc/tools/ParamGen/qualify.py",
+  "git_head": "a9b055cd99d93c560e72954928b9252797b8e958",
+  "schema": 1,
+  "semantics": {
+    "experimental": "legal configuration outside every profile boundary; not a rejection",
+    "failed": "L0/L1/L2 failed; logs kept, manifest not updated",
+    "profile-compatible": "inside profile policy, but not certified by this run",
+    "qualified": "exact effective_hash passed L0/L1/L2 and is in the profile manifest"
+  }
+}

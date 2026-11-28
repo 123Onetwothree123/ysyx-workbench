@@ -1,0 +1,8 @@
+# Generated Kconfig is a reviewed source artifact and is also regenerated
+# from npc/params/schema/schema.json by the configuration targets.
+# The make stamp is local state and is intentionally not tracked.
+!.gitignore
+!Kconfig
+!kconfig/
+!kconfig/**/*
+.generated.stamp

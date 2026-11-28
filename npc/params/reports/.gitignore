@@ -1,0 +1,4 @@
+# Parity/classification reports are reviewed source artifacts.
+!*.md
+!*.json
+!*.csv

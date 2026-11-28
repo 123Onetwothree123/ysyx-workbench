@@ -153,7 +153,7 @@ test: $(GOOD_BIN) $(MEMORY_BIN) $(ILLEGAL_BIN)
 	# SDB c and SDB si cannot diverge.  The interval must reject zero.
 	test "$$(grep -c 'nvboard_update();' $(NPC_DIR)/csrc/DUT.cpp)" -eq 1
 	! grep -q 'nvboard_update();' $(NPC_DIR)/csrc/main.cpp
-	grep -Fq 'range 1 1000000' $(NPC_DIR)/kconfig/Kconfig.soc
+	grep -Fq 'range 1 1000000' $(NPC_DIR)/params/generated/kconfig/*.Kconfig
 	@echo '[PASS] SDB, itrace, mtrace, and direct/SoC memory observability regressions'
 
 clean:

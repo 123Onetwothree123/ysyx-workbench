@@ -1,0 +1,3 @@
+# npc/.gitignore intentionally ignores JSON/Markdown by default.  The
+# parameter schema, profiles and reports are reviewed source artifacts.
+!*.json

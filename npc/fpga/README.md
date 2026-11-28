@@ -2,7 +2,8 @@
 
 这个目录只服务独立 FPGA 构建，不参与 ysyxSoC Verilator 仿真。
 
-当前是占位目录：`Kconfig.fpga` 的默认路径指向这里的
+当前是占位目录：`schema.json` 中 FPGA 参数（生成到
+`params/generated/kconfig/`）的默认路径指向这里的
 `pins.xdc`、`timing.xdc`（Vivado）和 `pins.qsf`、`timing.sdc`
 （Quartus）。真正上板前需要按具体板卡补齐：
 

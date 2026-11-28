@@ -1,0 +1,414 @@
+{
+  "choices": {
+    "count": 75,
+    "differences": [],
+    "extra": [],
+    "missing": []
+  },
+  "defconfigs": [
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "d613dfbcce4457a42b40546a5dc9a2cf38c3471cce8faed59b1f8883b8073d67",
+      "defconfig": "mmu_default",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "d613dfbcce4457a42b40546a5dc9a2cf38c3471cce8faed59b1f8883b8073d67",
+      "hash_match": true,
+      "path": "npc/configs/mmu_default_defconfig",
+      "recorded_hash": "d613dfbcce4457a42b40546a5dc9a2cf38c3471cce8faed59b1f8883b8073d67",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "99345e5b2e3dc4099d010599dfeb0f09d9a3b51c246ecade4435c2a1070a373e",
+      "defconfig": "nanos",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "99345e5b2e3dc4099d010599dfeb0f09d9a3b51c246ecade4435c2a1070a373e",
+      "hash_match": true,
+      "path": "npc/configs/nanos_defconfig",
+      "recorded_hash": "99345e5b2e3dc4099d010599dfeb0f09d9a3b51c246ecade4435c2a1070a373e",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a",
+      "defconfig": "rv32_c",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a",
+      "hash_match": true,
+      "path": "npc/configs/rv32_c_defconfig",
+      "recorded_hash": "a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3",
+      "defconfig": "rv32_f",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3",
+      "hash_match": true,
+      "path": "npc/configs/rv32_f_defconfig",
+      "recorded_hash": "e6ff4f440df764effe16fa87006e9ecb967768d477fafba6d5ebf4416a2f4bb3",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152",
+      "defconfig": "rv32_fd",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152",
+      "hash_match": true,
+      "path": "npc/configs/rv32_fd_defconfig",
+      "recorded_hash": "0612f3cd212beb9b1091ff452fabe54c094d8cd50b483d741900c3a0138e8152",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283",
+      "defconfig": "rv32_noc",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283",
+      "hash_match": true,
+      "path": "npc/configs/rv32_noc_defconfig",
+      "recorded_hash": "3dbef815a9a5cf6ca4d9ab9b35bc47b6dbc1e19327fdc23ee29cab03eb8eb283",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e",
+      "defconfig": "rv64_c",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e",
+      "hash_match": true,
+      "path": "npc/configs/rv64_c_defconfig",
+      "recorded_hash": "5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "7b1a6230ae5c2cff4874121dd97b7d2d4b010fae7568910c142ab18bf9158e11",
+      "defconfig": "rv64_custom_deep",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "7b1a6230ae5c2cff4874121dd97b7d2d4b010fae7568910c142ab18bf9158e11",
+      "hash_match": true,
+      "path": "npc/configs/rv64_custom_deep_defconfig",
+      "recorded_hash": "7b1a6230ae5c2cff4874121dd97b7d2d4b010fae7568910c142ab18bf9158e11",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "6940d3c71985cde8f2c848f43b123b196e4b72e3c7820169d3b8e05bb5ff8c46",
+      "defconfig": "rv64_custom_large",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "6940d3c71985cde8f2c848f43b123b196e4b72e3c7820169d3b8e05bb5ff8c46",
+      "hash_match": true,
+      "path": "npc/configs/rv64_custom_large_defconfig",
+      "recorded_hash": "6940d3c71985cde8f2c848f43b123b196e4b72e3c7820169d3b8e05bb5ff8c46",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "a390ceed39705e088f990f4817955f023d1dce54c76705bd5a0835dc99757ca4",
+      "defconfig": "rv64_custom_page",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "a390ceed39705e088f990f4817955f023d1dce54c76705bd5a0835dc99757ca4",
+      "hash_match": true,
+      "path": "npc/configs/rv64_custom_page_defconfig",
+      "recorded_hash": "a390ceed39705e088f990f4817955f023d1dce54c76705bd5a0835dc99757ca4",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "eadc4d3a3d14a94c889afe3b11326c6c608b0e7ea86f282229d10954413e21fa",
+      "defconfig": "rv64_fd",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "eadc4d3a3d14a94c889afe3b11326c6c608b0e7ea86f282229d10954413e21fa",
+      "hash_match": true,
+      "path": "npc/configs/rv64_fd_defconfig",
+      "recorded_hash": "eadc4d3a3d14a94c889afe3b11326c6c608b0e7ea86f282229d10954413e21fa",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
+      "defconfig": "rv64_linux",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
+      "hash_match": true,
+      "path": "npc/configs/rv64_linux_defconfig",
+      "recorded_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "3a18154993c4d9bd7cd4838caafa4b5bad8db0da2e78d56a9fbab8d721b43317",
+      "defconfig": "rv64_linux_uboot_128m",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "3a18154993c4d9bd7cd4838caafa4b5bad8db0da2e78d56a9fbab8d721b43317",
+      "hash_match": true,
+      "path": "npc/configs/rv64_linux_uboot_128m_defconfig",
+      "recorded_hash": "3a18154993c4d9bd7cd4838caafa4b5bad8db0da2e78d56a9fbab8d721b43317",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "936695e2a7547962e9cd6780b5e43cee89028212eb81dffcec8724e11e3aa49c",
+      "defconfig": "rv64_mmu",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "936695e2a7547962e9cd6780b5e43cee89028212eb81dffcec8724e11e3aa49c",
+      "hash_match": true,
+      "path": "npc/configs/rv64_mmu_defconfig",
+      "recorded_hash": "936695e2a7547962e9cd6780b5e43cee89028212eb81dffcec8724e11e3aa49c",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "c26a1761447e26d5acfab7df7c6ef17b58b531a406362dadadb2cd54e1b685cf",
+      "defconfig": "rv64_nanos_gc",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "c26a1761447e26d5acfab7df7c6ef17b58b531a406362dadadb2cd54e1b685cf",
+      "hash_match": true,
+      "path": "npc/configs/rv64_nanos_gc_defconfig",
+      "recorded_hash": "c26a1761447e26d5acfab7df7c6ef17b58b531a406362dadadb2cd54e1b685cf",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "0aae1f6b16e0a5fb9d3b86b1524b470a56b3deb8c73b7c7dec6c27109d7146e5",
+      "defconfig": "rv64_sbi",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "0aae1f6b16e0a5fb9d3b86b1524b470a56b3deb8c73b7c7dec6c27109d7146e5",
+      "hash_match": true,
+      "path": "npc/configs/rv64_sbi_defconfig",
+      "recorded_hash": "0aae1f6b16e0a5fb9d3b86b1524b470a56b3deb8c73b7c7dec6c27109d7146e5",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "548daedba6831779d20f207eaf582bf2e97ba3ceaedd4cf6bf5cc93969b7d15f",
+      "defconfig": "rv64_sbi_fdt",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "548daedba6831779d20f207eaf582bf2e97ba3ceaedd4cf6bf5cc93969b7d15f",
+      "hash_match": true,
+      "path": "npc/configs/rv64_sbi_fdt_defconfig",
+      "recorded_hash": "548daedba6831779d20f207eaf582bf2e97ba3ceaedd4cf6bf5cc93969b7d15f",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "7df5d04679fe19cf7104a5f8cd136299e7c8cbada3eef007220e6b28b66b198c",
+      "defconfig": "rv64_soft",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "7df5d04679fe19cf7104a5f8cd136299e7c8cbada3eef007220e6b28b66b198c",
+      "hash_match": true,
+      "path": "npc/configs/rv64_soft_defconfig",
+      "recorded_hash": "7df5d04679fe19cf7104a5f8cd136299e7c8cbada3eef007220e6b28b66b198c",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "e55cf5b13fc586bc68765168a510715378eb83d20b5ca6f1b7e844272c7128b0",
+      "defconfig": "rv64_sv48",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "e55cf5b13fc586bc68765168a510715378eb83d20b5ca6f1b7e844272c7128b0",
+      "hash_match": true,
+      "path": "npc/configs/rv64_sv48_defconfig",
+      "recorded_hash": "e55cf5b13fc586bc68765168a510715378eb83d20b5ca6f1b7e844272c7128b0",
+      "recorded_match": true
+    },
+    {
+      "canonical_differences": [],
+      "canonical_equal": true,
+      "current_hash": "8532358f63397e50dd2712f40f57982b0bff5863e156904babff6a70638b8712",
+      "defconfig": "rv64_xv6",
+      "dotconfig_difference_count": 0,
+      "dotconfig_differences": [],
+      "dotconfig_equal": true,
+      "generated_hash": "8532358f63397e50dd2712f40f57982b0bff5863e156904babff6a70638b8712",
+      "hash_match": true,
+      "path": "npc/configs/rv64_xv6_defconfig",
+      "recorded_hash": "8532358f63397e50dd2712f40f57982b0bff5863e156904babff6a70638b8712",
+      "recorded_match": true
+    }
+  ],
+  "determinism": {
+    "generator": {
+      "byte_identical": true,
+      "checked_in_differences": [],
+      "checked_in_extra_ignored": [],
+      "checked_in_matches_fresh": true,
+      "checked_in_missing": [],
+      "file_count": 8,
+      "file_sha256": {
+        "Kconfig": "ae77104f3ecfd31692c7a4a78d2330f3c8407cdce86633d643a52d7c76eb9416",
+        "kconfig/part-00.Kconfig": "943350b54e73650123ed99d8170ac1a25178f63a4a9437422c4dd2a349900020",
+        "kconfig/part-01.Kconfig": "b17617de132a75d03d20fc5ea7a1a2c933bfe83f7a8decdf7c906ccaaedfff8f",
+        "kconfig/part-02.Kconfig": "f61a8253a5040f0771d10781d8aa6bb432c7788127f84745b80eddd9f478e908",
+        "kconfig/part-03.Kconfig": "672f9b1a77bc8981f58271f774bf2f2ff0d85760b6f109e1922d34b14e68db09",
+        "kconfig/part-04.Kconfig": "bd84cd8e391fd12819e1d34deaf1d4bae120f3a6a990ce8be6159da785c5bf29",
+        "kconfig/part-05.Kconfig": "1f0b7e57444123c738d162857b35c5401833fbcb3d0deccc89f513ce021bc676",
+        "kconfig/part-06.Kconfig": "e063bdc7df40db5c5efc560d28aedd012b600db322ea81df7b8a00792d3a6dbb"
+      },
+      "non_identical_files": []
+    },
+    "schema_migration": {
+      "choice_count": 75,
+      "difference_count": 0,
+      "differences": [],
+      "menu_count": 92,
+      "parameter_count": 868,
+      "parse_ok": true,
+      "regenerated_schema_sha256": "444dcb6dc278d39cb7da871e84493ccf0fe785e9966033cc66a18443e56bad70",
+      "regenerated_summary_sha256": "5067c469859191b39b72c8c13827d366e7b1c1982768b3421f1154f0c3cd211f",
+      "schema_sha256": "bbc76c692186a258985139701db06e5f985402bd0c76df2daa3c2ed66599da94",
+      "semantic_equal": true
+    }
+  },
+  "generated_kconfig": {
+    "files": [
+      {
+        "lines": 15,
+        "path": "npc/params/generated/Kconfig",
+        "sha256": "ae77104f3ecfd31692c7a4a78d2330f3c8407cdce86633d643a52d7c76eb9416"
+      },
+      {
+        "lines": 1830,
+        "path": "npc/params/generated/kconfig/part-00.Kconfig",
+        "sha256": "943350b54e73650123ed99d8170ac1a25178f63a4a9437422c4dd2a349900020"
+      },
+      {
+        "lines": 34,
+        "path": "npc/params/generated/kconfig/part-01.Kconfig",
+        "sha256": "b17617de132a75d03d20fc5ea7a1a2c933bfe83f7a8decdf7c906ccaaedfff8f"
+      },
+      {
+        "lines": 766,
+        "path": "npc/params/generated/kconfig/part-02.Kconfig",
+        "sha256": "f61a8253a5040f0771d10781d8aa6bb432c7788127f84745b80eddd9f478e908"
+      },
+      {
+        "lines": 393,
+        "path": "npc/params/generated/kconfig/part-03.Kconfig",
+        "sha256": "672f9b1a77bc8981f58271f774bf2f2ff0d85760b6f109e1922d34b14e68db09"
+      },
+      {
+        "lines": 709,
+        "path": "npc/params/generated/kconfig/part-04.Kconfig",
+        "sha256": "bd84cd8e391fd12819e1d34deaf1d4bae120f3a6a990ce8be6159da785c5bf29"
+      },
+      {
+        "lines": 387,
+        "path": "npc/params/generated/kconfig/part-05.Kconfig",
+        "sha256": "1f0b7e57444123c738d162857b35c5401833fbcb3d0deccc89f513ce021bc676"
+      },
+      {
+        "lines": 641,
+        "path": "npc/params/generated/kconfig/part-06.Kconfig",
+        "sha256": "e063bdc7df40db5c5efc560d28aedd012b600db322ea81df7b8a00792d3a6dbb"
+      }
+    ],
+    "root": "npc/params/generated"
+  },
+  "generated_snapshot": true,
+  "mainmenu_match": true,
+  "schema": {
+    "generation_issues": [],
+    "path": "npc/params/schema/schema.json",
+    "sha256": "bbc76c692186a258985139701db06e5f985402bd0c76df2daa3c2ed66599da94",
+    "version": 2
+  },
+  "summary": {
+    "blockers": [],
+    "choice_count": 75,
+    "choice_difference_count": 0,
+    "choice_extra_count": 0,
+    "choice_missing_count": 0,
+    "default_difference_count": 0,
+    "default_value_difference_count": 0,
+    "defconfig_count": 20,
+    "dotconfig_match_count": 20,
+    "generation_issue_count": 0,
+    "hash_match_count": 20,
+    "help_difference_count": 0,
+    "mainmenu_match": true,
+    "menu_count": 92,
+    "menu_tree_difference_count": 0,
+    "range_difference_count": 0,
+    "ready_to_switch": true,
+    "recorded_match_count": 20,
+    "recorded_missing_count": 0,
+    "schema_migration_difference_count": 0,
+    "schema_migration_equal": true,
+    "symbol_count": 868,
+    "symbol_difference_count": 0,
+    "symbol_extra_count": 0,
+    "symbol_missing_count": 0
+  },
+  "symbols": {
+    "count": 868,
+    "differences": [],
+    "extra": [],
+    "missing": []
+  },
+  "trees": {
+    "comment_count": 10,
+    "differences": [],
+    "menu_count": 92
+  }
+}

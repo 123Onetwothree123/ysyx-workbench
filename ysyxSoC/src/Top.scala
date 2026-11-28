@@ -64,8 +64,8 @@ object Config {
 
 /** ysyxSoC硬编码器件地址的只读契约导出
   *
-  * 这些常量是SoC RTL的唯一地址来源，必须与npc/kconfig/Kconfig.soc的
-  * PMA_*配置一致。npc/tools/KconfigContract会解析本文件并在SoC构建前
+  * 这些常量是SoC RTL的唯一地址来源，必须与npc/params/schema/schema.json
+  * 中 SOC 地址与 PMA 参数的生成结果一致。npc/tools/KconfigContract会解析本文件并在SoC构建前
   * 比较Kconfig值，本对象初始化时也会校验typed JSON，避免只改一侧导致
   * 地址漂移。
   */

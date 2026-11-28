@@ -1,38 +1,15 @@
+# Stable NPC Kconfig entry point.
+#
+# The parameter schema is the authority:
+#   npc/params/schema/schema.json
+#
+# `make menuconfig`, `make <name>_defconfig`, `make profile-defconfig` and
+# `make npc-config` regenerate `params/generated/` from the schema before the
+# Kconfig parser runs.  Do not add symbols here; add them to the schema and
+# regenerate the Kconfig tree.
+#
+# Kconfig only accepts `mainmenu` in the top-level file, so the title stays in
+# this wrapper while every symbol/menu lives in the generated tree.
 mainmenu "NPC配置菜单"
 
-# 顶层只做主题分组；具体选项在 kconfig/ 下的子文件里。
-# 重排只移动 menu，不改变 CONFIG_* 符号名、默认值或依赖关系。
-
-source "kconfig/Kconfig.hardware"   # CPU 与平台
-source "kconfig/Kconfig.fpga"       # 运行模式 + FPGA 部署
-
-# ysyxSoC 专属的 APB、外设宽度、PMA 和 NVBoard 选项只在
-# ysyx 或双模式构建中出现；FPGA-only 不依赖 ysyxSoC。
-if !NPC_MODE_FPGA_ONLY
-  source "kconfig/Kconfig.soc"      # ysyxSoC 与外设
-endif
-
-menu "运行时与调试"
-  source "kconfig/Kconfig.debug"    # 调试、追踪与性能
-  source "kconfig/Kconfig.log"      # 日志
-endmenu
-
-menu "固件与启动"
-  source "kconfig/Kconfig.sbi"
-  source "kconfig/Kconfig.linux"
-  source "kconfig/Kconfig.rootfs"
-endmenu
-
-menu "构建与仿真"
-  source "kconfig/Kconfig.cpp"      # 编译器与构建选项
-  if !NPC_MODE_FPGA_ONLY
-    source "kconfig/Kconfig.sim"
-    if SIM_BACKEND_VERILATOR
-      source "kconfig/Kconfig.verilator"
-    endif
-  endif
-  if NPC_MODE_FPGA_ONLY
-    comment "FPGA 模式：Verilator 仿真选项已关闭"
-  endif
-  source "kconfig/Kconfig.synth"
-endmenu
+source "params/generated/Kconfig"

@@ -1,0 +1,3 @@
+# kconfiglib.py is already allowed by npc/.gitignore's !*.py rule.
+# Keep the vendored ISC license text as well.
+!LICENSE.kconfiglib

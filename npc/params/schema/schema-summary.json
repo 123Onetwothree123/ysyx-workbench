@@ -1,0 +1,58 @@
+{
+  "by_kconfig_type": {
+    "bool": 535,
+    "hex": 40,
+    "int": 147,
+    "string": 146
+  },
+  "by_tier": {
+    "arch": 124,
+    "build": 278,
+    "microarch": 173,
+    "platform": 293
+  },
+  "by_type": {
+    "bool": 308,
+    "choice": 227,
+    "hex": 40,
+    "int": 147,
+    "string": 146
+  },
+  "by_visibility": {
+    "hidden": 364,
+    "visible": 504
+  },
+  "choice_group_count": 75,
+  "choice_help_count": 32,
+  "choice_option_count": 227,
+  "comment_count": 10,
+  "derived_count": 96,
+  "files": {
+    "npc/kconfig/Kconfig.cpp": 76,
+    "npc/kconfig/Kconfig.debug": 151,
+    "npc/kconfig/Kconfig.fpga": 175,
+    "npc/kconfig/Kconfig.hardware": 215,
+    "npc/kconfig/Kconfig.linux": 15,
+    "npc/kconfig/Kconfig.log": 10,
+    "npc/kconfig/Kconfig.mmu": 89,
+    "npc/kconfig/Kconfig.rootfs": 15,
+    "npc/kconfig/Kconfig.sbi": 14,
+    "npc/kconfig/Kconfig.sim": 7,
+    "npc/kconfig/Kconfig.soc": 68,
+    "npc/kconfig/Kconfig.synth": 9,
+    "npc/kconfig/Kconfig.verilator": 24
+  },
+  "generated_snapshot": true,
+  "generation_issue_count": 0,
+  "help_count": 262,
+  "hidden_count": 364,
+  "hidden_with_prompt_count": 268,
+  "imply_count": 0,
+  "menu_count": 92,
+  "multi_node_symbol_count": 0,
+  "parameter_count": 868,
+  "prompt_count": 772,
+  "schema_version": 2,
+  "select_count": 0,
+  "visible_count": 504
+}

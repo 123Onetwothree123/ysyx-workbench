@@ -5,7 +5,9 @@ ifndef NPC_CSRC_DIR
 $(error NPC_CSRC_DIR is not set)
 endif
 
-NPC_CONFIG_MODULE := $(NPC_CSRC_DIR)/generated/npc_config.ixx
+# 顶层 Makefile 会传入当前 config hash 下的投影模块路径；独立调用本
+# wrapper 时仍回退到仓库内的兼容路径。
+NPC_CONFIG_MODULE ?= $(NPC_CSRC_DIR)/generated/npc_config.ixx
 NPC_CONFIG_JSON := $(abspath $(NPC_CSRC_DIR)/../include/generated/npc_config.json)
 NPC_CONFIG_EFFECTIVE_JSON ?=
 ifneq ($(wildcard $(NPC_CONFIG_EFFECTIVE_JSON)),)
@@ -154,7 +156,7 @@ NPC_IXX_SRCS := \
   $(NPC_CSRC_DIR)/NPCSimResult/NPCSimResult.ixx \
   $(NPC_CSRC_DIR)/npc.ixx
 
-NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))))
+NPC_MODULE_OBJS := $(STD_MODULE_OBJ) $(foreach src,$(NPC_IXX_SRCS),$(if $(filter $(NPC_CSRC_DIR)/%,$(src)),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(src))),$(subst /,__,$(notdir $(src))).o))
 
 .PHONY: npc_build_signature_force
 npc_build_signature_force:
@@ -233,7 +235,7 @@ $(NPC_HEADER_GCM): gcm.cache/%.gcm: .npc_build_signature
 	@echo "  CXX HEADER <$*>"
 	$(CXX) $(CPPFLAGS) $(NPC_USER_CXXFLAGS) $(NPC_MODULE_DEP_FLAGS) -x c++-system-header $*
 
-npc_module_obj = $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1)))
+npc_module_obj = $(if $(filter $(NPC_CSRC_DIR)/%,$(1)),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1))),$(subst /,__,$(notdir $(1))).o)
 define npc_module_chain
 $(if $(wordlist 2,$(words $(1)),$(1)),$(word 2,$(1)): $(word 1,$(1))
 $(call npc_module_chain,$(wordlist 2,$(words $(1)),$(1))))
@@ -281,7 +283,7 @@ $(NPC_HEADER_PCM): $(NPC_PCM_DIR)/%.pcm: .npc_build_signature
 	@echo "  CXX HEADER <$(subst _,/,$*)>"
 	$(CXX) $(NPC_STD_FLAG) -x c++-system-header $(subst _,/,$*) --precompile -o $@
 
-npc_module_obj = $(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1)))
+npc_module_obj = $(if $(filter $(NPC_CSRC_DIR)/%,$(1)),$(subst /,__,$(patsubst $(NPC_CSRC_DIR)/%.ixx,%.ixx.o,$(1))),$(subst /,__,$(notdir $(1))).o)
 # clang 的 -fprebuilt-module-path 按模块名查找 <module-name>.pcm，
 # 不能沿用源文件路径。分区模块 m:part 的 PCM 文件名是 m-part.pcm。
 npc_module_name = $(shell sed -n 's/^\(export \)\?module \([^;][^;]*\);.*/\2/p' $(1) | head -n1 | tr -d '[:space:]')

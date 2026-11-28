@@ -1,0 +1,79 @@
+{
+  "generated_at": "2026-11-28T04:29:59+00:00",
+  "generated_by": "npc/tools/ParamGen/qualify.py",
+  "hashes": [
+    {
+      "defconfig": "rv64_sbi",
+      "effective_hash": "0aae1f6b16e0a5fb9d3b86b1524b470a56b3deb8c73b7c7dec6c27109d7146e5",
+      "evidence": {
+        "l0_kconfig_contract": "pass",
+        "l1_npc_config_gen": "pass",
+        "l2_chisel_elaboration": "pass"
+      },
+      "git_head": "a9b055cd99d93c560e72954928b9252797b8e958",
+      "npc_config_hash": "9d261b855aaceff2",
+      "profile": "rv64-sbi",
+      "profile_version": 1,
+      "qualified_at": "2026-11-28T04:29:59+00:00",
+      "source": "npc/configs/rv64_sbi_defconfig"
+    },
+    {
+      "defconfig": "rv64_sbi_fdt",
+      "effective_hash": "548daedba6831779d20f207eaf582bf2e97ba3ceaedd4cf6bf5cc93969b7d15f",
+      "evidence": {
+        "l0_kconfig_contract": "pass",
+        "l1_npc_config_gen": "pass",
+        "l2_chisel_elaboration": "pass"
+      },
+      "git_head": "a9b055cd99d93c560e72954928b9252797b8e958",
+      "npc_config_hash": "a5b0e9eef7806056",
+      "profile": "rv64-sbi",
+      "profile_version": 1,
+      "qualified_at": "2026-11-28T04:29:59+00:00",
+      "source": "npc/configs/rv64_sbi_fdt_defconfig"
+    }
+  ],
+  "notes": [
+    "Each entry is an exact effective_hash, not a profile name.",
+    "A hash is qualified only for this profile version and the recorded git head.",
+    "Rerun qualify.py after changing Kconfig, defaults, profile policy or RTL.",
+    "A failed case is not written; its logs remain in the isolated workdir."
+  ],
+  "profile": "rv64-sbi",
+  "profile_version": 1,
+  "run": {
+    "git_dirty": true,
+    "git_head": "a9b055cd99d93c560e72954928b9252797b8e958",
+    "note": "L3 full Verilator build and L4 simulation are not part of this manifest.",
+    "selected_defconfigs": [
+      "mmu_default",
+      "nanos",
+      "rv32_c",
+      "rv32_f",
+      "rv32_fd",
+      "rv32_noc",
+      "rv64_c",
+      "rv64_custom_deep",
+      "rv64_custom_large",
+      "rv64_custom_page",
+      "rv64_fd",
+      "rv64_linux",
+      "rv64_linux_uboot_128m",
+      "rv64_mmu",
+      "rv64_nanos_gc",
+      "rv64_sbi",
+      "rv64_sbi_fdt",
+      "rv64_soft",
+      "rv64_sv48",
+      "rv64_xv6"
+    ],
+    "selection": "all-defconfigs",
+    "stages": [
+      "L0 Kconfig + contract",
+      "L1 npc_config_gen",
+      "L2 Chisel elaboration"
+    ]
+  },
+  "schema": 1,
+  "status": "qualified"
+}
