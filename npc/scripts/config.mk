@@ -195,7 +195,10 @@ distclean: clean
 # include/generated/npc_config.json。C++ 构建期小工具再把 JSON 投影成
 # 编译期模块 npc.config；运行时不解析 JSON，因为 XLen/数组大小/if
 # constexpr 都必须是编译期常量。
-$(NPC_CONFIG_JSON): .config $(CONF) $(NPC_CONFIG_STAMP) $(KCONFIG_GEN_STAMP) | kconfig-generated-check
+# autoconf.h 与 npc_config.json 由同一次 syncconfig 写出，必须作为 grouped
+# target 一起判定：c_conf 先写 autoconf.h、最后写 npc_config.json，若拆成
+# 普通规则，autoconf.h 会永远比 JSON 旧而每次 make 重跑。
+$(NPC_CONFIG_JSON) $(NPC_CONFIG_AUTOCONF) &: .config $(CONF) $(NPC_CONFIG_STAMP) $(KCONFIG_GEN_STAMP) | kconfig-generated-check
 	$(CONF) -s --syncconfig $(Kconfig)
 
 .PHONY: npc-config-stamp-force
@@ -245,9 +248,9 @@ $(CONFIG_PROJECTION_DIR)/npc_config.ixx: $(NPC_CONFIG_MODULE_STAGE) | config-has
 	@mkdir -p "$(@D)"
 	@if test -f "$@" && cmp -s "$(NPC_CONFIG_MODULE_STAGE)" "$@"; then :; else cp -f "$(NPC_CONFIG_MODULE_STAGE)" "$@"; fi
 
-npc-config-json: $(NPC_CONFIG_JSON)
+npc-config-json: $(NPC_CONFIG_JSON) $(NPC_CONFIG_AUTOCONF)
 npc-config-tool: $(NPC_CONFIG_GEN_BIN)
-npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON) $(NPC_CONFIG_SCALA_DEFAULTS) | config-hash-require kconfig-generated-check
+npc-config: $(NPC_CONFIG_MODULE) $(NPC_CONFIG_EFFECTIVE_JSON) $(NPC_CONFIG_TYPED_JSON) $(NPC_CONFIG_SCALA_DEFAULTS) $(NPC_CONFIG_AUTOCONF) | config-hash-require kconfig-generated-check
 	@set -eu; \
 	test -f "$(CONFIG_HASH_SCHEMA)" || { \
 		echo "错误：缺少 ParamGen schema：$(CONFIG_HASH_SCHEMA)" >&2; \

@@ -80,3 +80,7 @@ gcm.cache/
 /build-*/**
 /checkpoints/
 !test.json
+
+# 配置生成物：由 make npc-config 生成，不纳入版本管理
+/include/generated/
+/src/generated/

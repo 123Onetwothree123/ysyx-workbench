@@ -38,6 +38,9 @@ CSRCS=$(shell find $(CSRC_DIR) -path "$(CSRC_DIR)/Test" -prune -o -path "$(CSRC_
 # 按 hash 复制到 build/<CONFIG_HASH>/config/。主构建消费投影副本；
 # staging 路径保留给仍按旧路径读取的测试/工具。
 NPC_CONFIG_JSON   := $(abspath include/generated/npc_config.json)
+# Kconfig 的 C 头投影与 npc_config.json 由同一次 syncconfig 生成。这里必须
+# 在 scripts/builddir.mk 之前定义：CONFIG_HASH_MK 的依赖在解析期展开。
+NPC_CONFIG_AUTOCONF := $(abspath include/generated/autoconf.h)
 NPC_CONFIG_STAGE_DIR := $(abspath $(BUILD_DIR)/generated)
 NPC_CONFIG_MODULE_STAGE := $(NPC_CONFIG_STAGE_DIR)/npc_config.ixx
 # C++ 模块、Scala elaboration 和脚本共用同一次 Kconfig + Makefile/命令行

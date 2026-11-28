@@ -147,6 +147,7 @@ npc_copy_if_changed = \
 # 不静默使用固定目录。内容不变时不更新时间戳，避免 make 无谓重启。
 $(CONFIG_HASH_MK): $(NPC_CONFIG_TYPED_STAGE) $(NPC_CONFIG_EFFECTIVE_STAGE) \
 	$(NPC_CONFIG_MODULE_STAGE) $(NPC_CONFIG_SCALA_DEFAULTS) \
+	$(NPC_CONFIG_AUTOCONF) \
 	$(CONFIG_HASH_TOOL) $(CONFIG_HASH_SCHEMA_DEPS) .config
 	@set -eu; \
 	test -f "$(CONFIG_HASH_SCHEMA)" || { \
@@ -178,7 +179,7 @@ $(CONFIG_HASH_MK): $(NPC_CONFIG_TYPED_STAGE) $(NPC_CONFIG_EFFECTIVE_STAGE) \
 	printf '%s\n' "$$hash" > "$$dir/effective.hash"; \
 	$(call npc_copy_if_changed,.config,$$config_dir/.config); \
 	$(call npc_copy_if_changed,$(NPC_CONFIG_JSON),$$config_dir/npc_config.json); \
-	$(call npc_copy_if_changed,include/generated/autoconf.h,$$config_dir/autoconf.h); \
+	$(call npc_copy_if_changed,$(NPC_CONFIG_AUTOCONF),$$config_dir/autoconf.h); \
 	$(call npc_copy_if_changed,include/config/auto.conf,$$config_dir/auto.conf); \
 	$(call npc_copy_if_changed,$(NPC_CONFIG_EFFECTIVE_STAGE),$$config_dir/npc_config.effective.json); \
 	$(call npc_copy_if_changed,$(NPC_CONFIG_TYPED_STAGE),$$config_dir/npc_config.typed.json); \
