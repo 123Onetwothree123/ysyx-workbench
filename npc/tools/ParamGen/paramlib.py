@@ -570,6 +570,17 @@ def validate_profile(profile: Dict[str, Any]) -> None:
         raise ProfileError("profile.qualification.manifest must be a string")
     if "hashes" in qualification and not isinstance(qualification["hashes"], list):
         raise ProfileError("profile.qualification.hashes must be a list")
+    if "status_ceiling" in qualification:
+        ceiling = qualification["status_ceiling"]
+        if ceiling not in ("qualified", "profile-compatible", "experimental"):
+            raise ProfileError(
+                "profile.qualification.status_ceiling must be one of "
+                "qualified/profile-compatible/experimental"
+            )
+    if "evidence_scope" in qualification and not isinstance(
+        qualification["evidence_scope"], str
+    ):
+        raise ProfileError("profile.qualification.evidence_scope must be a string")
 
 
 def _validate_scalar(value: Any, where: str) -> None:
@@ -1006,6 +1017,23 @@ def evaluation_root(
     return root
 
 
+def apply_status_ceiling(profile: Dict[str, Any], status: str) -> str:
+    """Cap a classification status at the profile's declared evidence scope.
+
+    A profile can record L0/L1/L2 exact hashes in its manifest while still
+    being unable to claim end-to-end support (for example RV32 Linux before
+    boot evidence exists).  ``qualification.status_ceiling`` keeps the
+    machine-readable status honest without removing the hash.
+    """
+    ceiling = profile.get("qualification", {}).get("status_ceiling", "qualified")
+    if ceiling not in ("qualified", "profile-compatible", "experimental"):
+        ceiling = "qualified"
+    order = {"qualified": 0, "profile-compatible": 1, "experimental": 2}
+    if order.get(ceiling, 0) > order.get(status, 0):
+        return ceiling
+    return status
+
+
 def classify(
     profile: Dict[str, Any],
     document: Dict[str, Any],
@@ -1091,6 +1119,7 @@ def classify(
         status = "invalid"
     elif passed:
         status = "qualified" if in_manifest else "profile-compatible"
+        status = apply_status_ceiling(profile, status)
     else:
         status = "experimental"
 
@@ -1184,15 +1213,37 @@ def run_checked(command: Sequence[str], *, cwd: Optional[Path] = None) -> str:
 
 
 def prepare_kconfig_workdir(npc_dir: Path, workdir: Path) -> None:
-    """Create a throw-away c_conf workdir without touching the repo."""
+    """Create a throw-away c_conf workdir without touching the repo.
+
+    ``npc/Kconfig`` sources ``params/generated/Kconfig``, so the workdir needs
+    a ``params`` symlink next to its ``Kconfig`` entry point.  The historical
+    ``npc/kconfig`` source directory no longer exists; only link it when it is
+    actually present so a stale/dangling link is never created.
+    """
     import shutil
 
-    if workdir.exists():
+    npc_dir = npc_dir.resolve()
+    workdir = Path(workdir)
+    kconfig = npc_dir / "Kconfig"
+    params = npc_dir / "params"
+    for required, label in ((kconfig, "Kconfig"), (params, "params")):
+        if not required.exists():
+            raise ParamError(
+                f"cannot prepare Kconfig workdir: missing {label}: {required}"
+            )
+
+    if workdir.is_symlink():
+        workdir.unlink()
+    elif workdir.exists():
         shutil.rmtree(workdir)
     (workdir / "include/generated").mkdir(parents=True)
     (workdir / "include/config").mkdir(parents=True)
-    (workdir / "Kconfig").symlink_to(npc_dir / "Kconfig")
-    (workdir / "kconfig").symlink_to(npc_dir / "kconfig")
+    (workdir / "Kconfig").symlink_to(kconfig)
+    (workdir / "params").symlink_to(params)
+
+    legacy_kconfig = npc_dir / "kconfig"
+    if legacy_kconfig.exists():
+        (workdir / "kconfig").symlink_to(legacy_kconfig)
 
 
 def generate_typed_config(

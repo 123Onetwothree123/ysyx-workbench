@@ -1,0 +1,72 @@
+{
+  "evidence_scope": "elaboration-only",
+  "generated_at": "2026-11-28T06:24:05+00:00",
+  "generated_by": "npc/tools/ParamGen/qualify.py",
+  "hashes": [
+    {
+      "defconfig": "rv32imac_linux",
+      "effective_hash": "b0162d92a5806524a175c0b08edd53ef7bab912280c3cc7a6b15e2a190157c12",
+      "evidence": {
+        "l0_kconfig_contract": "pass",
+        "l1_npc_config_gen": "pass",
+        "l2_chisel_elaboration": "pass",
+        "note": "L2 Chisel elaboration only; no Linux boot evidence. This exact hash is not a claim that RV32 Linux boots.",
+        "scope": "elaboration-only"
+      },
+      "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
+      "npc_config_hash": "471867b844ac9d02",
+      "profile": "rv32imac-linux",
+      "profile_version": 1,
+      "qualified_at": "2026-11-28T06:24:05+00:00",
+      "source": "npc/configs/rv32imac_linux_defconfig"
+    }
+  ],
+  "notes": [
+    "Each entry is an exact effective_hash, not a profile name.",
+    "A hash is qualified only for this profile version and the recorded git head.",
+    "Rerun qualify.py after changing Kconfig, defaults, profile policy or RTL.",
+    "A failed case is not written; its logs remain in the isolated workdir.",
+    "evidence_scope=elaboration-only: L2 proves Chisel elaboration only; there is no RV32 Linux boot evidence for this profile."
+  ],
+  "profile": "rv32imac-linux",
+  "profile_version": 1,
+  "run": {
+    "git_dirty": true,
+    "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
+    "note": "L3 full Verilator build and L4 simulation are not part of this manifest.",
+    "selected_defconfigs": [
+      "mmu_default",
+      "nanos",
+      "rv32_c",
+      "rv32_f",
+      "rv32_fd",
+      "rv32_noc",
+      "rv32gc_linux",
+      "rv32i",
+      "rv32imac_linux",
+      "rv64_c",
+      "rv64_custom_deep",
+      "rv64_custom_large",
+      "rv64_custom_page",
+      "rv64_fd",
+      "rv64_linux",
+      "rv64_linux_uboot_128m",
+      "rv64_mmu",
+      "rv64_nanos_gc",
+      "rv64_sbi",
+      "rv64_sbi_fdt",
+      "rv64_soft",
+      "rv64_sv48",
+      "rv64_xv6",
+      "rv64gc_linux"
+    ],
+    "selection": "all-defconfigs",
+    "stages": [
+      "L0 Kconfig + contract",
+      "L1 npc_config_gen",
+      "L2 Chisel elaboration"
+    ]
+  },
+  "schema": 1,
+  "status": "profile-compatible"
+}

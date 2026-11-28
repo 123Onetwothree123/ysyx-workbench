@@ -1,24 +1,91 @@
 {
   "allow": {
     "bool": [
-      "SBI_FDT_ENABLE",
+      "DCACHE",
+      "DCACHE_STORAGE_REG",
+      "DCACHE_STORAGE_SRAM",
+      "DCACHE_STORAGE_SRAM_NOBYPASS",
+      "FPU_FUDIAN_SHARED_DIVSQRT",
+      "FPU_HARDFLOAT_RECODE",
+      "FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING",
+      "FPU_IMPL_FUDIAN",
+      "FPU_IMPL_HARDFLOAT",
+      "ICACHE_STORAGE_REG",
+      "ICACHE_STORAGE_SRAM",
+      "ICACHE_STORAGE_SRAM_NOBYPASS",
+      "LINUX_INITRAMFS_ENABLE",
       "SBI_PMU_ENABLE",
-      "NPC_UBOOT_ENABLE"
+      "SOC_XLEN_FOLLOW_CPU"
     ],
-    "enum": {},
+    "enum": {
+      "LINUX_BOOTARGS": [
+        "console=ttyS0,115200 earlycon=sbi",
+        "console=ttyS0,115200 earlycon=sbi rootwait"
+      ]
+    },
     "int_range": {
-      "SBI_FDT_ADDR": {
-        "max": 2415919103,
-        "min": 2147483648
+      "CACHE_BLOCK_SIZE_LOG2": {
+        "max": 5,
+        "min": 4
+      },
+      "CACHE_INDEX_BITS": {
+        "max": 6,
+        "min": 4
+      },
+      "DCACHE_BLOCK_SIZE_LOG2": {
+        "max": 5,
+        "min": 4
+      },
+      "DCACHE_INDEX_BITS": {
+        "max": 6,
+        "min": 4
+      },
+      "FPU_FLEN": {
+        "max": 64,
+        "min": 64,
+        "step": 32
+      },
+      "FPU_PIPELINE": {
+        "max": 4,
+        "min": 0
+      },
+      "ICACHE_BLOCK_SIZE_LOG2": {
+        "max": 5,
+        "min": 4
+      },
+      "ICACHE_INDEX_BITS": {
+        "max": 6,
+        "min": 4
+      },
+      "LINUX_INITRAMFS_ADDR": {
+        "max": 2181038080,
+        "min": 2181038080
+      },
+      "MMU_LEVELS": {
+        "max": 4,
+        "min": 3
+      },
+      "NPC_RAM_SIZE": {
+        "max": 134217728,
+        "min": 67108864,
+        "step": 67108864
+      },
+      "SBI_BUILD_JOBS": {
+        "max": 64,
+        "min": 0
+      },
+      "SOC_XLEN": {
+        "max": 64,
+        "min": 64
       }
     },
     "list": {}
   },
   "base": {
-    "parameter_count": 266,
-    "source": "npc/configs/rv64_sbi_defconfig",
-    "source_effective_hash": "0aae1f6b16e0a5fb9d3b86b1524b470a56b3deb8c73b7c7dec6c27109d7146e5",
-    "source_npc_config_hash": "9d261b855aaceff2",
+    "parameter_count": 282,
+    "source": "npc/configs/rv64gc_linux_defconfig",
+    "source_effective_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
+    "source_npc_config_hash": "32940dec601fd510",
     "values": {
       "ALU_ADDER_CARRY_LOOKAHEAD": false,
       "ALU_ADDER_CARRY_SELECT": false,
@@ -98,6 +165,15 @@
       "DTLB_ENTRIES": 32,
       "DTLB_MISS_QUEUE_ENTRIES": 4,
       "DTLB_WAYS": 4,
+      "FPU_FLEN": 64,
+      "FPU_FMA": true,
+      "FPU_HARDFLOAT_RECODE": true,
+      "FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING": false,
+      "FPU_IMPL_EXTERNAL": false,
+      "FPU_IMPL_FUDIAN": false,
+      "FPU_IMPL_HARDFLOAT": true,
+      "FPU_IMPL_NONE": false,
+      "FPU_PIPELINE": 0,
       "GPIO_XLEN_FOLLOW_APB": true,
       "HAS_CSR_MCOUNTEREN": true,
       "HAS_CSR_MCOUNTINHIBIT": true,
@@ -135,7 +211,10 @@
       "JAL_BTB_BITS": 4,
       "JAL_BTB_WAYS": 1,
       "KEYBOARD_XLEN_FOLLOW_APB": true,
-      "LINUX_BOOT_ENABLE": false,
+      "LINUX_BOOTARGS": "console=ttyS0,115200 earlycon=sbi",
+      "LINUX_BOOT_ENABLE": true,
+      "LINUX_INITRAMFS_ADDR": 2181038080,
+      "LINUX_INITRAMFS_ENABLE": true,
       "LSU_DRAIN_TIMEOUT": 255,
       "MDU_IMPL_EXTERNAL": false,
       "MDU_IMPL_NUTSHELL": false,
@@ -203,6 +282,7 @@
       "NPC_MODE_YSYX_ONLY": true,
       "NPC_RAM_BASE": 2147483648,
       "NPC_RAM_SIZE": 67108864,
+      "NPC_UBOOT_ENABLE": false,
       "NVBOARD": false,
       "PLIC_BASE": 201326592,
       "PLIC_MAX_PRIORITY": 7,
@@ -241,18 +321,21 @@
       "PSRAM_XLEN_FOLLOW_APB": true,
       "RAS_BITS": 4,
       "RISCV_A": true,
-      "RISCV_C": false,
-      "RISCV_F": false,
+      "RISCV_C": true,
+      "RISCV_D": true,
+      "RISCV_F": true,
       "RISCV_M": true,
       "ROOTFS_ENABLE": false,
       "SBI_ENABLE": true,
-      "SBI_FDT_ENABLE": false,
+      "SBI_FDT_ADDR": 2213543936,
+      "SBI_FDT_ENABLE": true,
       "SBI_FW_BASE": 2147483648,
       "SBI_FW_SIZE": 2097152,
       "SBI_IMPL_OPENSBI": true,
       "SBI_IMPL_RUSTSBI": false,
       "SBI_NEXT_ADDR": 2149580800,
       "SBI_PLATFORM": "npc",
+      "SBI_PMU_ENABLE": true,
       "SDRAM_USE_AXI": true,
       "SDRAM_XLEN_FOLLOW_APB": true,
       "SOC_MEMORY_MAP_ACT": true,
@@ -288,8 +371,8 @@
       "XLEN": 64
     }
   },
-  "description": "RV64 + OpenSBI 支持族：标准 Sv39 MMU、PMP、OpenSBI 固件，不直接启动 Linux/U-Boot。允许 FDT 与 PMU 开关及标准地址范围内的FDT 地址调整；Linux 启动、custom MMU 和 U-Boot 超出边界。",
-  "id": "rv64-sbi",
+  "description": "RV64GC + Sv39/Sv48 + OpenSBI + Linux 支持族：RV64IMAFDC、HardFloat/Fudian、FLEN=64、M/S/U、标准 Sv39（默认）或 Sv48、PMP 16 项、OpenSBI + FDT、直接 Linux 启动。本族不走 U-Boot EFI/128 MiB Debian 路径；MMU_LEVELS、DCache、PMU、initramfs 和 64/128 MiB RAM 是有意支持的差异。",
+  "id": "rv64gc-linux",
   "predicate": [
     {
       "description": "profile 只接受 RV64",
@@ -357,51 +440,132 @@
         "in": {
           "path": "mmu.levels",
           "values": [
-            3
+            3,
+            4
           ]
         }
       },
       "id": "mmu-levels"
     },
     {
-      "description": "标准平台 RAM 为 64 MiB",
+      "description": "profile 要求 ISA.S=y",
       "expr": {
         "eq": {
-          "path": "platform.ram_size",
-          "value": 67108864
+          "path": "isa.s",
+          "value": true
         }
       },
-      "id": "ram-64m"
+      "id": "isa-s-yes"
     },
     {
-      "description": "OpenSBI 支持族要求 SBI 固件",
+      "description": "profile 要求 ISA.U=y",
+      "expr": {
+        "eq": {
+          "path": "isa.u",
+          "value": true
+        }
+      },
+      "id": "isa-u-yes"
+    },
+    {
+      "description": "profile 要求 ISA.F=y",
+      "expr": {
+        "eq": {
+          "path": "isa.f",
+          "value": true
+        }
+      },
+      "id": "isa-f-yes"
+    },
+    {
+      "description": "profile 要求 ISA.D=y",
+      "expr": {
+        "eq": {
+          "path": "isa.d",
+          "value": true
+        }
+      },
+      "id": "isa-d-yes"
+    },
+    {
+      "description": "profile 要求 CONFIG_SBI_ENABLE=True",
       "expr": {
         "eq": {
           "path": "flat.SBI_ENABLE",
           "value": true
         }
       },
-      "id": "sbi"
+      "id": "flat-sbi-enable-yes"
     },
     {
-      "description": "裸机 profile 不直接启动 Linux",
+      "description": "profile 要求 CONFIG_SBI_IMPL_OPENSBI=True",
+      "expr": {
+        "eq": {
+          "path": "flat.SBI_IMPL_OPENSBI",
+          "value": true
+        }
+      },
+      "id": "flat-sbi-impl-opensbi-yes"
+    },
+    {
+      "description": "profile 要求 CONFIG_SBI_FDT_ENABLE=True",
+      "expr": {
+        "eq": {
+          "path": "flat.SBI_FDT_ENABLE",
+          "value": true
+        }
+      },
+      "id": "flat-sbi-fdt-enable-yes"
+    },
+    {
+      "description": "profile 要求 CONFIG_LINUX_BOOT_ENABLE=True",
       "expr": {
         "eq": {
           "path": "flat.LINUX_BOOT_ENABLE",
-          "value": false
+          "value": true
         }
       },
-      "id": "no-linux-boot"
+      "id": "flat-linux-boot-enable-yes"
     },
     {
-      "description": "裸机 profile 不启用 U-Boot",
+      "description": "profile 要求 CONFIG_NPC_UBOOT_ENABLE=False",
       "expr": {
         "eq": {
           "path": "flat.NPC_UBOOT_ENABLE",
           "value": false
         }
       },
-      "id": "no-uboot"
+      "id": "flat-npc-uboot-enable-no"
+    },
+    {
+      "description": "profile 要求 CONFIG_HAS_PMP=True",
+      "expr": {
+        "eq": {
+          "path": "flat.HAS_PMP",
+          "value": true
+        }
+      },
+      "id": "flat-has-pmp-yes"
+    },
+    {
+      "description": "SoC AXI 侧保持 64 位",
+      "expr": {
+        "eq": {
+          "path": "isa.soc_xlen",
+          "value": 64
+        }
+      },
+      "id": "soc-xlen-64"
+    },
+    {
+      "description": "至少需要 64 MiB RAM",
+      "expr": {
+        "gte": {
+          "path": "platform.ram_size",
+          "value": 67108864
+        }
+      },
+      "id": "ram-at-least-64m"
     },
     {
       "description": "当前 profile 只覆盖 ysyx 模式",
@@ -418,11 +582,12 @@
   ],
   "qualification": {
     "hashes": [],
-    "manifest": "npc/support/qualified/rv64-sbi@1.json",
+    "manifest": "npc/support/qualified/rv64gc-linux@1.json",
     "suites": [
+      "linux-boot",
       "opensbi",
-      "rustsbi",
-      "sbi-fdt"
+      "sv39",
+      "nanos-lite"
     ]
   },
   "status": "prototype",

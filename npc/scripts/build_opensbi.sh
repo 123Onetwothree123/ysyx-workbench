@@ -30,8 +30,19 @@ PLIC_SOURCES="${PLIC_SOURCES:-32}"
 UART_BASE="${UART_BASE:-0x10000000}"
 CLINT_BASE="${CLINT_BASE:-0x02000000}"
 SBI_TOOLCHAIN_PREFIX="${SBI_TOOLCHAIN_PREFIX:-riscv64-unknown-elf-}"
-SBI_ISA="${SBI_ISA:-rv64ima_zicsr_zifencei}"
-SBI_ABI="${SBI_ABI:-lp64}"
+SBI_XLEN="${SBI_XLEN:-64}"
+if [[ "$SBI_XLEN" == "32" ]]; then
+	SBI_ISA_DEFAULT="rv32ima_zicsr_zifencei"
+	SBI_ABI_DEFAULT="ilp32"
+	SBI_NEXT_ADDR_DEFAULT="0x80400000"
+else
+	SBI_ISA_DEFAULT="rv64ima_zicsr_zifencei"
+	SBI_ABI_DEFAULT="lp64"
+	SBI_NEXT_ADDR_DEFAULT="0x80200000"
+fi
+SBI_ISA="${SBI_ISA:-$SBI_ISA_DEFAULT}"
+SBI_ABI="${SBI_ABI:-$SBI_ABI_DEFAULT}"
+SBI_NEXT_ADDR="${SBI_NEXT_ADDR:-$SBI_NEXT_ADDR_DEFAULT}"
 SBI_LD="${SBI_LD:-ld.lld}"
 SBI_VENDOR_DIR="${SBI_VENDOR_DIR:-$WORKBENCH_HOME/vendor/opensbi}"
 SBI_OUT_DIR="${SBI_OUT_DIR:-$NPC_HOME/build/opensbi}"
@@ -75,7 +86,7 @@ CLINT_BASE_NUM="$(parse_int CLINT_BASE "$CLINT_BASE")"
 	die "PLIC_SOURCES 必须在 2..1024（source 0 保留）"
 
 [[ "$SBI_ENABLE" == "y" ]] || die \
-	"SBI_ENABLE=$SBI_ENABLE，SBI 固件未启用。请先运行 'make rv64_sbi_defconfig' 或 'make menuconfig' 打开 SBI。"
+	"SBI_ENABLE=$SBI_ENABLE，SBI 固件未启用。请先运行 'make menuconfig'，或选择一个启用 SBI 的 defconfig（如 rv64gc_linux_defconfig / rv32imac_linux_defconfig）。"
 [[ "$SBI_IMPL" == "opensbi" ]] || die \
 	"当前脚本只实现 SBI_IMPL=opensbi，收到 SBI_IMPL='$SBI_IMPL'。"[[ -d "$SBI_VENDOR_DIR" ]] || die \
 	"OpenSBI 源码目录不存在：$SBI_VENDOR_DIR。请确认 vendor/opensbi 已纳入仓库。"
@@ -95,11 +106,15 @@ NEXT="$(parse_int SBI_NEXT_ADDR "$SBI_NEXT_ADDR")"
 (( BASE + SIZE <= NEXT )) || die \
 	"SBI_FW_BASE+SBI_FW_SIZE=0x$(printf '%x' $((BASE + SIZE))) 越过 SBI_NEXT_ADDR=0x$(printf '%x' "$NEXT")；固件会覆盖 next-stage"
 
+REQUESTED_XLEN="$SBI_XLEN"
 case "$SBI_ISA" in
-	rv64*) SBI_XLEN=64; JUMP_ALIGN=$((2 * 1024 * 1024)) ;;
-	rv32*) SBI_XLEN=32; JUMP_ALIGN=$((4 * 1024 * 1024)) ;;
+	rv64*) DERIVED_XLEN=64; JUMP_ALIGN=$((2 * 1024 * 1024)) ;;
+	rv32*) DERIVED_XLEN=32; JUMP_ALIGN=$((4 * 1024 * 1024)) ;;
 	*) die "SBI_ISA='$SBI_ISA' 必须以 rv32 或 rv64 开头" ;;
 esac
+[[ "$REQUESTED_XLEN" == "$DERIVED_XLEN" ]] || die \
+	"SBI_XLEN=$REQUESTED_XLEN 与 SBI_ISA='$SBI_ISA' 不一致；请同时显式覆盖 SBI_ISA/SBI_ABI/SBI_XLEN"
+SBI_XLEN="$DERIVED_XLEN"
 if [[ "$SBI_ABI" != "lp64" && "$SBI_ABI" != "lp64d" && \
       "$SBI_ABI" != "ilp32" && "$SBI_ABI" != "ilp32d" ]]; then
 	die "SBI_ABI='$SBI_ABI' 非法：只支持 lp64/lp64d/ilp32/ilp32d"

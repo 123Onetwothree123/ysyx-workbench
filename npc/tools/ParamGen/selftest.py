@@ -14,7 +14,7 @@ import json
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -213,6 +213,61 @@ def small_profile(profile_path: Path, schema: Dict[str, Any]) -> Dict[str, Any]:
     return profile
 
 
+# Typed JSON trees produced by classify_defconfigs.py.  The selftest is often
+# run from a checkout whose .config is unrelated to the profiles, so it also
+# looks for the typed output of each profile's base defconfig.
+TYPED_SEARCH_DIRS = [
+    Path("/tmp/opencode/paramgen-new-presets"),
+    Path("/tmp/opencode/paramgen-work/defconfigs"),
+]
+
+
+def typed_for_profile(profile: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    source = Path(profile["base"]["source"]).name
+    name = (
+        source[: -len("_defconfig")]
+        if source.endswith("_defconfig")
+        else Path(source).stem
+    )
+    for directory in TYPED_SEARCH_DIRS:
+        candidate = directory / name / "typed.json"
+        if candidate.exists():
+            return p.read_json(candidate)
+    return None
+
+
+def select_profile_for_typed(
+    typed: Dict[str, Any],
+    schema: Dict[str, Any],
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Pick a profile that matches the current typed config when possible.
+
+    Falls back to the first profile whose base defconfig has a typed JSON,
+    so the status tests always exercise a real base configuration instead of
+    failing merely because the repository .config belongs to an unrelated
+    experimental configuration.
+    """
+    paths = sorted(
+        p.profile_paths(p.DEFAULT_PROFILE_DIR),
+        key=lambda path: (
+            path.stem.rsplit("@", 1)[0],
+            int(path.stem.rsplit("@", 1)[1]) if "@" in path.stem else 0,
+        ),
+    )
+    if not paths:
+        raise p.ParamError(f"no profiles found in {p.DEFAULT_PROFILE_DIR}")
+    profiles = [p.load_profile(path) for path in paths]
+    for profile in profiles:
+        result = p.classify(profile, typed, manifest=None, schema=schema)
+        if result["status"] == "profile-compatible":
+            return profile, typed
+    for profile in profiles:
+        candidate = typed_for_profile(profile)
+        if candidate is not None:
+            return profile, candidate
+    return profiles[0], typed
+
+
 def test_statuses(
     typed: Dict[str, Any],
     profile: Dict[str, Any],
@@ -235,10 +290,11 @@ def test_statuses(
         "hashes": [hash_value],
     }
     qualified = p.classify(profile, typed, manifest=manifest, schema=schema)
+    expected = p.apply_status_ceiling(profile, "qualified")
     check(
-        "status: hash in manifest is qualified",
-        qualified["status"] == "qualified",
-        qualified["status"],
+        "status: hash in manifest reaches the profile's evidence ceiling",
+        qualified["status"] == expected,
+        f"{qualified['status']} != {expected}",
     )
 
     changed = copy.deepcopy(typed)
@@ -328,23 +384,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     test_predicates()
     test_allow_dimensions()
 
-    profile_path = Path(args.profile) if args.profile else max(
-        p.DEFAULT_PROFILE_DIR.glob("small-rv32@*.json"),
-        key=lambda path: int(path.stem.rsplit("@", 1)[1]),
-    )
-    profile = small_profile(profile_path, schema)
-    # The status tests need a config that passes the chosen profile.  Prefer
-    # the defconfig named by profile.base.source when its typed output exists.
-    status_typed = typed
-    source = Path(profile["base"]["source"]).name
-    name = source[: -len("_defconfig")] if source.endswith("_defconfig") else Path(source).stem
-    candidate = Path("/tmp/opencode/paramgen-work/defconfigs") / name / "typed.json"
-    if candidate.exists():
-        status_typed = p.read_json(candidate)
-    elif profile["id"] == "small-rv32" and typed.get("isa", {}).get("xlen") != 32:
-        fallback = Path("/tmp/opencode/paramgen-work/defconfigs/rv32_c/typed.json")
-        if fallback.exists():
-            status_typed = p.read_json(fallback)
+    profile_path = Path(args.profile) if args.profile else None
+    if profile_path is not None:
+        profile = small_profile(profile_path, schema)
+        status_typed = typed
+    else:
+        profile, status_typed = select_profile_for_typed(typed, schema)
     test_statuses(status_typed, profile, schema, workdir)
 
     print()

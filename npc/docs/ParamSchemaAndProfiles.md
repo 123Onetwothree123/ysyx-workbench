@@ -8,7 +8,7 @@ symbol/menu 树由 `npc/tools/ParamGen/gen_kconfig.py` 生成；切换结构与
 本工具集负责：
 
 1. 维护/校验参数事实源的确定性 JSON schema；
-2. 从 schema 生成 Kconfig，并证明切换前后语义与 20 个 defconfig hash 一致；
+2. 从 schema 生成 Kconfig，并证明切换前后语义与迁移基线的 20 个 defconfig hash 一致；
 3. 给一个 effective 配置计算规范化 SHA256；
 4. 用声明式 profile 把配置分类为 qualified / profile-compatible /
    experimental / invalid。
@@ -20,7 +20,8 @@ Kconfig contract 仍是配置合法性的唯一权威；profile 只表达支持�
 > 切换后 schema 是权威源，新增参数应直接编辑 schema，而不是重新从
 > Kconfig 反向生成覆盖它。
 >
-> Phase 3C 的 6 个支持族、20 个 defconfig 状态和 L0/L1/L2 认证流程见
+> 当前四个硬件预设（`rv32i`、`rv32imac-linux`、`rv32gc-linux`、
+> `rv64gc-linux`）的支持边界、24 个 defconfig 状态和 L0/L1/L2 认证流程见
 > `npc/docs/ProfileQualification.md`。
 
 ---
@@ -33,13 +34,11 @@ npc/params/
   schema/schema-summary.json         # 统计摘要
   generated/Kconfig                  # 生成入口，由 npc/Kconfig source
   generated/kconfig/part-NN.Kconfig  # 按顶层菜单拆分的生成文件
-  profiles/small-rv32@2.json         # RV32 无 MMU 支持族
-  profiles/rv32-mmu@1.json           # RV32 Sv32 MMU 支持族
-  profiles/standard-rv64@2.json      # RV64 无 MMU 支持族
-  profiles/rv64-mmu@1.json           # RV64 标准 MMU 裸机支持族
-  profiles/rv64-sbi@1.json           # RV64 + OpenSBI 支持族
-  profiles/linux-rv64@2.json         # RV64 + Linux/U-Boot 支持族
-  profiles/archive/                  # v1 示例 profile（不参与分类）
+  profiles/rv32i@1.json               # RV32I 最小 M 模式支持族
+  profiles/rv32imac-linux@1.json      # RV32IMAC + Sv32 + OpenSBI + Linux（实验）
+  profiles/rv32gc-linux@1.json        # RV32GC + Sv32 + OpenSBI + Linux（实验）
+  profiles/rv64gc-linux@1.json        # RV64GC + Sv39/Sv48 + OpenSBI + Linux
+  profiles/archive/                   # 历史版本（当前为空）
   reports/defconfig-classification.csv
   reports/defconfig-classification-summary.json
   reports/defconfig-support-policy.json
@@ -48,20 +47,18 @@ npc/params/
   reports/kconfig-generation-parity.md
   reports/kconfig-generation-parity.json
 npc/support/qualified/
-  small-rv32@2.json                  # 4 个 exact hash
-  rv32-mmu@1.json                    # 2 个 exact hash
-  standard-rv64@2.json               # 2 个 exact hash
-  rv64-mmu@1.json                    # 5 个 exact hash
-  rv64-sbi@1.json                    # 2 个 exact hash
-  linux-rv64@2.json                  # 2 个 exact hash
-  archive/                           # v1 占位 manifest
+  rv32i@1.json                       # 1 个 exact hash
+  rv32imac-linux@1.json              # 1 个 exact hash（elaboration-only）
+  rv32gc-linux@1.json                # 1 个 exact hash（elaboration-only）
+  rv64gc-linux@1.json                # 1 个 exact hash
+  archive/                           # 历史 manifest（当前为空）
 npc/tools/ParamGen/
   param_tool.py                      # 统一 CLI
   gen_schema.py                      # Kconfig -> schema.json（迁移校验）
   gen_kconfig.py                     # schema.json -> generated Kconfig
   parity_kconfig.py                  # 符号/菜单/20 defconfig/hash parity
   gen_profiles.py                    # typed JSON -> profile base/allow
-  classify_defconfigs.py             # 20 个 defconfig 的批量报告
+  classify_defconfigs.py             # 24 个 defconfig 的批量报告
   qualify.py                         # L0/L1/L2 认证 + manifest 更新
   selftest.py                        # hash/predicate/status 自测
   paramlib.py                        # 共享的规范化/谓词/分类逻辑
@@ -367,8 +364,8 @@ canonical JSON 适合直接 `diff`；键和值均已稳定排序/规范化。
 
 ```json
 {
-  "id": "small-rv32",
-  "version": 2,
+  "id": "rv64gc-linux",
+  "version": 1,
   "status": "prototype",
   "description": "...",
   "base": { ... },
@@ -382,12 +379,12 @@ canonical JSON 适合直接 `diff`；键和值均已稳定排序/规范化。
 
 ```json
 "base": {
-  "source": "npc/configs/rv32_c_defconfig",
+  "source": "npc/configs/rv64gc_linux_defconfig",
   "source_effective_hash": "...",
   "source_npc_config_hash": "...",
-  "parameter_count": 207,
+  "parameter_count": 282,
   "values": {
-    "XLEN": 32,
+    "XLEN": 64,
     "RISCV_M": true,
     "...": "..."
   }
@@ -483,54 +480,63 @@ profile 维度；这避免“改 XLEN 导致一串 `*_XLEN_EFFECTIVE` 都要 all
 
 ```json
 "qualification": {
-  "suites": ["linux-boot", "opensbi", "nanos-lite", "uboot"],
-  "manifest": "npc/support/qualified/linux-rv64@2.json",
+  "suites": ["linux-boot", "opensbi", "sv39", "nanos-lite"],
+  "manifest": "npc/support/qualified/rv64gc-linux@1.json",
   "hashes": []
 }
 ```
 
 `suites` 是 profile 声明需要覆盖的认证项；`manifest` 指向认证 hash 清单；
-`hashes` 在 profile 内留空，实际 hash 放在 manifest。Phase 3C 的 manifest
-由 `npc/tools/ParamGen/qualify.py` 在 L0/L1/L2 通过后写入，格式示例：
+`hashes` 在 profile 内留空，实际 hash 放在 manifest。可选字段：
+
+- `status_ceiling`：`qualified`/`profile-compatible`/`experimental`，用于
+  把分类状态限制在证据允许的范围内；RV32 Linux 设为
+  `profile-compatible`。
+- `evidence_scope`：当前取 `l0-l2` 或 `elaboration-only`；RV32 Linux 使用
+  后者，manifest 会记录“仅 L2 elaboration，无 Linux 启动证据”。
+
+manifest 由 `npc/tools/ParamGen/qualify.py` 在 L0/L1/L2 通过后写入，格式：
 
 ```json
 {
-  "profile": "linux-rv64",
-  "profile_version": 2,
+  "profile": "rv64gc-linux",
+  "profile_version": 1,
   "status": "qualified",
+  "evidence_scope": "l0-l2",
   "hashes": [
     {
       "effective_hash": "30c8ecd6...",
-      "defconfig": "rv64_linux",
+      "defconfig": "rv64gc_linux",
       "evidence": {
         "l0_kconfig_contract": "pass",
         "l1_npc_config_gen": "pass",
-        "l2_chisel_elaboration": "pass"
+        "l2_chisel_elaboration": "pass",
+        "scope": "l0-l2"
       },
-      "qualified_at": "2026-11-28T04:14:54+00:00"
+      "qualified_at": "2026-11-28T14:15:00+00:00"
     }
   ]
 }
 ```
 
 `qualified` 认证的是精确 `effective_hash`，不是 profile 名或 defconfig 名。
-当前 6 个支持族共 17 个 hash 已认证，3 个 custom MMU 配置保持
-experimental。完整流程和 hash 提升规则见 `npc/docs/ProfileQualification.md`。
+当前四个 profile 各记录 1 个 exact hash；RV32 Linux 的两个 manifest 的
+`status` 是 `profile-compatible`、`evidence_scope` 是
+`elaboration-only`。完整流程和 hash 提升规则见
+`npc/docs/ProfileQualification.md`。
 
 ### 4.6 当前支持族
 
 | Profile | 范围 | 覆盖的 defconfig |
 | --- | --- | --- |
-| `small-rv32@2` | RV32、无 MMU | `rv32_c` `rv32_f` `rv32_fd` `rv32_noc` |
-| `rv32-mmu@1` | RV32 Sv32 | `mmu_default` `nanos` |
-| `standard-rv64@2` | RV64、无 MMU | `rv64_c` `rv64_fd` |
-| `rv64-mmu@1` | RV64 标准 Sv39/Sv48 裸机 | `rv64_mmu` `rv64_sv48` `rv64_soft` `rv64_xv6` `rv64_nanos_gc` |
-| `rv64-sbi@1` | RV64 + OpenSBI | `rv64_sbi` `rv64_sbi_fdt` |
-| `linux-rv64@2` | RV64 + Linux/U-Boot | `rv64_linux` `rv64_linux_uboot_128m` |
+| `rv32i@1` | RV32I、仅 M、无 MMU、无 SBI/Linux | `rv32i` |
+| `rv32imac-linux@1` | RV32IMAC + Sv32 + OpenSBI + Linux（实验） | `rv32imac_linux` |
+| `rv32gc-linux@1` | RV32GC + Sv32 + OpenSBI + Linux（实验） | `rv32gc_linux` |
+| `rv64gc-linux@1` | RV64GC + Sv39/Sv48 + OpenSBI + Linux | `rv64gc_linux`、`rv64_linux`（同 hash） |
 
 `rv64_custom_deep` / `rv64_custom_large` / `rv64_custom_page` 使用 custom
-MMU geometry/PTE 或非 4 KiB 页，明确保持 experimental，不强行并入
-`rv64-mmu`。
+MMU geometry/PTE 或非 4 KiB 页；`rv64_linux_uboot_128m` 走 U-Boot EFI
+路径。它们都明确保持 experimental，不强行并入四个预设。
 
 ---
 
@@ -561,14 +567,14 @@ qualified manifest JSON。
 ```bash
 python3 npc/tools/ParamGen/param_tool.py check \
   --config /tmp/current.typed.json \
-  --profile npc/params/profiles/small-rv32@2.json
+  --profile npc/params/profiles/rv64gc-linux@1.json
 
 # 输出 JSON
 python3 npc/tools/ParamGen/param_tool.py check ... --json
 
 # 显式指定 manifest / 忽略默认 manifest
 python3 npc/tools/ParamGen/param_tool.py check ... \
-  --manifest npc/support/qualified/small-rv32@2.json
+  --manifest npc/support/qualified/rv64gc-linux@1.json
 python3 npc/tools/ParamGen/param_tool.py check ... --no-manifest
 
 # 认证：L0/L1 + L2，通过后写 manifest
@@ -602,8 +608,9 @@ base_allow_violations,predicate_failures,profiles,reasons`。
 认证 run 由 `qualify.py` 完成，并额外生成
 `npc/params/reports/qualification-run.json`、`qualification-run.csv` 和
 `defconfig-support-policy.json`。manifest 更新后重新运行
-`classify_defconfigs.py --skip-generate --no-repeat` 即可把 17 个已认证
-配置显示为 `qualified`。完整流程见 `npc/docs/ProfileQualification.md`。
+`classify_defconfigs.py --skip-generate --no-repeat` 即可把 manifest 中
+已认证的 hash 显示为 `qualified`（RV32 Linux 会被 `status_ceiling` 限制为
+`profile-compatible`）。完整流程见 `npc/docs/ProfileQualification.md`。
 
 ---
 
@@ -619,7 +626,6 @@ base_allow_violations,predicate_failures,profiles,reasons`。
    depends_on`。
 4. 如果参数有离散约束，仍应加在 `npc/tools/KconfigContract` 中；schema
    不替代 contract。
-5. 是否需要进入某个 profile 的 `base` 或 `allow`。
 5. 如果它影响已有 profile 的 base 语义，提升对应 profile 的 `version`，
    重新生成 profile base 和 manifest；旧 manifest 不应继续宣称旧版本合格。
 
@@ -628,18 +634,18 @@ base_allow_violations,predicate_failures,profiles,reasons`。
 1. 选一个真实 defconfig 作为 base，不要手写 base 值。
 2. 在 `gen_profiles.py` 的 `PROFILE_SPECS` 增加 spec（id/version/description/
    defconfig/typed/allow/predicate/qualification）。
-3. 生成该 defconfig 的 typed JSON（`classify_defconfigs.py` 会做）。
+3. 生成该 defconfig 的 typed JSON（`classify_defconfigs.py --typed-only` 可做）。
 4. 运行 `python3 npc/tools/ParamGen/gen_profiles.py --typed-dir ...`，得到
    `npc/params/profiles/<id>@<version>.json`。
-5. 在 `npc/support/qualified/` 建同名 manifest 占位，`hashes` 留空。
-6. 用 `param_tool.py check` 和 `classify_defconfigs.py` 验证分类；
+5. 用 `param_tool.py check` 和 `classify_defconfigs.py` 验证分类；
    确认 experimental 的原因是你预期的边界，而不是 profile 笔误。
-7. 运行 `qualify.py --profile <id> --all`（或指定 defconfig 列表）做
-   L0/L1/L2；只有通过后才写入 manifest hash。不要手工复制 hash，也不要把
-   “测试跑过”直接等同于“qualified”，manifest 需要 evidence。
+6. 运行 `qualify.py --profile <id> --defconfig ...` 做 L0/L1/L2；只有通过后
+   才写入 manifest hash。不要手工建空 manifest 占位，也不要手工复制 hash。
+   如果只有 L2 证据、没有端到端启动证据，用 `status_ceiling`/
+   `evidence_scope` 限制状态。
 
 新增 family 的原则：它必须覆盖一组 defconfig，而不是单个配置；allow 只列
-有意支持的差异；predicate 写清硬边界。当前 6 个 family 的设计和 20 个
+有意支持的差异；predicate 写清硬边界。当前 4 个 family 的设计和 24 个
 defconfig 的状态见 `npc/docs/ProfileQualification.md`。
 
 ### 6.3 新增 allow 维度
@@ -654,12 +660,16 @@ defconfig 的状态见 `npc/docs/ProfileQualification.md`。
 
 - **schema 不是人工审查结果**：`tier`、`derived` 都是启发式；`visibility`
   基于空默认配置，不代表任意 `.config` 下的菜单可见性。
-- **profile 是支持策略**：20 个 defconfig 中 17 个 qualified、3 个
-  experimental；这是策略边界 + L0/L1/L2 认证的结果，不是配置合法性结论。
-- **qualified 已真实产生**：6 个 manifest 共 17 个 exact effective hash，
-  每个都记录了 L0/L1/L2 evidence；认证的是 hash，不是 profile 名。
+- **profile 是支持策略**：24 个 defconfig 中 5 个 profile-compatible（其中
+  2 个为 `qualified`，2 个 RV32 Linux 受 `status_ceiling` 限制，1 个
+  `rv64_linux` 与 `rv64gc_linux` 同 hash）、19 个 experimental；这是策略
+  边界 + L0/L1/L2 认证的结果，不是配置合法性结论。
+- **qualified 只覆盖 L0/L1/L2**：4 个 manifest 各记录 1 个 exact effective
+  hash；RV32 Linux 的两个 manifest 是 `profile-compatible` +
+  `elaboration-only`，明确没有 Linux 启动证据。
 - **experimental 是明确的**：3 个 custom MMU 配置（custom geometry/PTE/
-  非 4 KiB 页）保持 experimental，没有为了分类数字放宽标准 family。
+  非 4 KiB 页）、`rv64_linux_uboot_128m` 以及其余不在四预设边界内的配置
+  保持 experimental，没有为了分类数字放宽标准 family。
 - **invalid 未在真实 defconfig 上出现**：用自测中的坏 profile/manifest 验证。
 - **已接入 config 流程**：Kconfig 生成挂在现有 `menuconfig`/
   `*_defconfig`/`npc-config` 上，不新增手动 make 目标；没有新增 CI。

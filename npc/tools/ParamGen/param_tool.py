@@ -7,7 +7,7 @@ Examples:
     python3 npc/tools/ParamGen/param_tool.py hash --typed /tmp/current.typed.json
     python3 npc/tools/ParamGen/param_tool.py check \
         --config /tmp/current.typed.json \
-        --profile npc/params/profiles/small-rv32@2.json
+        --profile npc/params/profiles/rv64gc-linux@1.json
     python3 npc/tools/ParamGen/param_tool.py selftest
 """
 

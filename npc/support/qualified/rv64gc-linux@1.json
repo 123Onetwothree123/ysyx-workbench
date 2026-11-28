@@ -1,36 +1,23 @@
 {
-  "generated_at": "2026-11-28T04:29:59+00:00",
+  "evidence_scope": "l0-l2",
+  "generated_at": "2026-11-28T06:24:05+00:00",
   "generated_by": "npc/tools/ParamGen/qualify.py",
   "hashes": [
     {
-      "defconfig": "rv64_c",
-      "effective_hash": "5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e",
+      "defconfig": "rv64_linux",
+      "effective_hash": "30c8ecd6256e9d222f44856cf2a1cda5747711b5281bfdfe86a508b4a618aa4d",
       "evidence": {
         "l0_kconfig_contract": "pass",
         "l1_npc_config_gen": "pass",
-        "l2_chisel_elaboration": "pass"
+        "l2_chisel_elaboration": "pass",
+        "scope": "l0-l2"
       },
-      "git_head": "a9b055cd99d93c560e72954928b9252797b8e958",
-      "npc_config_hash": "f70bd95515d9f5cc",
-      "profile": "standard-rv64",
-      "profile_version": 2,
-      "qualified_at": "2026-11-28T04:29:59+00:00",
-      "source": "npc/configs/rv64_c_defconfig"
-    },
-    {
-      "defconfig": "rv64_fd",
-      "effective_hash": "eadc4d3a3d14a94c889afe3b11326c6c608b0e7ea86f282229d10954413e21fa",
-      "evidence": {
-        "l0_kconfig_contract": "pass",
-        "l1_npc_config_gen": "pass",
-        "l2_chisel_elaboration": "pass"
-      },
-      "git_head": "a9b055cd99d93c560e72954928b9252797b8e958",
-      "npc_config_hash": "7f772e1a5d0c5b3f",
-      "profile": "standard-rv64",
-      "profile_version": 2,
-      "qualified_at": "2026-11-28T04:29:59+00:00",
-      "source": "npc/configs/rv64_fd_defconfig"
+      "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
+      "npc_config_hash": "32940dec601fd510",
+      "profile": "rv64gc-linux",
+      "profile_version": 1,
+      "qualified_at": "2026-11-28T06:24:05+00:00",
+      "source": "npc/configs/rv64_linux_defconfig"
     }
   ],
   "notes": [
@@ -39,11 +26,11 @@
     "Rerun qualify.py after changing Kconfig, defaults, profile policy or RTL.",
     "A failed case is not written; its logs remain in the isolated workdir."
   ],
-  "profile": "standard-rv64",
-  "profile_version": 2,
+  "profile": "rv64gc-linux",
+  "profile_version": 1,
   "run": {
     "git_dirty": true,
-    "git_head": "a9b055cd99d93c560e72954928b9252797b8e958",
+    "git_head": "54bc7c20ec19d7b67b98c65bc4953bfa9dce419e",
     "note": "L3 full Verilator build and L4 simulation are not part of this manifest.",
     "selected_defconfigs": [
       "mmu_default",
@@ -52,6 +39,9 @@
       "rv32_f",
       "rv32_fd",
       "rv32_noc",
+      "rv32gc_linux",
+      "rv32i",
+      "rv32imac_linux",
       "rv64_c",
       "rv64_custom_deep",
       "rv64_custom_large",
@@ -65,7 +55,8 @@
       "rv64_sbi_fdt",
       "rv64_soft",
       "rv64_sv48",
-      "rv64_xv6"
+      "rv64_xv6",
+      "rv64gc_linux"
     ],
     "selection": "all-defconfigs",
     "stages": [

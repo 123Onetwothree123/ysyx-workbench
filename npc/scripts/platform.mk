@@ -37,7 +37,9 @@ SBI_IMPL ?= $(or $(call remove_quote,$(CONFIG_SBI_IMPL)),opensbi)
 SBI_PLATFORM ?= $(or $(call remove_quote,$(CONFIG_SBI_PLATFORM)),npc)
 SBI_FW_BASE ?= $(or $(CONFIG_SBI_FW_BASE),0x80000000)
 SBI_FW_SIZE ?= $(or $(CONFIG_SBI_FW_SIZE),0x00200000)
-SBI_NEXT_ADDR ?= $(or $(CONFIG_SBI_NEXT_ADDR),0x80200000)
+# RV32 的 FW_JUMP 目标必须 4 MiB 对齐，RV64 为 2 MiB。
+SBI_XLEN ?= $(or $(CONFIG_XLEN),64)
+SBI_NEXT_ADDR ?= $(or $(CONFIG_SBI_NEXT_ADDR),$(if $(filter 32,$(SBI_XLEN)),0x80400000,0x80200000))
 SBI_BUILD_JOBS ?= $(or $(CONFIG_SBI_BUILD_JOBS),0)
 SBI_FDT_ENABLE ?= $(or $(CONFIG_SBI_FDT_ENABLE),n)
 SBI_PMU_ENABLE ?= $(or $(CONFIG_SBI_PMU_ENABLE),n)
@@ -64,8 +66,18 @@ $(SBI_DTB_TOOL): $(NPC_BUILD_TOOLS_STAMP)
 build-dtb-tool: $(SBI_DTB_TOOL)
 .PHONY: build-dtb-tool
 SBI_TOOLCHAIN_PREFIX ?= riscv64-unknown-elf-
-SBI_ISA ?= rv64ima_zicsr_zifencei
-SBI_ABI ?= lp64
+# OpenSBI 固件的最小 ISA/ABI 跟随 CPU XLEN：RV32 用 ilp32，RV64 用 lp64。
+# F/D/C 不需要出现在固件 ISA 中，Linux/用户态的 ISA 由 CPU 配置决定。
+# 环境变量或命令行显式给出的 SBI_ISA/SBI_ABI 优先。
+ifeq ($(strip $(SBI_XLEN)),32)
+SBI_ISA_DEFAULT := rv32ima_zicsr_zifencei
+SBI_ABI_DEFAULT := ilp32
+else
+SBI_ISA_DEFAULT := rv64ima_zicsr_zifencei
+SBI_ABI_DEFAULT := lp64
+endif
+SBI_ISA ?= $(SBI_ISA_DEFAULT)
+SBI_ABI ?= $(SBI_ABI_DEFAULT)
 SBI_LD ?= ld.lld
 SBI_VENDOR_DIR ?= $(abspath $(NPC_HOME)/../vendor/opensbi)
 SBI_OUT_DIR ?= $(abspath $(BUILD_DIR)/$(SBI_IMPL))
@@ -90,7 +102,7 @@ SBI_ENV = env \
 	SBI_FDT_OUT_DIR="$(SBI_FDT_OUT_DIR)" \
 	SBI_TIMEBASE_FREQ="$(SBI_TIMEBASE_FREQ)" \
 	SBI_FDT_LINUX="$(SBI_FDT_LINUX)" \
-	SBI_XLEN="$(or $(CONFIG_XLEN),64)" \
+	SBI_XLEN="$(SBI_XLEN)" \
 	SBI_HAS_S="$(or $(CONFIG_HAS_S),n)" \
 	SBI_HAS_PMP="$(or $(CONFIG_HAS_PMP),n)" \
 	SBI_CACHE_PADDING="$(or $(CONFIG_CACHE_PADDING),0)" \
@@ -130,7 +142,7 @@ define sbi_check_enabled
 	@set -eu; \
 	if [ "$(or $(CONFIG_SBI_ENABLE),n)" != "y" ]; then \
 		echo "错误：SBI_ENABLE=n，SBI 固件未启用。" >&2; \
-		echo "      先运行 'make rv64_sbi_defconfig' 或 'make menuconfig' 打开 M 模式 SBI 固件。" >&2; \
+		echo "      先运行 'make menuconfig'，或选择一个启用 SBI 的 defconfig（如 rv64gc_linux_defconfig / rv32imac_linux_defconfig）。" >&2; \
 		exit 2; \
 	fi; \
 	if [ "$(SBI_IMPL)" = "none" ]; then \

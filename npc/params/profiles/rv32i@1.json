@@ -1,42 +1,66 @@
 {
   "allow": {
     "bool": [
-      "RISCV_A",
-      "RISCV_C",
-      "RISCV_F",
-      "RISCV_D",
-      "FPU_FMA",
-      "FPU_HARDFLOAT_RECODE",
-      "FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING",
-      "FPU_IMPL_EXTERNAL",
-      "FPU_IMPL_FUDIAN",
-      "FPU_IMPL_HARDFLOAT",
-      "FPU_IMPL_NONE"
+      "CACHE_CONFIG_SEPARATE",
+      "CACHE_CONFIG_UNIFIED",
+      "CACHE_ENABLE",
+      "DCACHE",
+      "DCACHE_STORAGE_REG",
+      "DCACHE_STORAGE_SRAM",
+      "DCACHE_STORAGE_SRAM_NOBYPASS",
+      "HAS_PMP",
+      "ICACHE",
+      "ICACHE_STORAGE_REG",
+      "ICACHE_STORAGE_SRAM",
+      "ICACHE_STORAGE_SRAM_NOBYPASS",
+      "SOC_XLEN_FOLLOW_CPU"
     ],
-    "enum": {
-      "FPU_IMPL": [
-        "none",
-        "hardfloat"
-      ]
-    },
+    "enum": {},
     "int_range": {
-      "FPU_FLEN": {
-        "max": 64,
-        "min": 32,
-        "step": 32
+      "CACHE_BLOCK_SIZE_LOG2": {
+        "max": 5,
+        "min": 4
       },
-      "FPU_PIPELINE": {
-        "max": 4,
-        "min": 0
+      "CACHE_INDEX_BITS": {
+        "max": 5,
+        "min": 4
+      },
+      "DCACHE_BLOCK_SIZE_LOG2": {
+        "max": 5,
+        "min": 4
+      },
+      "DCACHE_INDEX_BITS": {
+        "max": 5,
+        "min": 4
+      },
+      "ICACHE_BLOCK_SIZE_LOG2": {
+        "max": 5,
+        "min": 4
+      },
+      "ICACHE_INDEX_BITS": {
+        "max": 5,
+        "min": 4
+      },
+      "PMP_ENTRIES": {
+        "max": 16,
+        "min": 16
+      },
+      "PMP_GRANULARITY_LOG2": {
+        "max": 6,
+        "min": 6
+      },
+      "SOC_XLEN": {
+        "max": 32,
+        "min": 32
       }
     },
     "list": {}
   },
   "base": {
-    "parameter_count": 203,
-    "source": "npc/configs/rv64_c_defconfig",
-    "source_effective_hash": "5de4545daf05339fe84807bf898ef22bb1c1361a0eac13a2829efc0c7fb5804e",
-    "source_npc_config_hash": "f70bd95515d9f5cc",
+    "parameter_count": 169,
+    "source": "npc/configs/rv32i_defconfig",
+    "source_effective_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
+    "source_npc_config_hash": "65fc26e772f081d4",
     "values": {
       "ALU_ADDER_CARRY_LOOKAHEAD": false,
       "ALU_ADDER_CARRY_SELECT": false,
@@ -100,36 +124,24 @@
       "CSR_SATP_PPN_WRITE": "normal",
       "CSR_VIEW_BOUND": true,
       "CSR_VIEW_INDEPENDENT": false,
-      "DCACHE": true,
+      "DCACHE": false,
       "DCACHE_BLOCK_SIZE_LOG2": 4,
       "DCACHE_DRAIN_TIMEOUT": 255,
       "DCACHE_INDEX_BITS": 4,
-      "DCACHE_STORAGE_REG": true,
-      "DCACHE_STORAGE_SRAM": false,
-      "DCACHE_STORAGE_SRAM_NOBYPASS": false,
-      "DIV_NONRESTORING": false,
-      "DIV_RESTORING": true,
-      "DIV_RESTORING_EARLY_OUT": false,
-      "DIV_RESTORING_ITER_BITS": 1,
-      "DIV_RESTORING_RADIX": 2,
-      "DIV_SRT": false,
       "DMA_COHERENCE_HARDWARE_SNOOP": false,
       "DMA_COHERENCE_SOFTWARE_FLUSH": true,
       "DMA_COHERENCE_UNCACHED": false,
       "GPIO_XLEN_FOLLOW_APB": true,
-      "HAS_CSR_MCOUNTEREN": true,
-      "HAS_CSR_MCOUNTINHIBIT": true,
+      "HAS_CSR_MCOUNTEREN": false,
+      "HAS_CSR_MCOUNTINHIBIT": false,
       "HAS_CSR_MCYCLE": true,
       "HAS_CSR_MINSTRET": true,
       "HAS_CSR_MISA": true,
       "HAS_CSR_MSCRATCH": true,
       "HAS_CSR_MTVAL": true,
-      "HAS_MMU": false,
       "HAS_PMP": false,
-      "HAS_S": true,
-      "HAS_S_EXTERNAL_IRQ": true,
-      "HAS_S_TIMER_IRQ": true,
-      "HAS_U": true,
+      "HAS_S": false,
+      "HAS_U": false,
       "ICACHE": true,
       "ICACHE_BLOCK_SIZE_LOG2": 4,
       "ICACHE_COHERENCE_FENCE_I": true,
@@ -150,39 +162,17 @@
       "JAL_BTB_WAYS": 1,
       "KEYBOARD_XLEN_FOLLOW_APB": true,
       "LSU_DRAIN_TIMEOUT": 255,
-      "MDU_IMPL_EXTERNAL": false,
-      "MDU_IMPL_NUTSHELL": false,
-      "MDU_IMPL_ROCKET": false,
-      "MDU_IMPL_STANDARD": true,
       "MISALIGNED_GRANULE_BYTES": 8,
       "MISALIGNED_MMIO_FAULT": true,
       "MISALIGNED_NC_SPLIT": false,
       "MISALIGNED_SUPPORT": true,
       "MROM_XLEN_FOLLOW_APB": true,
-      "MUL_COMPRESSOR_ALLOW_REDUNDANT": false,
-      "MUL_COMPRESSOR_HAS_CIN": false,
-      "MUL_COMPRESSOR_HAS_COUT": false,
-      "MUL_COMPRESSOR_INPUTS": 3,
-      "MUL_COMPRESSOR_OUTPUTS": 2,
-      "MUL_COMPRESSOR_OUTPUT_OFFSETS": "0,1",
-      "MUL_DADDA": false,
-      "MUL_ENCODING_BOOTH": false,
-      "MUL_ENCODING_PLAIN": true,
-      "MUL_PIPELINE": 0,
-      "MUL_SHIFT_ADD": false,
-      "MUL_WALLACE": true,
-      "MUL_WIDTH": 32,
       "NPC_MODE_BOTH": false,
       "NPC_MODE_FPGA_ONLY": false,
       "NPC_MODE_YSYX_ONLY": true,
       "NPC_RAM_BASE": 2147483648,
       "NPC_RAM_SIZE": 67108864,
       "NVBOARD": false,
-      "PLIC_BASE": 201326592,
-      "PLIC_MAX_PRIORITY": 7,
-      "PLIC_PRIORITY_BITS": 3,
-      "PLIC_SIZE": 3145728,
-      "PLIC_SOURCES": 32,
       "PMA_CHIPLINK_MEM_BASE": 3221225472,
       "PMA_CHIPLINK_MEM_SIZE": 1073741824,
       "PMA_CHIPLINK_MMIO_BASE": 1073741824,
@@ -212,10 +202,10 @@
       "PMA_VGA_SIZE": 2097152,
       "PSRAM_XLEN_FOLLOW_APB": true,
       "RAS_BITS": 4,
-      "RISCV_A": true,
-      "RISCV_C": true,
+      "RISCV_A": false,
+      "RISCV_C": false,
       "RISCV_F": false,
-      "RISCV_M": true,
+      "RISCV_M": false,
       "ROOTFS_ENABLE": false,
       "SBI_ENABLE": false,
       "SBI_FW_BASE": 2147483648,
@@ -226,7 +216,7 @@
       "SDRAM_XLEN_FOLLOW_APB": true,
       "SOC_MEMORY_MAP_ACT": true,
       "SOC_MEMORY_MAP_LINUX": false,
-      "SOC_XLEN": 64,
+      "SOC_XLEN": 32,
       "SOC_XLEN_FOLLOW_CPU": false,
       "SPI_XLEN_FOLLOW_APB": true,
       "SRAM_XLEN_FOLLOW_APB": true,
@@ -240,24 +230,94 @@
       "UART_XLEN_FOLLOW_APB": true,
       "VGA_XLEN_FOLLOW_APB": true,
       "WBUF_DEPTH": 4,
-      "XLEN": 64
+      "XLEN": 32
     }
   },
-  "description": "RV64 标准裸机配置：RV64IMAC 基线、无 MMU。允许 F/D 浮点后端和 A/C 扩展的开关；MMU、SBI/Linux、SoC 自定义和外设变体超出本 profile。",
-  "id": "standard-rv64",
+  "description": "RV32I 最小 M 模式支持族：RV32I（M/A/C/F/D=n）、仅 M 特权级、无 MMU/TLB，不启用 SBI/Linux/U-Boot。保留 B1 的 M 模式 CSR、mcycle 和 ecall/mret；ICache 打开，DCache 关闭。PMP 可选；缓存几何和 debug 开关是允许的差异，ISA/特权级/MMU 是硬边界。",
+  "id": "rv32i",
   "predicate": [
     {
-      "description": "standard-rv64 只接受 RV64",
+      "description": "profile 只接受 RV32",
       "expr": {
         "eq": {
           "path": "isa.xlen",
-          "value": 64
+          "value": 32
         }
       },
-      "id": "xlen-64"
+      "id": "xlen-32"
     },
     {
-      "description": "standard-rv64 基线不带 MMU",
+      "description": "profile 要求 ISA.M=n",
+      "expr": {
+        "eq": {
+          "path": "isa.m",
+          "value": false
+        }
+      },
+      "id": "isa-m-no"
+    },
+    {
+      "description": "profile 要求 ISA.A=n",
+      "expr": {
+        "eq": {
+          "path": "isa.a",
+          "value": false
+        }
+      },
+      "id": "isa-a-no"
+    },
+    {
+      "description": "profile 要求 ISA.C=n",
+      "expr": {
+        "eq": {
+          "path": "isa.c",
+          "value": false
+        }
+      },
+      "id": "isa-c-no"
+    },
+    {
+      "description": "profile 要求 ISA.F=n",
+      "expr": {
+        "eq": {
+          "path": "isa.f",
+          "value": false
+        }
+      },
+      "id": "isa-f-no"
+    },
+    {
+      "description": "profile 要求 ISA.D=n",
+      "expr": {
+        "eq": {
+          "path": "isa.d",
+          "value": false
+        }
+      },
+      "id": "isa-d-no"
+    },
+    {
+      "description": "profile 要求 ISA.S=n",
+      "expr": {
+        "eq": {
+          "path": "isa.s",
+          "value": false
+        }
+      },
+      "id": "isa-s-no"
+    },
+    {
+      "description": "profile 要求 ISA.U=n",
+      "expr": {
+        "eq": {
+          "path": "isa.u",
+          "value": false
+        }
+      },
+      "id": "isa-u-no"
+    },
+    {
+      "description": "裸机 profile 不带 MMU",
       "expr": {
         "eq": {
           "path": "mmu.enabled",
@@ -267,17 +327,57 @@
       "id": "no-mmu"
     },
     {
-      "description": "SoC AXI 侧保持 64 位",
+      "description": "profile 要求 CONFIG_SBI_ENABLE=False",
+      "expr": {
+        "eq": {
+          "path": "flat.SBI_ENABLE",
+          "value": false
+        }
+      },
+      "id": "flat-sbi-enable-no"
+    },
+    {
+      "description": "profile 要求 CONFIG_LINUX_BOOT_ENABLE=False",
+      "expr": {
+        "eq": {
+          "path": "flat.LINUX_BOOT_ENABLE",
+          "value": false
+        }
+      },
+      "id": "flat-linux-boot-enable-no"
+    },
+    {
+      "description": "profile 要求 CONFIG_NPC_UBOOT_ENABLE=False",
+      "expr": {
+        "eq": {
+          "path": "flat.NPC_UBOOT_ENABLE",
+          "value": false
+        }
+      },
+      "id": "flat-npc-uboot-enable-no"
+    },
+    {
+      "description": "SoC AXI 侧保持 32 位",
       "expr": {
         "eq": {
           "path": "isa.soc_xlen",
-          "value": 64
+          "value": 32
         }
       },
-      "id": "soc-xlen-64"
+      "id": "soc-xlen-32"
     },
     {
-      "description": "示例 profile 只覆盖 ysyx 模式",
+      "description": "标准平台 RAM 为 64 MiB",
+      "expr": {
+        "eq": {
+          "path": "platform.ram_size",
+          "value": 67108864
+        }
+      },
+      "id": "ram-64m"
+    },
+    {
+      "description": "当前 profile 只覆盖 ysyx 模式",
       "expr": {
         "not": {
           "eq": {
@@ -291,11 +391,11 @@
   ],
   "qualification": {
     "hashes": [],
-    "manifest": "npc/support/qualified/standard-rv64@1.json",
+    "manifest": "npc/support/qualified/rv32i@1.json",
     "suites": [
-      "rv64-rvc",
-      "rv64-fpu",
-      "difftest-rv64"
+      "rv32i-baremetal",
+      "b1-csr",
+      "b3-icache"
     ]
   },
   "status": "prototype",

@@ -1,21 +1,22 @@
 {
   "generated_snapshot": true,
-  "description": "One-off example computed from the repository's existing npc/.config projection. The repository .config/include/generated files were only read; the typed JSON and canonical JSON were written under /tmp.",
+  "description": "One-off example computed from an isolated rv32i_defconfig workdir. The repository .config/include/generated files were not used as scratch; typed JSON and canonical JSON were written under /tmp.",
   "source": {
-    "config_json": "npc/include/generated/npc_config.json",
+    "defconfig": "npc/configs/rv32i_defconfig",
     "typed_json_generator": "npc/tools/build/npc_config_gen",
-    "typed_json_location": "/tmp (not committed)"
+    "typed_json_location": "/tmp/opencode/paramgen-new-presets/rv32i/typed.json (not committed)"
   },
-  "npc_config_hash": "578501289129d1dc",
-  "effective_hash": "a2e04c43937bd7b86f3bc57fca11ea348f7fe820f315cd42e5f5136546675d9a",
+  "npc_config_hash": "65fc26e772f081d4",
+  "effective_hash": "db537e181aaf48a7ae4d46dd9fbe538090442d8e083c5a9e1ad9f8c6b3c676b0",
   "isa_xlen": 32,
   "classification": {
-    "profile": "small-rv32",
+    "profile": "rv32i",
     "profile_version": 1,
-    "status": "profile-compatible"
+    "status": "qualified"
   },
   "notes": [
-    "This is an example hash, not a stable fixture for a different .config.",
+    "This is an example hash for the current rv32i_defconfig, not a stable fixture for a different .config.",
+    "The exact hash is recorded in npc/support/qualified/rv32i@1.json after L0/L1/L2.",
     "See npc/docs/ParamSchemaAndProfiles.md for the exact canonicalization rules."
   ]
 }

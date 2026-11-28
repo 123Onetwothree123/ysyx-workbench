@@ -11,8 +11,10 @@ the typed JSON tree.
         --typed-dir /tmp/opencode/paramgen-work/defconfigs
 
 The resulting profile JSON files are committed as reviewable policy inputs.
-Version 1 of the first three examples is kept under ``profiles/archive/``;
-version 2 widens the support family without changing the hash rules.
+The policy covers the four current presets only: RV32I, RV32IMAC Linux,
+RV32GC Linux and RV64GC Linux.  RV32 Linux profiles carry a
+``status_ceiling``/``evidence_scope`` so a passing L2 elaboration is not
+reported as end-to-end Linux support.
 """
 
 from __future__ import annotations
@@ -29,110 +31,8 @@ import paramlib as p
 
 
 # ---------------------------------------------------------------------------
-# Reusable allow dimensions
+# Predicate helpers
 # ---------------------------------------------------------------------------
-
-FPU_BOOL = [
-    "FPU_FMA",
-    "FPU_HARDFLOAT_RECODE",
-    "FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING",
-    "FPU_IMPL_EXTERNAL",
-    "FPU_IMPL_FUDIAN",
-    "FPU_IMPL_HARDFLOAT",
-    "FPU_IMPL_NONE",
-]
-
-FPU_RANGE = {
-    "FPU_FLEN": {"min": 32, "max": 64, "step": 32},
-    "FPU_PIPELINE": {"min": 0, "max": 4},
-}
-
-CACHE_RANGE = {
-    "CACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
-    "CACHE_INDEX_BITS": {"min": 5, "max": 6},
-    "ICACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
-    "ICACHE_INDEX_BITS": {"min": 5, "max": 6},
-    "DCACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
-    "DCACHE_INDEX_BITS": {"min": 5, "max": 6},
-}
-
-CACHE_BOOL = [
-    "DCACHE",
-    "ICACHE_STORAGE_REG",
-    "ICACHE_STORAGE_SRAM",
-    "ICACHE_STORAGE_SRAM_NOBYPASS",
-    "DCACHE_STORAGE_REG",
-    "DCACHE_STORAGE_SRAM",
-    "DCACHE_STORAGE_SRAM_NOBYPASS",
-]
-
-# Bare-metal RV32 configs may turn the M extension off; every MDU backend and
-# MUL/DIV implementation knob then disappears from the effective config.
-MDU_BOOL = [
-    "RISCV_M",
-    "DIV_NONRESTORING",
-    "DIV_RESTORING",
-    "DIV_RESTORING_EARLY_OUT",
-    "DIV_SRT",
-    "MDU_IMPL_CV32E40P",
-    "MDU_IMPL_CVE2",
-    "MDU_IMPL_EXTERNAL",
-    "MDU_IMPL_IBEX",
-    "MDU_IMPL_NUTSHELL",
-    "MDU_IMPL_PICORV32",
-    "MDU_IMPL_ROCKET",
-    "MDU_IMPL_STANDARD",
-    "MUL_COMPRESSOR_ALLOW_REDUNDANT",
-    "MUL_COMPRESSOR_HAS_CIN",
-    "MUL_COMPRESSOR_HAS_COUT",
-    "MUL_DADDA",
-    "MUL_ENCODING_BOOTH",
-    "MUL_ENCODING_PLAIN",
-    "MUL_SHIFT_ADD",
-    "MUL_WALLACE",
-]
-
-MDU_RANGE = {
-    "DIV_RESTORING_ITER_BITS": {"min": 1, "max": 1},
-    "DIV_RESTORING_RADIX": {"min": 2, "max": 2},
-    "MUL_COMPRESSOR_INPUTS": {"min": 3, "max": 3},
-    "MUL_COMPRESSOR_OUTPUTS": {"min": 2, "max": 2},
-    "MUL_PIPELINE": {"min": 0, "max": 0},
-    "MUL_WIDTH": {"min": 32, "max": 32},
-}
-
-TIMER_BOOL = [
-    "TIMER_CLINT_MTIP",
-    "TIMER_DIRECT_STIP",
-]
-
-# RV32 has no privilege-qualified CSR set requirement in the small profiles:
-# the minimal RV32IM test core (rv32_noc) intentionally drops S/U and the
-# optional machine CSRs.  The MMU/SBI/Linux profiles keep S/U fixed.
-RV32_CSR_BOOL = [
-    "HAS_S",
-    "HAS_U",
-    "HAS_MMU",
-    "HAS_S_EXTERNAL_IRQ",
-    "HAS_S_TIMER_IRQ",
-    "HAS_CSR_MCOUNTEREN",
-    "HAS_CSR_MCOUNTINHIBIT",
-    "HAS_CSR_MINSTRET",
-    "HAS_CSR_MSCRATCH",
-    "HAS_CSR_MTVAL",
-]
-
-# PLIC parameters disappear when S-mode interrupts are disabled.  Pinning the
-# ranges to the standard platform map lets the parameter vanish but does not
-# permit an arbitrary memory-map change.
-RV32_PLIC_RANGE = {
-    "PLIC_BASE": {"min": 0x0C000000, "max": 0x0C000000},
-    "PLIC_SIZE": {"min": 0x00300000, "max": 0x00300000},
-    "PLIC_SOURCES": {"min": 32, "max": 32},
-    "PLIC_PRIORITY_BITS": {"min": 3, "max": 3},
-    "PLIC_MAX_PRIORITY": {"min": 7, "max": 7},
-}
-
 
 def _predicate_xlen(xlen: int) -> Dict[str, Any]:
     return {
@@ -232,307 +132,301 @@ def _predicate_ram(size: int) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# New four-preset policy (replaces the deleted six-family table)
+# ---------------------------------------------------------------------------
+
+# Cache geometry deviations that the presets deliberately support.  The
+# unified geometry is kept; only block/index size may be tuned.
+CACHE_BOOL_COMMON = [
+    "DCACHE_STORAGE_REG",
+    "DCACHE_STORAGE_SRAM",
+    "DCACHE_STORAGE_SRAM_NOBYPASS",
+    "ICACHE_STORAGE_REG",
+    "ICACHE_STORAGE_SRAM",
+    "ICACHE_STORAGE_SRAM_NOBYPASS",
+]
+
+CACHE_RANGE_RV32I = {
+    "CACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
+    "CACHE_INDEX_BITS": {"min": 4, "max": 5},
+    "ICACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
+    "ICACHE_INDEX_BITS": {"min": 4, "max": 5},
+    "DCACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
+    "DCACHE_INDEX_BITS": {"min": 4, "max": 5},
+}
+
+CACHE_RANGE_LINUX = {
+    "CACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
+    "CACHE_INDEX_BITS": {"min": 4, "max": 6},
+    "ICACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
+    "ICACHE_INDEX_BITS": {"min": 4, "max": 6},
+    "DCACHE_BLOCK_SIZE_LOG2": {"min": 4, "max": 5},
+    "DCACHE_INDEX_BITS": {"min": 4, "max": 6},
+}
+
+# RV32D 的 FLD/FSD 是 8 字节访问；开启 DCache 时行大小至少 8 B。
+CACHE_RANGE_LINUX_RV32GC = dict(CACHE_RANGE_LINUX)
+CACHE_RANGE_LINUX_RV32GC["CACHE_BLOCK_SIZE_LOG2"] = {"min": 3, "max": 5}
+CACHE_RANGE_LINUX_RV32GC["ICACHE_BLOCK_SIZE_LOG2"] = {"min": 3, "max": 5}
+CACHE_RANGE_LINUX_RV32GC["DCACHE_BLOCK_SIZE_LOG2"] = {"min": 3, "max": 5}
+
+# FPU backend deviations: HardFloat is the base; Fudian is a supported
+# alternative.  External/none are rejected by the Kconfig contract.
+FPU_ALLOW_BOOL = [
+    "FPU_IMPL_HARDFLOAT",
+    "FPU_IMPL_FUDIAN",
+    "FPU_HARDFLOAT_RECODE",
+    "FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING",
+    "FPU_FUDIAN_SHARED_DIVSQRT",
+]
+FPU_ALLOW_RANGE = {
+    "FPU_FLEN": {"min": 64, "max": 64, "step": 32},
+    "FPU_PIPELINE": {"min": 0, "max": 4},
+}
+
+LINUX_BOOTARGS = [
+    "console=ttyS0,115200 earlycon=sbi",
+    "console=ttyS0,115200 earlycon=sbi rootwait",
+]
+
+
+def _predicate_isa(letter: str, expected: bool) -> Dict[str, Any]:
+    return {
+        "id": f"isa-{letter}-{'yes' if expected else 'no'}",
+        "description": f"profile 要求 ISA.{letter.upper()}={'y' if expected else 'n'}",
+        "expr": {"eq": {"path": f"isa.{letter}", "value": expected}},
+    }
+
+
+def _predicate_flat(symbol: str, expected: Any, label: str) -> Dict[str, Any]:
+    return {
+        "id": f"flat-{symbol.lower().replace('_', '-')}-{label}",
+        "description": f"profile 要求 CONFIG_{symbol}={expected}",
+        "expr": {"eq": {"path": f"flat.{symbol}", "value": expected}},
+    }
+
+
+def _predicate_soc_xlen(xlen: int) -> Dict[str, Any]:
+    return {
+        "id": f"soc-xlen-{xlen}",
+        "description": f"SoC AXI 侧保持 {xlen} 位",
+        "expr": {"eq": {"path": "isa.soc_xlen", "value": xlen}},
+    }
+
+
+def _predicate_ram_at_least(size: int) -> Dict[str, Any]:
+    return {
+        "id": f"ram-at-least-{size // (1024 * 1024)}m",
+        "description": f"至少需要 {size // (1024 * 1024)} MiB RAM",
+        "expr": {"gte": {"path": "platform.ram_size", "value": size}},
+    }
+
+
+def _linux_predicates(
+    xlen: int,
+    pte_format: str,
+    pte_size: int,
+    levels: List[int],
+    *,
+    fd: bool = True,
+) -> List[Dict[str, Any]]:
+    return [
+        _predicate_xlen(xlen),
+        *_predicate_standard_mmu(pte_format, pte_size, levels),
+        _predicate_isa("s", True),
+        _predicate_isa("u", True),
+        _predicate_isa("f", fd),
+        _predicate_isa("d", fd),
+        _predicate_flat("SBI_ENABLE", True, "yes"),
+        _predicate_flat("SBI_IMPL_OPENSBI", True, "yes"),
+        _predicate_flat("SBI_FDT_ENABLE", True, "yes"),
+        _predicate_flat("LINUX_BOOT_ENABLE", True, "yes"),
+        _predicate_flat("NPC_UBOOT_ENABLE", False, "no"),
+        _predicate_flat("HAS_PMP", True, "yes"),
+        _predicate_soc_xlen(xlen),
+        _predicate_ram_at_least(64 * 1024 * 1024),
+        _predicate_ysyx(),
+    ]
+
+
+def _linux_allow(
+    xlen: int,
+    *,
+    cache_range: Dict[str, Any],
+    levels_range: Optional[Dict[str, int]] = None,
+    extra_bool: Optional[List[str]] = None,
+    extra_range: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    int_range: Dict[str, Any] = {
+        **cache_range,
+        "LINUX_INITRAMFS_ADDR": {"min": 0x82000000, "max": 0x82000000},
+        "NPC_RAM_SIZE": {
+            "min": 64 * 1024 * 1024,
+            "max": 128 * 1024 * 1024,
+            "step": 64 * 1024 * 1024,
+        },
+        "SBI_BUILD_JOBS": {"min": 0, "max": 64},
+        "SOC_XLEN": {"min": xlen, "max": xlen},
+    }
+    if levels_range:
+        int_range["MMU_LEVELS"] = levels_range
+    if extra_range:
+        int_range.update(extra_range)
+    bool_allow = [
+        *CACHE_BOOL_COMMON,
+        "DCACHE",
+        "LINUX_INITRAMFS_ENABLE",
+        "SOC_XLEN_FOLLOW_CPU",
+    ]
+    if extra_bool:
+        bool_allow.extend(extra_bool)
+    return {
+        "bool": sorted(set(bool_allow)),
+        "enum": {"LINUX_BOOTARGS": list(LINUX_BOOTARGS)},
+        "int_range": int_range,
+        "list": {},
+    }
+
+
 # Policy: base is always extracted from the named defconfig.  ``allow``
 # contains only deviations that the profile deliberately supports.  Anything
 # else is classified experimental, never rejected.
 PROFILE_SPECS: List[Dict[str, Any]] = [
     {
-        "id": "small-rv32",
-        "version": 2,
+        "id": "rv32i",
+        "version": 1,
         "status": "prototype",
         "description": (
-            "RV32 小型裸机支持族：RV32IM 基线，无 MMU。允许 A/C/F/D 扩展、"
-            "硬浮点后端、S/U 与可选 machine CSR、PLIC 中断的开关；"
-            "CPU XLEN、无 MMU、64 MiB RAM 与 ysyx 模式是硬边界。"
+            "RV32I 最小 M 模式支持族：RV32I（M/A/C/F/D=n）、仅 M 特权级、"
+            "无 MMU/TLB，不启用 SBI/Linux/U-Boot。保留 B1 的 M 模式 CSR、"
+            "mcycle 和 ecall/mret；ICache 打开，DCache 关闭。PMP 可选；"
+            "缓存几何和 debug 开关是允许的差异，ISA/特权级/MMU 是硬边界。"
         ),
-        "defconfig": "npc/configs/rv32_c_defconfig",
-        "typed": "rv32_c",
+        "defconfig": "npc/configs/rv32i_defconfig",
+        "typed": "rv32i",
         "allow": {
-            "bool": [
-                "RISCV_A",
-                "RISCV_C",
-                "RISCV_F",
-                "RISCV_D",
-                *FPU_BOOL,
-                *RV32_CSR_BOOL,
-            ],
+            "bool": sorted(
+                set(
+                    [
+                        "CACHE_CONFIG_SEPARATE",
+                        "CACHE_CONFIG_UNIFIED",
+                        "CACHE_ENABLE",
+                        "ICACHE",
+                        "DCACHE",
+                        *CACHE_BOOL_COMMON,
+                        "HAS_PMP",
+                        "SOC_XLEN_FOLLOW_CPU",
+                    ]
+                )
+            ),
             "enum": {},
             "int_range": {
-                **FPU_RANGE,
-                **RV32_PLIC_RANGE,
+                **CACHE_RANGE_RV32I,
+                "PMP_ENTRIES": {"min": 16, "max": 16},
+                "PMP_GRANULARITY_LOG2": {"min": 6, "max": 6},
+                "SOC_XLEN": {"min": 32, "max": 32},
             },
             "list": {},
         },
         "predicate": [
             _predicate_xlen(32),
+            _predicate_isa("m", False),
+            _predicate_isa("a", False),
+            _predicate_isa("c", False),
+            _predicate_isa("f", False),
+            _predicate_isa("d", False),
+            _predicate_isa("s", False),
+            _predicate_isa("u", False),
             _predicate_no_mmu(),
-            {
-                "id": "soc-xlen-32",
-                "description": "RV32 小型平台 SoC AXI 侧保持 32 位",
-                "expr": {"eq": {"path": "isa.soc_xlen", "value": 32}},
-            },
+            _predicate_flat("SBI_ENABLE", False, "no"),
+            _predicate_flat("LINUX_BOOT_ENABLE", False, "no"),
+            _predicate_flat("NPC_UBOOT_ENABLE", False, "no"),
+            _predicate_soc_xlen(32),
             _predicate_ram(64 * 1024 * 1024),
             _predicate_ysyx(),
         ],
         "qualification": {
-            "suites": ["rv32-rvc", "rv32-fpu", "rv32-noc", "difftest-rv32"],
-            "manifest": "npc/support/qualified/small-rv32@2.json",
+            "suites": ["rv32i-baremetal", "b1-csr", "b3-icache"],
+            "manifest": "npc/support/qualified/rv32i@1.json",
             "hashes": [],
         },
     },
     {
-        "id": "rv32-mmu",
+        "id": "rv32imac-linux",
+        "version": 1,
+        "status": "experimental",
+        "description": (
+            "RV32IMAC + Sv32 + OpenSBI + Linux 实验支持族：M/A/C=y、F/D=n、"
+            "M/S/U、标准 Sv32（2 级、4 KiB 页、4 B PTE）、PMP 16 项、"
+            "OpenSBI + FDT、直接 Linux 启动。SBI_NEXT_ADDR 固定 0x80400000"
+            "（RV32 4 MiB 对齐）。DCache、initramfs 开关、64/128 MiB RAM "
+            "是有意支持的差异；RV32 Linux 尚无启动证据。"
+        ),
+        "defconfig": "npc/configs/rv32imac_linux_defconfig",
+        "typed": "rv32imac_linux",
+        "allow": _linux_allow(32, cache_range=CACHE_RANGE_LINUX),
+        "predicate": _linux_predicates(32, "riscv32", 4, [2], fd=False),
+        "qualification": {
+            "suites": ["linux-rv32", "opensbi-rv32", "sv32"],
+            "manifest": "npc/support/qualified/rv32imac-linux@1.json",
+            "hashes": [],
+            "status_ceiling": "profile-compatible",
+            "evidence_scope": "elaboration-only",
+        },
+    },
+    {
+        "id": "rv32gc-linux",
+        "version": 1,
+        "status": "experimental",
+        "description": (
+            "RV32GC + Sv32 + OpenSBI + Linux 实验支持族：RV32IMAFDC、"
+            "HardFloat/Fudian、FLEN=64、M/S/U、标准 Sv32、PMP 16 项、"
+            "OpenSBI + FDT、直接 Linux 启动。SBI_NEXT_ADDR 固定 0x80400000。"
+            "DCache 行大小至少 8 B（默认 16 B），initramfs 与 64/128 MiB "
+            "RAM 可选；RV32 Linux 尚无启动证据。"
+        ),
+        "defconfig": "npc/configs/rv32gc_linux_defconfig",
+        "typed": "rv32gc_linux",
+        "allow": _linux_allow(
+            32,
+            cache_range=CACHE_RANGE_LINUX_RV32GC,
+            extra_bool=list(FPU_ALLOW_BOOL),
+            extra_range=dict(FPU_ALLOW_RANGE),
+        ),
+        "predicate": _linux_predicates(32, "riscv32", 4, [2]),
+        "qualification": {
+            "suites": ["linux-rv32", "opensbi-rv32", "sv32", "rv32d"],
+            "manifest": "npc/support/qualified/rv32gc-linux@1.json",
+            "hashes": [],
+            "status_ceiling": "profile-compatible",
+            "evidence_scope": "elaboration-only",
+        },
+    },
+    {
+        "id": "rv64gc-linux",
         "version": 1,
         "status": "prototype",
         "description": (
-            "RV32 Sv32 MMU 支持族：标准 2 级页表、4 KiB 页、PIPT cache。"
-            "允许 M/A 扩展、cache 几何与 SRAM/reg 存储、timer 路径，以及"
-            "M 扩展关闭时的 MDU 实现差异；custom MMU 几何、SBI 和 Linux 超出边界。"
+            "RV64GC + Sv39/Sv48 + OpenSBI + Linux 支持族：RV64IMAFDC、"
+            "HardFloat/Fudian、FLEN=64、M/S/U、标准 Sv39（默认）或 Sv48、"
+            "PMP 16 项、OpenSBI + FDT、直接 Linux 启动。本族不走 U-Boot "
+            "EFI/128 MiB Debian 路径；MMU_LEVELS、DCache、PMU、initramfs "
+            "和 64/128 MiB RAM 是有意支持的差异。"
         ),
-        "defconfig": "npc/configs/nanos_defconfig",
-        "typed": "nanos",
-        "allow": {
-            "bool": [
-                "RISCV_A",
-                *MDU_BOOL,
-                *CACHE_BOOL,
-                *TIMER_BOOL,
-            ],
-            "enum": {
-                "MUL_COMPRESSOR_OUTPUT_OFFSETS": ["0,1"],
-            },
-            "int_range": {
-                **CACHE_RANGE,
-                **MDU_RANGE,
-            },
-            "list": {},
-        },
-        "predicate": [
-            _predicate_xlen(32),
-            *_predicate_standard_mmu("riscv32", 4, [2]),
-            _predicate_ram(64 * 1024 * 1024),
-            _predicate_no_sbi(),
-            *_predicate_no_linux(),
-            _predicate_ysyx(),
-        ],
-        "qualification": {
-            "suites": ["rv32-mmu", "nanos-lite-rv32", "difftest-rv32"],
-            "manifest": "npc/support/qualified/rv32-mmu@1.json",
-            "hashes": [],
-        },
-    },
-    {
-        "id": "standard-rv64",
-        "version": 2,
-        "status": "prototype",
-        "description": (
-            "RV64 标准裸机支持族：RV64IMAC 基线，无 MMU。允许 F/D 扩展和"
-            "硬浮点后端开关；MMU、SBI/Linux、SoC 自定义和外设变体超出边界。"
+        "defconfig": "npc/configs/rv64gc_linux_defconfig",
+        "typed": "rv64gc_linux",
+        "allow": _linux_allow(
+            64,
+            cache_range=CACHE_RANGE_LINUX,
+            levels_range={"min": 3, "max": 4},
+            extra_bool=[*FPU_ALLOW_BOOL, "SBI_PMU_ENABLE"],
+            extra_range=dict(FPU_ALLOW_RANGE),
         ),
-        "defconfig": "npc/configs/rv64_c_defconfig",
-        "typed": "rv64_c",
-        "allow": {
-            "bool": ["RISCV_F", "RISCV_D", *FPU_BOOL],
-            "enum": {},
-            "int_range": {**FPU_RANGE},
-            "list": {},
-        },
-        "predicate": [
-            _predicate_xlen(64),
-            _predicate_no_mmu(),
-            {
-                "id": "soc-xlen-64",
-                "description": "SoC AXI 侧保持 64 位",
-                "expr": {"eq": {"path": "isa.soc_xlen", "value": 64}},
-            },
-            _predicate_ram(64 * 1024 * 1024),
-            _predicate_ysyx(),
-        ],
+        "predicate": _linux_predicates(64, "riscv64", 8, [3, 4]),
         "qualification": {
-            "suites": ["rv64-rvc", "rv64-fpu", "difftest-rv64"],
-            "manifest": "npc/support/qualified/standard-rv64@2.json",
-            "hashes": [],
-        },
-    },
-    {
-        "id": "rv64-mmu",
-        "version": 1,
-        "status": "prototype",
-        "description": (
-            "RV64 标准 MMU 裸机支持族：Sv39/Sv48、4 KiB 页、标准 PTE。"
-            "允许 A/C/F/D 扩展、cache 几何与使能、trace/ringbuffer、timer"
-            "路径和 3/4 级页表；custom MMU 几何、PTE、SBI 和 Linux 超出边界。"
-        ),
-        "defconfig": "npc/configs/rv64_mmu_defconfig",
-        "typed": "rv64_mmu",
-        "allow": {
-            "bool": [
-                "RISCV_A",
-                "RISCV_C",
-                "RISCV_F",
-                "RISCV_D",
-                *FPU_BOOL,
-                *CACHE_BOOL,
-                *TIMER_BOOL,
-                "TRACE",
-            ],
-            "enum": {},
-            "int_range": {
-                **CACHE_RANGE,
-                **FPU_RANGE,
-                "MMU_LEVELS": {"min": 3, "max": 4},
-                "IRINGBUF_SIZE": {"min": 0, "max": 64, "step": 16},
-            },
-            "list": {},
-        },
-        "predicate": [
-            _predicate_xlen(64),
-            *_predicate_standard_mmu("riscv64", 8, [3, 4]),
-            _predicate_ram(64 * 1024 * 1024),
-            _predicate_no_sbi(),
-            *_predicate_no_linux(),
-            _predicate_ysyx(),
-        ],
-        "qualification": {
-            "suites": ["rv64-mmu", "xv6", "nanos-lite-rv64", "difftest-rv64"],
-            "manifest": "npc/support/qualified/rv64-mmu@1.json",
-            "hashes": [],
-        },
-    },
-    {
-        "id": "rv64-sbi",
-        "version": 1,
-        "status": "prototype",
-        "description": (
-            "RV64 + OpenSBI 支持族：标准 Sv39 MMU、PMP、OpenSBI 固件，"
-            "不直接启动 Linux/U-Boot。允许 FDT 与 PMU 开关及标准地址范围内的"
-            "FDT 地址调整；Linux 启动、custom MMU 和 U-Boot 超出边界。"
-        ),
-        "defconfig": "npc/configs/rv64_sbi_defconfig",
-        "typed": "rv64_sbi",
-        "allow": {
-            "bool": [
-                "SBI_FDT_ENABLE",
-                "SBI_PMU_ENABLE",
-                "NPC_UBOOT_ENABLE",
-            ],
-            "enum": {},
-            "int_range": {
-                "SBI_FDT_ADDR": {"min": 0x80000000, "max": 0x8FFFFFFF},
-            },
-            "list": {},
-        },
-        "predicate": [
-            _predicate_xlen(64),
-            *_predicate_standard_mmu("riscv64", 8, [3]),
-            _predicate_ram(64 * 1024 * 1024),
-            {
-                "id": "sbi",
-                "description": "OpenSBI 支持族要求 SBI 固件",
-                "expr": {"eq": {"path": "flat.SBI_ENABLE", "value": True}},
-            },
-            *_predicate_no_linux(),
-            _predicate_ysyx(),
-        ],
-        "qualification": {
-            "suites": ["opensbi", "rustsbi", "sbi-fdt"],
-            "manifest": "npc/support/qualified/rv64-sbi@1.json",
-            "hashes": [],
-        },
-    },
-    {
-        "id": "linux-rv64",
-        "version": 2,
-        "status": "prototype",
-        "description": (
-            "RV64GC + Sv39/Sv48 + OpenSBI + Linux 支持族（64/128 MiB）。"
-            "允许 U-Boot 启动、initramfs、启动参数和标准地址范围调整；"
-            "custom MMU、非 SBI、非 Linux/U-Boot 配置超出边界。"
-        ),
-        "defconfig": "npc/configs/rv64_linux_defconfig",
-        "typed": "rv64_linux",
-        "allow": {
-            "bool": [
-                "LINUX_BOOT_ENABLE",
-                "LINUX_INITRAMFS_ENABLE",
-                "NPC_UBOOT_ENABLE",
-            ],
-            "enum": {
-                "LINUX_BOOTARGS": [
-                    "console=ttyS0,115200 earlycon=sbi",
-                    "console=ttyS0,115200 earlycon=sbi rootwait",
-                ],
-                "NPC_UBOOT_BOOTARGS": [
-                    "console=ttyS0,115200 earlycon=sbi no5lvl cpuidle.off=1 loglevel=7",
-                ],
-            },
-            "int_range": {
-                "NPC_RAM_SIZE": {
-                    "min": 0x04000000,
-                    "max": 0x08000000,
-                    "step": 0x04000000,
-                },
-                "MMU_LEVELS": {"min": 3, "max": 5},
-                "LINUX_INITRAMFS_ADDR": {
-                    "min": 0x80000000,
-                    "max": 0x8FFFFFFF,
-                },
-                "SBI_FDT_ADDR": {"min": 0x80000000, "max": 0x8FFFFFFF},
-                "NPC_UBOOT_EFI_APP_ADDR": {
-                    "min": 0x80000000,
-                    "max": 0x8FFFFFFF,
-                },
-                "NPC_UBOOT_INITRAMFS_ADDR": {
-                    "min": 0x80000000,
-                    "max": 0x8FFFFFFF,
-                },
-                "NPC_UBOOT_KERNEL_ADDR": {
-                    "min": 0x80000000,
-                    "max": 0x8FFFFFFF,
-                },
-            },
-            "list": {},
-        },
-        "predicate": [
-            _predicate_xlen(64),
-            *_predicate_standard_mmu("riscv64", 8, [3, 4, 5]),
-            {
-                "id": "fpu-fd",
-                "description": "Linux 支持族要求 F/D",
-                "expr": {
-                    "all": [
-                        {"eq": {"path": "isa.f", "value": True}},
-                        {"eq": {"path": "isa.d", "value": True}},
-                    ]
-                },
-            },
-            {
-                "id": "sbi",
-                "description": "Linux 支持族需要 SBI 固件",
-                "expr": {"eq": {"path": "flat.SBI_ENABLE", "value": True}},
-            },
-            {
-                "id": "linux-or-uboot",
-                "description": "直接 Linux 启动或 U-Boot 启动二选一",
-                "expr": {
-                    "any": [
-                        {"eq": {"path": "flat.LINUX_BOOT_ENABLE", "value": True}},
-                        {"eq": {"path": "flat.NPC_UBOOT_ENABLE", "value": True}},
-                    ]
-                },
-            },
-            {
-                "id": "ram-at-least-64m",
-                "description": "Linux 至少需要 64 MiB RAM",
-                "expr": {
-                    "gte": {"path": "platform.ram_size", "value": 64 * 1024 * 1024}
-                },
-            },
-            _predicate_ysyx(),
-        ],
-        "qualification": {
-            "suites": ["linux-boot", "opensbi", "nanos-lite", "uboot"],
-            "manifest": "npc/support/qualified/linux-rv64@2.json",
+            "suites": ["linux-boot", "opensbi", "sv39", "nanos-lite"],
+            "manifest": "npc/support/qualified/rv64gc-linux@1.json",
             "hashes": [],
         },
     },

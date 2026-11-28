@@ -8,6 +8,12 @@ its own temporary c_conf workdir, so the repository's ``.config``,
 
     python3 npc/tools/ParamGen/classify_defconfigs.py
     python3 npc/tools/ParamGen/classify_defconfigs.py --skip-generate
+    python3 npc/tools/ParamGen/classify_defconfigs.py --typed-only \
+        --workdir /tmp/opencode/paramgen-typed-check
+
+``--typed-only`` generates the typed JSON tree without loading profiles or
+writing a classification report, which is useful before the profile policy
+has been rebuilt.
 """
 
 from __future__ import annotations
@@ -37,6 +43,26 @@ def defconfig_name(path: Path) -> str:
     return name[: -len("_defconfig")] if name.endswith("_defconfig") else path.stem
 
 
+def resolve_defconfig(npc_dir: Path, value: str) -> Path:
+    candidate = Path(value)
+    if candidate.is_file():
+        return candidate.resolve()
+    name = value if value.endswith("_defconfig") else value + "_defconfig"
+    candidate = npc_dir / "configs" / name
+    if candidate.is_file():
+        return candidate.resolve()
+    raise p.ParamError(f"defconfig not found: {value}")
+
+
+def select_defconfigs(npc_dir: Path, values: Sequence[str]) -> List[Path]:
+    if values:
+        return sorted({resolve_defconfig(npc_dir, value) for value in values})
+    defconfigs = sorted((npc_dir / "configs").glob("*defconfig"))
+    if not defconfigs:
+        raise p.ParamError(f"no defconfigs found under {npc_dir / 'configs'}")
+    return defconfigs
+
+
 def load_profiles(
     directory: Path,
 ) -> List[Tuple[Dict[str, Any], Optional[Dict[str, Any]], Path]]:
@@ -53,6 +79,78 @@ def load_profiles(
     if not result:
         raise p.ParamError(f"no profiles found in {directory}")
     return result
+
+
+def run_typed_only(
+    npc_dir: Path,
+    workdir: Path,
+    defconfigs: Sequence[Path],
+    schema: Dict[str, Any],
+    *,
+    skip_generate: bool,
+    repeat: bool,
+) -> int:
+    """Generate (and optionally repeat-check) typed JSON only."""
+    unstable: List[str] = []
+    checked_repeats = 0
+    for index, defconfig in enumerate(defconfigs, 1):
+        name = defconfig_name(defconfig)
+        typed = None
+        repeated = None
+        if skip_generate:
+            typed_path = workdir / name / "typed.json"
+            if typed_path.exists():
+                typed = p.read_json(typed_path)
+            repeated_path = workdir / f"{name}__repeat" / "typed.json"
+            if repeated_path.exists():
+                repeated = p.read_json(repeated_path)
+        else:
+            typed = p.generate_typed_config(npc_dir, workdir / name, defconfig)
+            if repeat:
+                repeated = p.generate_typed_config(
+                    npc_dir, workdir / f"{name}__repeat", defconfig
+                )
+        if typed is None:
+            raise p.ParamError(
+                f"missing typed JSON for {name}: {workdir / name / 'typed.json'}; "
+                "run without --skip-generate"
+            )
+        flat = typed.get("flat")
+        if not isinstance(flat, dict) or not flat:
+            raise p.ParamError(f"{name}: typed JSON has no non-empty 'flat' map")
+        config_hash = typed.get("config_hash")
+        if not isinstance(config_hash, str) or not config_hash:
+            raise p.ParamError(f"{name}: typed JSON has no non-empty 'config_hash'")
+
+        hash_value = p.canonical_document(typed, schema)["effective_hash"]
+        repeated_hash = (
+            p.canonical_document(repeated, schema)["effective_hash"]
+            if repeated is not None
+            else None
+        )
+        if repeated_hash is not None:
+            checked_repeats += 1
+        stable = repeated_hash is None or repeated_hash == hash_value
+        if not stable:
+            unstable.append(name)
+        print(
+            f"[{index}/{len(defconfigs)}] {name}: {hash_value[:16]} "
+            f"npc_config_hash={config_hash[:16]} stable={stable}",
+            file=sys.stderr,
+        )
+
+    if unstable:
+        print(
+            "[param-typed] ERROR repeat pass produced different effective hashes: "
+            + ", ".join(unstable),
+            file=sys.stderr,
+        )
+        return 1
+    print(
+        f"[param-typed] wrote {len(defconfigs)} typed.json under {workdir} "
+        f"(repeat_checked={checked_repeats}/{len(defconfigs)})"
+    )
+    return 0
 
 
 def choose_best(
@@ -115,16 +213,39 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         action="store_true",
         help="skip the second generation pass (hash stability not proven)",
     )
+    parser.add_argument(
+        "--defconfig",
+        action="append",
+        default=[],
+        help="defconfig name or path; may be repeated (default: all defconfigs)",
+    )
+    parser.add_argument(
+        "--typed-only",
+        action="store_true",
+        help=(
+            "only generate <workdir>/<name>/typed.json; do not load profiles "
+            "or write classification reports"
+        ),
+    )
     args = parser.parse_args(argv)
 
     npc_dir = Path(args.npc).resolve()
     workdir = Path(args.workdir)
+
+    if args.typed_only:
+        defconfigs = select_defconfigs(npc_dir, args.defconfig)
+        return run_typed_only(
+            npc_dir,
+            workdir,
+            defconfigs,
+            p.load_schema(),
+            skip_generate=args.skip_generate,
+            repeat=not args.no_repeat,
+        )
+
     profile_rows = load_profiles(Path(args.profiles))
     schema = p.load_schema()
-
-    defconfigs = sorted((npc_dir / "configs").glob("*defconfig"))
-    if not defconfigs:
-        raise p.ParamError(f"no defconfigs found under {npc_dir / 'configs'}")
+    defconfigs = select_defconfigs(npc_dir, args.defconfig)
 
     rows = []
     details = []
@@ -228,7 +349,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "reasons",
     ]
     with out_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
 

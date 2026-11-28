@@ -460,6 +460,20 @@ def manifest_entry(
     profile: Dict[str, Any],
     run_info: Dict[str, Any],
 ) -> Dict[str, Any]:
+    evidence_scope = profile.get("qualification", {}).get(
+        "evidence_scope", "l0-l2"
+    )
+    evidence = {
+        "l0_kconfig_contract": "pass",
+        "l1_npc_config_gen": "pass",
+        "l2_chisel_elaboration": "pass",
+        "scope": evidence_scope,
+    }
+    if evidence_scope == "elaboration-only":
+        evidence["note"] = (
+            "L2 Chisel elaboration only; no Linux boot evidence. "
+            "This exact hash is not a claim that RV32 Linux boots."
+        )
     return {
         "effective_hash": result["effective_hash"],
         "npc_config_hash": result.get("npc_config_hash"),
@@ -469,11 +483,7 @@ def manifest_entry(
         "profile_version": profile["version"],
         "git_head": run_info["git_head"],
         "qualified_at": run_info["generated_at"],
-        "evidence": {
-            "l0_kconfig_contract": "pass",
-            "l1_npc_config_gen": "pass",
-            "l2_chisel_elaboration": "pass",
-        },
+        "evidence": evidence,
     }
 
 
@@ -489,6 +499,17 @@ def update_manifest(
     existing: Optional[Dict[str, Any]] = None
     if manifest_path.is_file():
         existing = p.load_manifest(manifest_path)
+
+    # Do not fabricate an empty manifest: a profile only gets a manifest
+    # after at least one exact hash passed L2.  Existing manifests are kept
+    # for subset runs.
+    if not passed_entries and existing is None:
+        return {
+            "path": p.relative_to_repo(manifest_path),
+            "entries": 0,
+            "status": "not-written",
+            "written": False,
+        }
 
     entries: List[Any] = []
     seen: set[str] = set()
@@ -518,11 +539,19 @@ def update_manifest(
         return ("", str(entry))
 
     entries.sort(key=sort_key)
+    ceiling = profile.get("qualification", {}).get("status_ceiling", "qualified")
+    manifest_status = "qualified" if entries else "empty"
+    if entries and ceiling in ("profile-compatible", "experimental"):
+        manifest_status = ceiling
+    evidence_scope = profile.get("qualification", {}).get(
+        "evidence_scope", "l0-l2"
+    )
     manifest = {
         "schema": 1,
         "profile": profile["id"],
         "profile_version": profile["version"],
-        "status": "qualified" if entries else "empty",
+        "status": manifest_status,
+        "evidence_scope": evidence_scope,
         "generated_by": "npc/tools/ParamGen/qualify.py",
         "generated_at": run_info["generated_at"],
         "run": {
@@ -542,7 +571,15 @@ def update_manifest(
             "A hash is qualified only for this profile version and the recorded git head.",
             "Rerun qualify.py after changing Kconfig, defaults, profile policy or RTL.",
             "A failed case is not written; its logs remain in the isolated workdir.",
-        ],
+        ]
+        + (
+            [
+                "evidence_scope=elaboration-only: L2 proves Chisel elaboration "
+                "only; there is no RV32 Linux boot evidence for this profile."
+            ]
+            if evidence_scope == "elaboration-only"
+            else []
+        ),
         "hashes": entries,
     }
     write_json_atomic(manifest_path, manifest)
@@ -578,7 +615,11 @@ def best_profile_for_report(
     return (best[3], "experimental") if best else ("", "experimental")
 
 
-def final_status(result: Dict[str, Any], skip_l2: bool) -> str:
+def final_status(
+    result: Dict[str, Any],
+    skip_l2: bool,
+    profiles: Sequence[Tuple[Dict[str, Any], Path]] = (),
+) -> str:
     if result.get("failed"):
         return "failed"
     if not result.get("compatible_profiles"):
@@ -586,7 +627,18 @@ def final_status(result: Dict[str, Any], skip_l2: bool) -> str:
     if skip_l2:
         return "profile-compatible"
     if result.get("l2_pass"):
-        return "qualified"
+        status = "qualified"
+        by_id = {profile["id"]: profile for profile, _path in profiles}
+        capped = [
+            p.apply_status_ceiling(by_id[profile_id], status)
+            for profile_id in result.get("compatible_profiles", [])
+            if profile_id in by_id
+        ]
+        # Multiple compatible profiles: keep the most conservative claim.
+        if capped:
+            order = {"qualified": 0, "profile-compatible": 1, "experimental": 2}
+            status = max(capped, key=lambda item: order.get(item, 0))
+        return status
     return "profile-compatible"
 
 
@@ -612,7 +664,7 @@ def write_run_report(
         "invalid": 0,
     }
     for result in results:
-        status = final_status(result, args.skip_l2)
+        status = final_status(result, args.skip_l2, profiles)
         result["final_status"] = status
         if result["stages"].get("l0-generated-contract", {}).get("ok"):
             summary["l0_pass"] += 1
@@ -725,7 +777,7 @@ def write_run_report(
         "log_dir",
     ]
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, lineterminator="\n")
         writer.writeheader()
         for case in cases:
             writer.writerow(
@@ -773,7 +825,7 @@ def write_support_policy_report(
     profiles: List[Tuple[Dict[str, Any], Path]],
     run_info: Dict[str, Any],
 ) -> None:
-    """Write a curated 20-defconfig policy table next to the raw report."""
+    """Write a curated per-profile policy table next to the raw report."""
     profile_by_id = {profile["id"]: profile for profile, _path in profiles}
     rows = []
     for result in results:
@@ -783,17 +835,6 @@ def write_support_policy_report(
             profile_id = compatible[0]
         else:
             profile_id = best_profile_for_report(result, profiles)[0]
-            # The three custom-MMU configs are deliberately outside the
-            # standard rv64-mmu family; report that family as the nearest one.
-            item = result["classification"].get("rv64-mmu")
-            if item and item["status"] == "experimental":
-                failed = {clause["id"] for clause in item["predicate_failures"]}
-                if failed & {
-                    "mmu-standard-geometry",
-                    "mmu-page-4k",
-                    "mmu-pte-format",
-                }:
-                    profile_id = "rv64-mmu"
         profile = profile_by_id.get(profile_id, {})
         profile_label = (
             f"{profile_id}@{profile['version']}" if profile else profile_id
@@ -813,23 +854,26 @@ def write_support_policy_report(
                 "recorded in the qualified manifest"
             )
         elif status == "profile-compatible":
-            reason = (
-                f"within {profile_label}; L0/L1 pass but L2/manifest "
-                "qualification is missing"
+            ceiling = (
+                profile.get("qualification", {}).get("status_ceiling")
+                if profile
+                else None
             )
+            if ceiling == "profile-compatible" and result.get("l2_pass"):
+                reason = (
+                    f"within {profile_label}; L0/L1/L2 pass and the exact hash "
+                    "is recorded, but the profile's evidence scope is "
+                    "elaboration-only (no Linux boot evidence)"
+                )
+            else:
+                reason = (
+                    f"within {profile_label}; L0/L1 pass but L2/manifest "
+                    "qualification is missing"
+                )
         elif status == "failed":
             reason = (
                 f"{result.get('failed_stage') or 'pipeline'}: "
                 f"{result.get('reason') or 'failed'}"
-            )
-        elif profile_id == "rv64-mmu" and (
-            "mmu-standard-geometry" in predicate_ids
-            or "mmu-page-4k" in predicate_ids
-            or "mmu-pte-format" in predicate_ids
-        ):
-            reason = (
-                "custom MMU geometry/PTE/page size; deliberately experimental, "
-                "not forced into the standard rv64-mmu family"
             )
         else:
             reason = "outside profile boundary"
@@ -837,7 +881,6 @@ def write_support_policy_report(
                 reason += "; predicate failures: " + ",".join(predicate_ids)
             if violation_names:
                 reason += "; boundary: " + ",".join(violation_names[:8])
-
         rows.append(
             {
                 "defconfig": result["defconfig"],
@@ -976,7 +1019,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         default=str(
             p.REPO_ROOT / "npc/params/reports/defconfig-support-policy.json"
         ),
-        help="curated 20-defconfig policy table (written on a full-scope run)",
+        help="curated per-profile policy table (written on a full-scope run)",
     )
     parser.add_argument("--mill", default="", help="mill executable (default: PATH)")
     return parser.parse_args(argv)

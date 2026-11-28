@@ -1,49 +1,47 @@
 {
   "allow": {
     "bool": [
-      "RISCV_A",
-      "RISCV_C",
-      "RISCV_F",
-      "RISCV_D",
-      "FPU_FMA",
-      "FPU_HARDFLOAT_RECODE",
-      "FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING",
-      "FPU_IMPL_EXTERNAL",
-      "FPU_IMPL_FUDIAN",
-      "FPU_IMPL_HARDFLOAT",
-      "FPU_IMPL_NONE",
       "DCACHE",
-      "ICACHE_STORAGE_REG",
-      "ICACHE_STORAGE_SRAM",
-      "ICACHE_STORAGE_SRAM_NOBYPASS",
       "DCACHE_STORAGE_REG",
       "DCACHE_STORAGE_SRAM",
       "DCACHE_STORAGE_SRAM_NOBYPASS",
-      "TIMER_CLINT_MTIP",
-      "TIMER_DIRECT_STIP",
-      "TRACE"
+      "FPU_FUDIAN_SHARED_DIVSQRT",
+      "FPU_HARDFLOAT_RECODE",
+      "FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING",
+      "FPU_IMPL_FUDIAN",
+      "FPU_IMPL_HARDFLOAT",
+      "ICACHE_STORAGE_REG",
+      "ICACHE_STORAGE_SRAM",
+      "ICACHE_STORAGE_SRAM_NOBYPASS",
+      "LINUX_INITRAMFS_ENABLE",
+      "SOC_XLEN_FOLLOW_CPU"
     ],
-    "enum": {},
+    "enum": {
+      "LINUX_BOOTARGS": [
+        "console=ttyS0,115200 earlycon=sbi",
+        "console=ttyS0,115200 earlycon=sbi rootwait"
+      ]
+    },
     "int_range": {
       "CACHE_BLOCK_SIZE_LOG2": {
         "max": 5,
-        "min": 4
+        "min": 3
       },
       "CACHE_INDEX_BITS": {
         "max": 6,
-        "min": 5
+        "min": 4
       },
       "DCACHE_BLOCK_SIZE_LOG2": {
         "max": 5,
-        "min": 4
+        "min": 3
       },
       "DCACHE_INDEX_BITS": {
         "max": 6,
-        "min": 5
+        "min": 4
       },
       "FPU_FLEN": {
         "max": 64,
-        "min": 32,
+        "min": 64,
         "step": 32
       },
       "FPU_PIPELINE": {
@@ -52,29 +50,37 @@
       },
       "ICACHE_BLOCK_SIZE_LOG2": {
         "max": 5,
-        "min": 4
+        "min": 3
       },
       "ICACHE_INDEX_BITS": {
         "max": 6,
-        "min": 5
+        "min": 4
       },
-      "IRINGBUF_SIZE": {
+      "LINUX_INITRAMFS_ADDR": {
+        "max": 2181038080,
+        "min": 2181038080
+      },
+      "NPC_RAM_SIZE": {
+        "max": 134217728,
+        "min": 67108864,
+        "step": 67108864
+      },
+      "SBI_BUILD_JOBS": {
         "max": 64,
-        "min": 0,
-        "step": 16
+        "min": 0
       },
-      "MMU_LEVELS": {
-        "max": 4,
-        "min": 3
+      "SOC_XLEN": {
+        "max": 32,
+        "min": 32
       }
     },
     "list": {}
   },
   "base": {
-    "parameter_count": 260,
-    "source": "npc/configs/rv64_mmu_defconfig",
-    "source_effective_hash": "936695e2a7547962e9cd6780b5e43cee89028212eb81dffcec8724e11e3aa49c",
-    "source_npc_config_hash": "fd093517663a1616",
+    "parameter_count": 284,
+    "source": "npc/configs/rv32gc_linux_defconfig",
+    "source_effective_hash": "67f5c141d32f2abee2eadfbe1e9ecd08010dee30db4c5ffada03d635415fe55d",
+    "source_npc_config_hash": "0d9806715ce75b95",
     "values": {
       "ALU_ADDER_CARRY_LOOKAHEAD": false,
       "ALU_ADDER_CARRY_SELECT": false,
@@ -154,6 +160,15 @@
       "DTLB_ENTRIES": 32,
       "DTLB_MISS_QUEUE_ENTRIES": 4,
       "DTLB_WAYS": 4,
+      "FPU_FLEN": 64,
+      "FPU_FMA": true,
+      "FPU_HARDFLOAT_RECODE": true,
+      "FPU_HARDFLOAT_TININESS_BEFORE_ROUNDING": false,
+      "FPU_IMPL_EXTERNAL": false,
+      "FPU_IMPL_FUDIAN": false,
+      "FPU_IMPL_HARDFLOAT": true,
+      "FPU_IMPL_NONE": false,
+      "FPU_PIPELINE": 0,
       "GPIO_XLEN_FOLLOW_APB": true,
       "HAS_CSR_MCOUNTEREN": true,
       "HAS_CSR_MCOUNTINHIBIT": true,
@@ -163,7 +178,7 @@
       "HAS_CSR_MSCRATCH": true,
       "HAS_CSR_MTVAL": true,
       "HAS_MMU": true,
-      "HAS_PMP": false,
+      "HAS_PMP": true,
       "HAS_S": true,
       "HAS_S_EXTERNAL_IRQ": true,
       "HAS_S_TIMER_IRQ": true,
@@ -191,9 +206,17 @@
       "JAL_BTB_BITS": 4,
       "JAL_BTB_WAYS": 1,
       "KEYBOARD_XLEN_FOLLOW_APB": true,
+      "LINUX_BOOTARGS": "console=ttyS0,115200 earlycon=sbi",
+      "LINUX_BOOT_ENABLE": true,
+      "LINUX_INITRAMFS_ADDR": 2181038080,
+      "LINUX_INITRAMFS_ENABLE": true,
       "LSU_DRAIN_TIMEOUT": 255,
+      "MDU_IMPL_CV32E40P": false,
+      "MDU_IMPL_CVE2": false,
       "MDU_IMPL_EXTERNAL": false,
+      "MDU_IMPL_IBEX": false,
       "MDU_IMPL_NUTSHELL": false,
+      "MDU_IMPL_PICORV32": false,
       "MDU_IMPL_ROCKET": false,
       "MDU_IMPL_STANDARD": true,
       "MISALIGNED_GRANULE_BYTES": 8,
@@ -207,7 +230,7 @@
       "MMU_CACHE_VIPT": false,
       "MMU_GEOMETRY_CUSTOM": false,
       "MMU_GEOMETRY_STANDARD": true,
-      "MMU_LEVELS": 3,
+      "MMU_LEVELS": 2,
       "MMU_PAGE_SIZE_BYTES": 4096,
       "MMU_PAGE_TABLE_SIZE_BYTES": 4096,
       "MMU_PROFILE_BALANCED": true,
@@ -219,12 +242,12 @@
       "MMU_PTE_D_BIT": 7,
       "MMU_PTE_EXEC_BIT": 3,
       "MMU_PTE_GLOBAL_BIT": 5,
-      "MMU_PTE_PPN_HIGH": 53,
+      "MMU_PTE_PPN_HIGH": 31,
       "MMU_PTE_PPN_LOW": 10,
       "MMU_PTE_READ_BIT": 1,
-      "MMU_PTE_RISCV32": false,
-      "MMU_PTE_RISCV64": true,
-      "MMU_PTE_SIZE_BYTES": 8,
+      "MMU_PTE_RISCV32": true,
+      "MMU_PTE_RISCV64": false,
+      "MMU_PTE_SIZE_BYTES": 4,
       "MMU_PTE_USER_BIT": 4,
       "MMU_PTE_VALID_BIT": 0,
       "MMU_PTE_WRITE_BIT": 2,
@@ -238,7 +261,7 @@
       "MMU_PTW_PIPELINED": false,
       "MMU_PTW_PMP_FAULT_QUEUE_DEPTH": 8,
       "MMU_PTW_REUSE_DCACHE": false,
-      "MMU_SUPERPAGE": true,
+      "MMU_SUPERPAGE": false,
       "MROM_XLEN_FOLLOW_APB": true,
       "MUL_COMPRESSOR_ALLOW_REDUNDANT": false,
       "MUL_COMPRESSOR_HAS_CIN": false,
@@ -258,6 +281,7 @@
       "NPC_MODE_YSYX_ONLY": true,
       "NPC_RAM_BASE": 2147483648,
       "NPC_RAM_SIZE": 67108864,
+      "NPC_UBOOT_ENABLE": false,
       "NVBOARD": false,
       "PLIC_BASE": 201326592,
       "PLIC_MAX_PRIORITY": 7,
@@ -291,29 +315,36 @@
       "PMA_UART_SIZE": 4096,
       "PMA_VGA_BASE": 553648128,
       "PMA_VGA_SIZE": 2097152,
+      "PMP_ENTRIES": 16,
+      "PMP_GRANULARITY_LOG2": 6,
       "PSRAM_XLEN_FOLLOW_APB": true,
       "RAS_BITS": 4,
-      "RISCV_A": false,
-      "RISCV_C": false,
-      "RISCV_F": false,
+      "RISCV_A": true,
+      "RISCV_C": true,
+      "RISCV_D": true,
+      "RISCV_F": true,
       "RISCV_M": true,
       "ROOTFS_ENABLE": false,
-      "SBI_ENABLE": false,
+      "SBI_ENABLE": true,
+      "SBI_FDT_ADDR": 2213543936,
+      "SBI_FDT_ENABLE": true,
       "SBI_FW_BASE": 2147483648,
       "SBI_FW_SIZE": 2097152,
-      "SBI_NEXT_ADDR": 2149580800,
+      "SBI_IMPL_OPENSBI": true,
+      "SBI_IMPL_RUSTSBI": false,
+      "SBI_NEXT_ADDR": 2151677952,
       "SBI_PLATFORM": "npc",
       "SDRAM_USE_AXI": true,
       "SDRAM_XLEN_FOLLOW_APB": true,
       "SOC_MEMORY_MAP_ACT": true,
       "SOC_MEMORY_MAP_LINUX": false,
-      "SOC_XLEN": 64,
+      "SOC_XLEN": 32,
       "SOC_XLEN_FOLLOW_CPU": false,
       "SPI_XLEN_FOLLOW_APB": true,
       "SRAM_XLEN_FOLLOW_APB": true,
       "TIMER_CLINT_MTIP": true,
       "TIMER_DIRECT_STIP": false,
-      "TLB_ASID_BITS": 16,
+      "TLB_ASID_BITS": 9,
       "TLB_GLOBAL": true,
       "TLB_MISS_QUEUE_FOLLOW": true,
       "TLB_MISS_QUEUE_GLOBAL": false,
@@ -324,8 +355,7 @@
       "TLB_SPLIT": true,
       "TLB_STORAGE_REG": true,
       "TLB_STORAGE_SRAM": false,
-      "TLB_SUPERPAGE": true,
-      "TLB_SUPERPAGE_ENTRIES": 4,
+      "TLB_SUPERPAGE": false,
       "TLB_UNIFIED": false,
       "TRACE": false,
       "UART_ADDR_WIDTH": 5,
@@ -335,21 +365,21 @@
       "UART_XLEN_FOLLOW_APB": true,
       "VGA_XLEN_FOLLOW_APB": true,
       "WBUF_DEPTH": 4,
-      "XLEN": 64
+      "XLEN": 32
     }
   },
-  "description": "RV64 标准 MMU 裸机支持族：Sv39/Sv48、4 KiB 页、标准 PTE。允许 A/C/F/D 扩展、cache 几何与使能、trace/ringbuffer、timer路径和 3/4 级页表；custom MMU 几何、PTE、SBI 和 Linux 超出边界。",
-  "id": "rv64-mmu",
+  "description": "RV32GC + Sv32 + OpenSBI + Linux 实验支持族：RV32IMAFDC、HardFloat/Fudian、FLEN=64、M/S/U、标准 Sv32、PMP 16 项、OpenSBI + FDT、直接 Linux 启动。SBI_NEXT_ADDR 固定 0x80400000。DCache 行大小至少 8 B（默认 16 B），initramfs 与 64/128 MiB RAM 可选；RV32 Linux 尚无启动证据。",
+  "id": "rv32gc-linux",
   "predicate": [
     {
-      "description": "profile 只接受 RV64",
+      "description": "profile 只接受 RV32",
       "expr": {
         "eq": {
           "path": "isa.xlen",
-          "value": 64
+          "value": 32
         }
       },
-      "id": "xlen-64"
+      "id": "xlen-32"
     },
     {
       "description": "profile 要求启用 MMU",
@@ -382,21 +412,21 @@
       "id": "mmu-page-4k"
     },
     {
-      "description": "标准 profile 使用 riscv64 PTE 格式",
+      "description": "标准 profile 使用 riscv32 PTE 格式",
       "expr": {
         "eq": {
           "path": "mmu.pte_format",
-          "value": "riscv64"
+          "value": "riscv32"
         }
       },
       "id": "mmu-pte-format"
     },
     {
-      "description": "标准 profile 使用 8 字节 PTE",
+      "description": "标准 profile 使用 4 字节 PTE",
       "expr": {
         "eq": {
           "path": "mmu.pte_size_bytes",
-          "value": 8
+          "value": 4
         }
       },
       "id": "mmu-pte-size"
@@ -407,52 +437,131 @@
         "in": {
           "path": "mmu.levels",
           "values": [
-            3,
-            4
+            2
           ]
         }
       },
       "id": "mmu-levels"
     },
     {
-      "description": "标准平台 RAM 为 64 MiB",
+      "description": "profile 要求 ISA.S=y",
       "expr": {
         "eq": {
-          "path": "platform.ram_size",
-          "value": 67108864
+          "path": "isa.s",
+          "value": true
         }
       },
-      "id": "ram-64m"
+      "id": "isa-s-yes"
     },
     {
-      "description": "裸机 profile 不启用 SBI",
+      "description": "profile 要求 ISA.U=y",
+      "expr": {
+        "eq": {
+          "path": "isa.u",
+          "value": true
+        }
+      },
+      "id": "isa-u-yes"
+    },
+    {
+      "description": "profile 要求 ISA.F=y",
+      "expr": {
+        "eq": {
+          "path": "isa.f",
+          "value": true
+        }
+      },
+      "id": "isa-f-yes"
+    },
+    {
+      "description": "profile 要求 ISA.D=y",
+      "expr": {
+        "eq": {
+          "path": "isa.d",
+          "value": true
+        }
+      },
+      "id": "isa-d-yes"
+    },
+    {
+      "description": "profile 要求 CONFIG_SBI_ENABLE=True",
       "expr": {
         "eq": {
           "path": "flat.SBI_ENABLE",
-          "value": false
+          "value": true
         }
       },
-      "id": "no-sbi"
+      "id": "flat-sbi-enable-yes"
     },
     {
-      "description": "裸机 profile 不直接启动 Linux",
+      "description": "profile 要求 CONFIG_SBI_IMPL_OPENSBI=True",
+      "expr": {
+        "eq": {
+          "path": "flat.SBI_IMPL_OPENSBI",
+          "value": true
+        }
+      },
+      "id": "flat-sbi-impl-opensbi-yes"
+    },
+    {
+      "description": "profile 要求 CONFIG_SBI_FDT_ENABLE=True",
+      "expr": {
+        "eq": {
+          "path": "flat.SBI_FDT_ENABLE",
+          "value": true
+        }
+      },
+      "id": "flat-sbi-fdt-enable-yes"
+    },
+    {
+      "description": "profile 要求 CONFIG_LINUX_BOOT_ENABLE=True",
       "expr": {
         "eq": {
           "path": "flat.LINUX_BOOT_ENABLE",
-          "value": false
+          "value": true
         }
       },
-      "id": "no-linux-boot"
+      "id": "flat-linux-boot-enable-yes"
     },
     {
-      "description": "裸机 profile 不启用 U-Boot",
+      "description": "profile 要求 CONFIG_NPC_UBOOT_ENABLE=False",
       "expr": {
         "eq": {
           "path": "flat.NPC_UBOOT_ENABLE",
           "value": false
         }
       },
-      "id": "no-uboot"
+      "id": "flat-npc-uboot-enable-no"
+    },
+    {
+      "description": "profile 要求 CONFIG_HAS_PMP=True",
+      "expr": {
+        "eq": {
+          "path": "flat.HAS_PMP",
+          "value": true
+        }
+      },
+      "id": "flat-has-pmp-yes"
+    },
+    {
+      "description": "SoC AXI 侧保持 32 位",
+      "expr": {
+        "eq": {
+          "path": "isa.soc_xlen",
+          "value": 32
+        }
+      },
+      "id": "soc-xlen-32"
+    },
+    {
+      "description": "至少需要 64 MiB RAM",
+      "expr": {
+        "gte": {
+          "path": "platform.ram_size",
+          "value": 67108864
+        }
+      },
+      "id": "ram-at-least-64m"
     },
     {
       "description": "当前 profile 只覆盖 ysyx 模式",
@@ -468,15 +577,17 @@
     }
   ],
   "qualification": {
+    "evidence_scope": "elaboration-only",
     "hashes": [],
-    "manifest": "npc/support/qualified/rv64-mmu@1.json",
+    "manifest": "npc/support/qualified/rv32gc-linux@1.json",
+    "status_ceiling": "profile-compatible",
     "suites": [
-      "rv64-mmu",
-      "xv6",
-      "nanos-lite-rv64",
-      "difftest-rv64"
+      "linux-rv32",
+      "opensbi-rv32",
+      "sv32",
+      "rv32d"
     ]
   },
-  "status": "prototype",
+  "status": "experimental",
   "version": 1
 }
